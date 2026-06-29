@@ -94,6 +94,7 @@ onMounted(loadData)
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 
 .page-header .page-title {

@@ -472,7 +472,7 @@ body {
 
 .page-desc {
   color: var(--text-secondary);
-  margin: calc(-1 * var(--space-4)) 0 var(--space-6);
+  margin: 2px 0 var(--space-5);
   font-size: var(--text-base);
   line-height: 1.5;
 }

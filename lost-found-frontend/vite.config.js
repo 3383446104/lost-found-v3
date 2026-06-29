@@ -12,7 +12,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',  // 你的后端地址
+        target: 'http://localhost:8001',  // 你的后端地址
         changeOrigin: true,
       }
     }

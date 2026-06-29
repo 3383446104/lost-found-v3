@@ -185,8 +185,14 @@ onMounted(loadItems)
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3);
   flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.page-header > div:first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .page-header .page-title {
@@ -201,6 +207,8 @@ onMounted(loadItems)
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
   font-weight: 600;
+  white-space: nowrap;
+  margin-top: 2px;
 }
 
 .review-table-wrap {

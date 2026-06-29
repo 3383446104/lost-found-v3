@@ -228,7 +228,8 @@ onMounted(async () => {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
   padding: var(--space-8);
-  max-width: 720px;
+  max-width: 640px;
+  margin: 0 auto;
   box-shadow: var(--shadow-sm);
 }
 
@@ -307,7 +308,7 @@ onMounted(async () => {
   }
   .form-row {
     flex-direction: column;
-    gap: 0;
+    gap: var(--space-4);
   }
   .upload-area {
     padding: var(--space-5);
