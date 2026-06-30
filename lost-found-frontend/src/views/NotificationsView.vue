@@ -5,6 +5,18 @@
         消息通知
         <span v-if="list.length" class="count-badge">{{ list.length }}</span>
       </h1>
+      <el-button
+        v-if="list.length"
+        size="small"
+        @click="markAllAsRead"
+        :loading="markingAll"
+        text
+        type="primary"
+        class="read-all-btn"
+      >
+        <el-icon><Select /></el-icon>
+        全部已读
+      </el-button>
     </div>
 
     <!-- 空状态 -->
@@ -49,13 +61,14 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getUnreadList, markRead } from '@/api/notifications'
+import { getUnreadList, markRead, markAllRead } from '@/api/notifications'
 import { useNotificationStore } from '@/stores/notification'
 import { ElMessage } from 'element-plus'
-import { Bell, ArrowRight } from '@element-plus/icons-vue'
+import { Bell, ArrowRight, Select } from '@element-plus/icons-vue'
 
 const list = ref([])
 const readingId = ref(null)
+const markingAll = ref(false)
 const loading = ref(false)
 const store = useNotificationStore()
 
@@ -86,6 +99,20 @@ const markAsRead = async (id) => {
   }
 }
 
+const markAllAsRead = async () => {
+  markingAll.value = true
+  try {
+    const res = await markAllRead()
+    ElMessage.success(`已标记 ${res.count || list.value.length} 条消息为已读`)
+    list.value = []
+    store.unreadCount = 0
+  } catch {
+    // 拦截器已处理
+  } finally {
+    markingAll.value = false
+  }
+}
+
 onMounted(loadData)
 </script>
 
@@ -99,6 +126,12 @@ onMounted(loadData)
 
 .page-header .page-title {
   margin-bottom: 0;
+}
+
+.read-all-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-weight: 500;
 }
 
 .count-badge {

@@ -86,7 +86,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             cursor.execute(f'''
                 SELECT id, username, email FROM users WHERE id IN ({placeholders})
             ''', list(notified_user_ids))
-            users = {row['id']: row for row in cursor.fetchall()}
+            users = {row['id']: dict(row) for row in cursor.fetchall()}
 
         # 7. 发送双向通知
         new_item_owner = users.get(new_item['user_id'])

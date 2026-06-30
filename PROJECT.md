@@ -1,6 +1,9 @@
 # 校园失物智能寻回系统 — 项目文档
 
-> 版本：v3.0 | 日期：2026-06-29 | 技术栈：FastAPI + Vue 3 + CLIP
+> 版本：v3.3.1 | 日期：2026-06-30 | 技术栈：FastAPI + Vue 3 + CLIP
+>
+> **v3.3 核心变更**：去除访客 | 自标记认领 | 个人中心重构 | 批量审核 | 总计找回 | 历史记录
+> **v3.3.1 修复**：统计过滤 | 批量审核路由 | 认领文案 | 列表过滤 | mark-claimed 路由 | 自动匹配通知
 
 ---
 
@@ -32,16 +35,18 @@
 |------|------|
 | **多模态智能匹配** | 基于 OpenAI CLIP ViT-B-32 模型，支持「以图搜图」「以文搜图」「图文混合」三种匹配模式 |
 | **自动推送通知** | 审核通过后自动匹配异类物品（失物↔拾物），相似度达标时双向推送站内通知 + 邮件 |
-| **管理员审核** | 所有物品需审核通过后方可公开展示，保证信息真实性 |
-| **完整闭环** | 发布 → 审核 → 匹配 → 通知 → 认领 |
+| **认领/归还流程** | 失物→"我要归还"、拾物→"我要认领"，通知含申请人手机号；发布者自行标记"已找回/已认领" |
+| **管理员审核** | 审核通过/驳回+邮件通知；一键批量通过；用户管理（角色/禁用/逻辑删除） |
+| **数据看板** | 首页统计卡片（展示中/今日失物/今日拾物/总计找回） |
+| **个人中心** | Tab 分段式布局：账户设置 + 联系方式 + 历史记录；首字母头像(纯展示)；注销账号 |
+| **完整闭环** | 发布 → 审核 → 匹配 → 通知 → 认领/归还 → 自标记 → 历史记录 |
 
 ### 1.3 用户角色
 
 | 角色 | 权限 |
 |------|------|
-| **访客**（未登录） | 仅可浏览物品列表（已审核+活跃） |
-| **普通用户** | 发布/编辑/删除自己的物品；使用智能匹配；查看通知 |
-| **管理员** | 审核所有物品；编辑/删除任何物品；拥有普通用户全部权限 |
+| **普通用户** | 浏览物品；发布/编辑/删除自己的物品；使用智能匹配；申请认领/归还；标记自己物品"已找回/已认领"；查看通知；个人中心（含历史记录） |
+| **管理员** | 审核所有物品（含批量通过）；用户管理（角色/禁用/逻辑删除）；发布公告；编辑/删除任何物品；拥有普通用户全部权限 |
 
 ---
 
@@ -166,8 +171,9 @@ lost-found-v3/
 |------|------|:----:|:----:|:----:|
 | FR-ADMIN-01 | 待审核列表（分页） | ✅ GET /api/admin/reviews | ✅ AdminView | ✅ |
 | FR-ADMIN-02 | 审核通过（→active，触发匹配） | ✅ PUT /api/admin/reviews/{id} | ✅ AdminView | ✅ |
-| FR-ADMIN-03 | 审核驳回（→rejected + 理由） | ✅ 驳回理由必填验证 | ✅ Dialog | ✅ |
+| FR-ADMIN-03 | 审核驳回（→rejected + 理由+通知+邮件） | ✅ 驳回理由必填验证 | ✅ 驳回 Dialog | ✅ |
 | FR-ADMIN-04 | 自动匹配推送（≥0.6） | ✅ BackgroundTasks 异步 | — | ✅ |
+| FR-ADMIN-05 | 批量审核通过 | ✅ POST batch-approve | ✅ 多选+工具栏 | ✅ |
 
 ### 3.5 消息通知模块 (FR-NOTIFY)
 
@@ -227,6 +233,7 @@ lost-found-v3/
 | phone | TEXT | | 手机号 |
 | email | TEXT | | 邮箱 |
 | role | TEXT | DEFAULT 'user' | user / admin |
+| avatar_path | TEXT | | ⚠️ v3.3 废弃，保留列但不再使用 |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 注册时间 |
 
 ### 4.2 items（物品表）
@@ -300,6 +307,11 @@ idx_matches_found_item       → (found_item_id)
 | POST | `/api/register` | ❌ | 用户注册 |
 | POST | `/api/login` | ❌ | 用户登录 |
 | GET | `/api/me` | ✅ | 获取当前用户信息 |
+| PUT | `/api/me` | ✅ | 更新个人资料（密码/邮箱/手机） |
+| DELETE | `/api/me` | ✅ | 注销账号（软删除） |
+| GET | `/api/me/history` | ✅ | 个人历史记录（v3.3 新增） |
+
+> ⚠️ **v3.3**：`POST /api/me/avatar` 和 `GET /api/avatars/{filename}` 已移除。
 
 **注册请求体：**
 ```json
@@ -326,13 +338,15 @@ idx_matches_found_item       → (found_item_id)
 |------|------|:----:|------|
 | POST | `/api/items/` | ✅ | 发布物品（FormData） |
 | GET | `/api/items/` | ❌ | 物品列表（分页+筛选） |
-| GET | `/api/items/{id}` | ❌ | 物品详情 |
+| GET | `/api/items/{id}` | ✅ | 物品详情 |
 | PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员） |
 | DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员） |
-| POST | `/api/items/match` | ❌ | 智能匹配（JSON body） |
+| POST | `/api/items/match` | ✅ | 智能匹配（JSON body） |
 | POST | `/api/items/temp-upload` | ✅ | 临时上传图片 |
-| GET | `/api/items/categories` | ❌ | 类别列表 |
-| GET | `/api/items/uploads/{filename}` | ❌ | 访问图片 |
+| POST | `/api/items/{id}/claim` | ✅ | 申请认领/归还（通知含申请人手机号） |
+| PUT | `/api/items/{id}/mark-claimed` | ✅ | 发布者标记物品已找回/已认领 |
+| GET | `/api/items/categories` | ✅ | 类别列表 |
+| GET | `/api/items/uploads/{filename}` | ✅ | 访问图片 |
 
 **列表查询参数：** `type`, `category`, `keyword`, `user_id`, `limit`, `offset`
 
@@ -351,7 +365,12 @@ idx_matches_found_item       → (found_item_id)
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|:----:|------|
 | GET | `/api/admin/reviews` | Admin | 待审核列表（分页） |
-| PUT | `/api/admin/reviews/{id}` | Admin | 审核操作 |
+| PUT | `/api/admin/reviews/{id}` | Admin | 审核操作（通过/驳回+通知+邮件） |
+| POST | `/api/admin/reviews/batch-approve` | Admin | 批量审核通过 |
+| GET | `/api/admin/users` | Admin | 用户列表（分页） |
+| PUT | `/api/admin/users/{id}` | Admin | 用户管理（设角色/启禁用） |
+| POST | `/api/admin/users` | Admin | 新增用户 |
+| DELETE | `/api/admin/users/{id}` | Admin | 逻辑删除用户 |
 
 ### 5.4 通知接口
 
@@ -359,7 +378,14 @@ idx_matches_found_item       → (found_item_id)
 |------|------|:----:|------|
 | GET | `/api/notifications/unread/count` | ✅ | 未读数量 |
 | GET | `/api/notifications/unread` | ✅ | 未读列表 |
-| PUT | `/api/notifications/{id}/read` | ✅ | 标记已读 |
+| PUT | `/api/notifications/{id}/read` | ✅ | 标记单条已读 |
+| PUT | `/api/notifications/read-all` | ✅ | 一键全部已读 |
+
+### 6.5 数据统计接口
+
+| 方法 | 路径 | 功能 | 认证 |
+|------|------|------|------|
+| GET | `/api/stats/dashboard` | 首页看板（展示中/今日失物/今日拾物/总计找回） | 是 |
 
 ### 错误响应格式
 
@@ -377,14 +403,15 @@ HTTP 状态码：`400` 参数错误 / `401` 认证失败 / `403` 权限不足 / 
 
 | 路由 | 组件 | 布局 | 权限 | 说明 |
 |------|------|:----:|------|------|
-| `/login` | LoginView | 独立（毛玻璃） | 未登录 | 校园航拍背景 + 半透明卡片 |
+| `/login` | LoginView | 独立（毛玻璃） | 未登录 | 校园航拍背景 + 半透明卡片；已登录自动跳转 |
 | `/register` | RegisterView | 独立（毛玻璃） | 未登录 | 同登录页风格 |
-| `/items` | HomeView | DefaultLayout | 登录 | 卡片网格 + 筛选栏 + 骨架屏 |
-| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 两栏详情 + 状态标签 |
+| `/items` | HomeView | DefaultLayout | 登录 | 公告栏 + 统计卡片 + 筛选栏 + 卡片网格 + 骨架屏 |
+| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 两栏详情 + 自标记操作区 |
 | `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 图片上传 |
 | `/match` | MatchView | DefaultLayout | 登录 | 匹配面板 + 结果进度条 |
-| `/admin` | AdminView | DefaultLayout | 管理员 | 审核表格 + 展开行 |
-| `/notifications` | NotificationsView | DefaultLayout | 登录 | 通知卡片列表 |
+| `/admin` | AdminView | DefaultLayout | 管理员 | 物品审核(含批量) + 用户管理(含逻辑删除) + 公告管理 |
+| `/notifications` | NotificationsView | DefaultLayout | 登录 | 通知卡片 + 一键已读 |
+| `/profile` | ProfileView | DefaultLayout | 登录 | 信息横幅 + Tab(账户/联系/历史) + 危险区域 |
 
 ### 路由守卫逻辑
 
@@ -596,31 +623,68 @@ with get_db_connection() as conn:
 | JSON 向量存储 | 无法高效做向量相似度搜索 | 引入 pgvector/FAISS 做 ANN |
 | 同步匹配 | 审核通过时 CLIP 推理阻塞响应 | 升级为 Celery 异步任务队列 |
 | 邮件配置可选 | 未配置则静默跳过邮件通知 | 添加管理后台配置页 |
-| 临时图片清理 | 匹配后仅删除 temp_ 前缀文件 | 添加定时任务清理过期临时文件 |
-| 无 WebSocket | 通知非实时 | 引入 WebSocket 推送 |
 | 单张图片 | 每个物品仅支持 1 张图 | 扩展为多图上传 |
 | CPU 推理 | CLIP 在 CPU 上较慢 | 生产环境建议 GPU 部署 |
+| 无微信小程序 | 仅 Web 端覆盖 | 开发微信小程序端 |
 
-### 11.2 建议迭代路线
+### 11.2 版本演进
 
-#### V3.1 — 体验增强（短期）
-- [ ] 骨架屏组件化（所有列表页复用）
-- [ ] 深色模式（CSS 变量已就绪，添加 `[data-theme="dark"]`）
-- [ ] 个人中心页面（修改密码/邮箱/头像）
-- [ ] 物品认领确认流程（「已认领」按钮 + 双方确认）
-- [ ] 30 秒轮询未读数量（目前为路由切换时拉取）
+#### V3.1 — 体验增强 ✅ 已完成
+- [x] 骨架屏组件化
+- [x] 深色模式
+- [x] 个人中心页面
+- [x] 物品认领确认流程
+- [x] 头像上传
 
-#### V3.2 — 功能增强（中期）
-- [ ] 多图上传（最多 5 张，CLIP 取均值）
-- [ ] 匹配记录查看（历史匹配列表 + 确认/忽略）
-- [ ] WebSocket 实时通知推送
-- [ ] 物品搜索高亮 + 搜索历史
-- [ ] 数据统计仪表盘（发布趋势/找回率/热门分类）
+#### V3.1.1 — 补全 + 修复 ✅ 已完成
+- [x] 头像上传（数据库迁移 + API + UI）
+- [x] 认领/归还邮件双向通知
+- [x] 物品详情页 UI 重构
+- [x] 一键已读全部通知
+- [x] 多处 UI 细节修复
+
+#### V3.2 — 需求驱动迭代 ✅ 已完成
+- [x] 登录后按角色自动跳转
+- [x] 认领/归还按钮文案优化
+- [x] 个人中心：修改用户名 + 注销账号
+- [x] 管理面板：审核驳回通知+邮件
+- [x] 管理面板：用户管理
+- [x] 数据看板：统计卡片 + 分类占比 API
+
+#### V3.3 — 逻辑收敛 + 体验重构 ✅ 已完成 (2026-06-30)
+- [x] 去除访客角色（所有页面需登录）
+- [x] 禁用用户登录拦截（403）
+- [x] 认领/归还流程重构（自标记替代确认/拒绝）
+- [x] 认领通知含申请人手机号
+- [x] 个人中心重设计（砍头像 + Tab 分段 + 历史记录）
+- [x] 批量审核通过（AdminView 多选 + 一键通过）
+- [x] 统计卡片改为"总计找回"
+- [x] 公告栏整合到首页
+- [x] 用户逻辑删除（管理员操作）
+
+#### V3.3.1 — Bug 修复 ✅ 已完成 (2026-06-30)
+- [x] 统计卡片过滤未审核物品（stats.py SQL 加 review_status 条件）
+- [x] 展示中卡片数据防御性绑定（HomeView loadStats 显式字段映射）
+- [x] 管理员全选框改用表格内置 selection（AdminView 移除自定义 checkbox）
+- [x] 批量审核路由移至参数化路径之前（admin.py 路由重排）
+- [x] 认领弹窗文案根据物品类型动态生成（ItemDetailView handleClaim）
+- [x] 标记按钮异常处理分离（ItemDetailView 分离 ElMessageBox 与 API catch）
+- [x] 已认领物品从主列表隐藏（items.py SQL 排除 claimed/closed）
+- [x] mark-claimed 路由修正（items.py 移至 PUT /{item_id} 之前）
+- [x] 自动匹配通知 Row→dict 修复（match_service.py）
+
+#### V3.5 — 体验飞升（计划中）
+- [ ] 微信小程序端
+- [ ] 向量数据库迁移（pgvector 或 FAISS）
+- [ ] 多图上传（最多 5 张）
+- [ ] AI 防冒领验证
+- [ ] 激励机制（积分/排行榜）
+- [ ] 多模型融合（CLIP + DINOv2）
 
 #### V4.0 — 架构升级（长期）
-- [ ] 数据库迁移至 PostgreSQL + pgvector
+- [ ] PostgreSQL + pgvector 全面迁移
 - [ ] Celery + Redis 异步任务队列
-- [ ] 对象存储（OSS/S3）替代本地文件系统
+- [ ] 对象存储（OSS/S3）
 - [ ] 移动端 PWA 支持
 - [ ] OAuth 登录（微信/企业微信）
 - [ ] 多校区支持
@@ -628,5 +692,5 @@ with get_db_connection() as conn:
 ---
 
 > **文档维护者**：开发团队  
-> **最后更新**：2026-06-29  
-> **相关文件**：[需求文档 (SRS)](../Desktop/需求文档.txt) | [需求分析](../Desktop/需求分析3.txt)
+> **最后更新**：2026-06-30  
+> **相关文档**：[SRS v3.3](SRS.md) | [v3.3 PRD](../校园智能失物检索平台_v3.3_产品需求文档.md) | [竞品分析报告](../校园智能失物检索平台_竞品分析与产品定位报告.md) | [用户角色与场景](../校园智能失物检索平台_核心用户角色与场景设计.md)

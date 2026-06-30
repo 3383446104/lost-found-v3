@@ -57,7 +57,7 @@
         <el-form-item label="邮箱" prop="email">
           <el-input
             v-model="form.email"
-            placeholder="选填，用于接收匹配通知"
+            placeholder="用于接收匹配通知（必填）"
             :prefix-icon="Message"
             size="large"
             clearable

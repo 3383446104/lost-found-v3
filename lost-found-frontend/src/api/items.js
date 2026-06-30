@@ -37,5 +37,5 @@ export const getCategories = () => request.get('/items/categories')
 // 认领物品
 export const claimItem = (id) => request.post(`/items/${id}/claim`)
 
-// 确认/拒绝认领
-export const confirmClaim = (id, data) => request.put(`/items/${id}/claim/confirm`, data)
+// 发布者标记已找回/已认领
+export const markClaimed = (id) => request.put(`/items/${id}/mark-claimed`)

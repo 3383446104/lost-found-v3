@@ -159,10 +159,10 @@ async def get_items(
         count_params = []
 
         if not is_admin:
-            # 普通用户可见：已审核且活跃的物品 OR 自己的物品（任何状态）
+            # v3.3: 普通用户可见 — 已审核+活跃的物品 OR 自己的物品(排除已找回/已关闭)
             viewer_param = viewer_id if viewer_id else -1
-            base_query += " AND ( (review_status = 'approved' AND status = 'active') OR user_id = ? )"
-            count_query += " AND ( (review_status = 'approved' AND status = 'active') OR user_id = ? )"
+            base_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
+            count_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
             params.append(viewer_param)
             count_params.append(viewer_param)
 
@@ -256,6 +256,47 @@ async def get_item(item_id: int, request: Request):
     result['created_at'] = format_beijing_time(result.get('created_at'))
     result['review_time'] = format_beijing_time(result.get('review_time'))
     return {"item": result}
+
+
+@router.put("/{item_id}/mark-claimed")
+async def mark_item_claimed(
+    item_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """发布者标记物品已找回/已认领（自标记，替代原确认/拒绝流程）"""
+    user_id = current_user['user_id']
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT id, user_id, title, type, status FROM items WHERE id = ?',
+            (item_id,)
+        )
+        item = cursor.fetchone()
+
+        if not item:
+            raise HTTPException(404, "物品不存在")
+        if item['user_id'] != user_id:
+            cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+            u = cursor.fetchone()
+            if not u or u['role'] != 'admin':
+                raise HTTPException(403, "仅物品发布者可标记")
+        if item['status'] != 'active':
+            raise HTTPException(400, "该物品已处理或不可操作")
+
+        cursor.execute(
+            "UPDATE items SET status = 'claimed' WHERE id = ?",
+            (item_id,)
+        )
+        cursor.execute(
+            "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND link = ? AND (title LIKE '%认领%' OR title LIKE '%归还%')",
+            (user_id, f"/items/{item_id}")
+        )
+
+        action_label = '已找回' if item['type'] == 'lost' else '已认领'
+
+    logger.info(f"用户 {user_id} 将物品 {item_id} 标记为 {action_label}")
+    return {"success": True, "message": f"物品已标记为{action_label}", "new_status": "claimed"}
 
 
 @router.put("/{item_id}")
@@ -479,7 +520,7 @@ async def claim_item(
     item_id: int,
     current_user: dict = Depends(get_current_user)
 ):
-    """申请认领物品（发送通知给物品发布者）"""
+    """申请认领/归还物品（发送站内通知 + 邮件给物品发布者）"""
     user_id = current_user['user_id']
 
     with get_db_connection() as conn:
@@ -493,26 +534,39 @@ async def claim_item(
         if not item:
             raise HTTPException(404, "物品不存在")
         if item['user_id'] == user_id:
-            raise HTTPException(400, "不能认领自己的物品")
+            raise HTTPException(400, "不能操作自己的物品")
         if item['status'] != 'active' or item['review_status'] != 'approved':
-            raise HTTPException(400, "该物品当前不可认领")
+            raise HTTPException(400, "该物品当前不可操作")
 
-        # 检查是否已有待处理的认领
+        # 检查是否已有待处理的申请
         cursor.execute(
-            "SELECT id FROM notifications WHERE user_id = ? AND link = ? AND is_read = 0 AND title LIKE '%认领申请%'",
+            "SELECT id FROM notifications WHERE user_id = ? AND link = ? AND is_read = 0 AND (title LIKE '%认领%' OR title LIKE '%归还%')",
             (item['user_id'], f"/items/{item_id}")
         )
         if cursor.fetchone():
-            raise HTTPException(400, "已发送认领申请，请等待回复")
+            raise HTTPException(400, "已发送申请，请等待回复")
 
-        # 发送认领通知给物品发布者
+        # 获取申请人信息（含手机号）
         cursor.execute(
-            'SELECT username FROM users WHERE id = ?', (user_id,)
+            'SELECT username, phone FROM users WHERE id = ?', (user_id,)
         )
         claimer = cursor.fetchone()
+        claimer_phone = claimer['phone'] or '未填写'
 
-        title = f"[认领申请] 用户 '{claimer['username']}' 想要认领您的物品"
-        content = f"物品 '{item['title']}' 收到认领申请，请及时确认"
+        # 获取物品发布者信息（用于邮件通知）
+        cursor.execute(
+            'SELECT username, email FROM users WHERE id = ?', (item['user_id'],)
+        )
+        owner = cursor.fetchone()
+
+        # 根据物品类型生成不同的通知文案
+        if item['type'] == 'lost':
+            action_word = '认领'   # 有人认领你丢失的物品
+        else:
+            action_word = '归还'   # 有人要归还你捡到的物品
+
+        title = f"[{action_word}申请] 用户 '{claimer['username']}' 想要{action_word}您的物品"
+        content = f"物品 '{item['title']}' 收到{action_word}申请。申请人联系方式：{claimer_phone}。请及时联系确认。"
         link = f"/items/{item_id}"
 
         cursor.execute(
@@ -520,69 +574,33 @@ async def claim_item(
             (item['user_id'], title, content, link)
         )
 
-    return {"success": True, "message": "认领申请已发送，请等待物品发布者确认"}
+    # 发送邮件通知（事务外）
+    if owner and owner['email']:
+        try:
+            from ..utils.email_utils import send_email
+            subject = f"【失物寻回】您的物品 '{item['title']}' 有新的{action_word}申请"
+            body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f7fc;">
+                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                    <h2 style="color: #2c3e50;">失物寻回系统</h2>
+                    <p style="font-size: 16px; color: #333;">亲爱的 <strong>{owner['username']}</strong>：</p>
+                    <p style="font-size: 15px; color: #444;">用户 <strong>{claimer['username']}</strong> 想要{action_word}您发布的物品 <strong>"{item['title']}"</strong>。</p>
+                    <p style="font-size: 14px; color: #666;">📞 申请人联系方式：<strong>{claimer_phone}</strong></p>
+                    <p style="margin: 24px 0;">
+                        <a href="{settings.BASE_URL}/items/{item_id}" style="display: inline-block; padding: 10px 24px; background: #1B4D3E; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 500;">查看详情</a>
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #eaeef2; margin: 24px 0;">
+                    <p style="font-size: 12px; color: #999;">—— 校园失物智能寻回系统 · 自动通知 ——</p>
+                </div>
+            </body>
+            </html>
+            """
+            send_email(owner['email'], subject, body, html=True)
+        except Exception as e:
+            logger.warning(f"发送认领邮件失败: {e}")
 
-
-@router.put("/{item_id}/claim/confirm")
-async def confirm_claim(
-    item_id: int,
-    payload: dict,
-    current_user: dict = Depends(get_current_user)
-):
-    """确认或拒绝认领申请（仅物品发布者可操作）"""
-    user_id = current_user['user_id']
-    action = payload.get('action', 'confirm')  # 'confirm' or 'reject'
-    claimer_username = payload.get('claimer_username', '')
-
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT id, user_id, title, status FROM items WHERE id = ?',
-            (item_id,)
-        )
-        item = cursor.fetchone()
-
-        if not item:
-            raise HTTPException(404, "物品不存在")
-        if item['user_id'] != user_id:
-            # 管理员也可以确认
-            cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
-            u = cursor.fetchone()
-            if not u or u['role'] != 'admin':
-                raise HTTPException(403, "仅物品发布者可确认认领")
-        if item['status'] != 'active':
-            raise HTTPException(400, "该物品已被认领或关闭")
-
-        if action == 'confirm':
-            cursor.execute(
-                "UPDATE items SET status = 'claimed' WHERE id = ?",
-                (item_id,)
-            )
-            # 标记相关的认领通知为已读
-            cursor.execute(
-                "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND link = ? AND title LIKE '%认领申请%'",
-                (user_id, f"/items/{item_id}")
-            )
-
-            msg = "物品已标记为已认领"
-        else:
-            msg = "认领申请已拒绝"
-
-        # 发送结果通知给认领人
-        if claimer_username:
-            cursor.execute(
-                'SELECT id FROM users WHERE username = ?', (claimer_username,)
-            )
-            claimer = cursor.fetchone()
-            if claimer:
-                result_title = f"[认领结果] 物品 '{item['title']}' 的认领申请{'已通过' if action == 'confirm' else '被拒绝'}"
-                result_content = f"您对物品 '{item['title']}' 的认领申请{'已被确认，请联系发布者取回物品' if action == 'confirm' else '被拒绝，物品可能已被他人认领'}"
-                cursor.execute(
-                    'INSERT INTO notifications (user_id, title, content, link) VALUES (?, ?, ?, ?)',
-                    (claimer['id'], result_title, result_content, f"/items/{item_id}")
-                )
-
-    return {"success": True, "message": msg}
+    return {"success": True, "message": f"{action_word}申请已发送，请等待物品发布者确认"}
 
 
 @router.post("/temp-upload")

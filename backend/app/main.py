@@ -39,11 +39,15 @@ from .api.auth import router as auth_router
 from .api.items import router as items_router
 from .api.admin import router as admin_router
 from .api.notifications import router as notifications_router
+from .api.stats import router as stats_router
+from .api.announcements import router as announcements_router
 
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(items_router, prefix=settings.API_V1_STR)
 app.include_router(admin_router, prefix=settings.API_V1_STR)
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
+app.include_router(stats_router, prefix=settings.API_V1_STR)
+app.include_router(announcements_router, prefix=settings.API_V1_STR)
 
 # ---- 全局异常处理 ----
 @app.exception_handler(Exception)

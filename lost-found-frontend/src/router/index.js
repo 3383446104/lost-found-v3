@@ -73,15 +73,34 @@ router.beforeEach((to, from, next) => {
     authStore.restore()
   }
   const isLoggedIn = !!authStore.token
+  const isDisabled = authStore.user?.role === 'disabled'
+
+  // v3.3: 禁用用户 → 清除登录态 → 跳转登录页
+  if (isLoggedIn && isDisabled) {
+    authStore.logout()
+    next('/login')
+    return
+  }
+
+  // 需登录但未登录 → /login
   if (to.meta.requiresAuth && !isLoggedIn) {
     next('/login')
-  } else if (to.meta.requiresGuest && isLoggedIn) {
-    next('/')
-  } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
-    next('/')
-  } else {
-    next()
+    return
   }
+
+  // v3.3: 仅未登录页面但已登录 → 按角色跳转
+  if (to.meta.requiresGuest && isLoggedIn) {
+    next(authStore.isAdmin ? '/admin' : '/items')
+    return
+  }
+
+  // 需管理员但非管理员 → 首页
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    next('/items')
+    return
+  }
+
+  next()
 })
 
 // 全局后置守卫：刷新未读消息

@@ -43,13 +43,18 @@ async def get_current_user(
     # 使用上下文管理器查询用户是否存在
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id FROM users WHERE id = ?', (payload.get('user_id'),))
+        cursor.execute('SELECT id, role FROM users WHERE id = ?', (payload.get('user_id'),))
         user = cursor.fetchone()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户不存在"
+        )
+    if user['role'] == 'deleted':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="账号已注销"
         )
 
     # 可选：记录成功访问日志（调试时用）

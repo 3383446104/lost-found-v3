@@ -1,8 +1,13 @@
 # app/api/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
 from ..models.user import UserRegister, UserLogin
 from ..database import get_db_connection
 from ..dependencies.auth import create_access_token, get_current_user
+from ..config import settings
+from ..utils.file import allowed_file
 import bcrypt
 import sqlite3
 
@@ -50,6 +55,9 @@ async def login(user: UserLogin):
     if not bcrypt.checkpw(user.password.encode('utf-8'), db_user['password_hash'].encode('utf-8')):
         raise HTTPException(status_code=401, detail="密码错误")
 
+    if db_user['role'] == 'disabled':
+        raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+
     token = create_access_token({"user_id": db_user['id'], "username": db_user['username']})
     return {
         "success": True,
@@ -92,6 +100,19 @@ async def update_profile(
     updates = []
     params = []
 
+    # 更新用户名
+    if 'username' in payload and payload['username']:
+        new_uname = payload['username'].strip()
+        if len(new_uname) < 2 or len(new_uname) > 20:
+            raise HTTPException(400, "用户名长度 2-20 位")
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT id FROM users WHERE username = ? AND id != ?', (new_uname, user_id))
+            if cur.fetchone():
+                raise HTTPException(400, "用户名已被占用")
+        updates.append("username = ?")
+        params.append(new_uname)
+
     # 更新密码
     if 'password' in payload and payload['password']:
         new_pw = payload['password'].strip()
@@ -131,3 +152,66 @@ async def update_profile(
         )
 
     return {"success": True, "message": "资料更新成功"}
+
+
+@router.delete("/me")
+async def delete_account(current_user: dict = Depends(get_current_user)):
+    """注销账号（软删除：标记为 deleted，关闭所有物品）"""
+    user_id = current_user['user_id']
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # 关闭所有活跃物品
+        cursor.execute(
+            "UPDATE items SET status='closed' WHERE user_id=? AND status IN ('active','pending')",
+            (user_id,)
+        )
+        # 软删除用户
+        cursor.execute(
+            "UPDATE users SET username=username || '_deleted_' || id, role='deleted' WHERE id=?",
+            (user_id,)
+        )
+    return {"success": True, "message": "账号已注销"}
+
+
+@router.get("/me/history")
+async def get_my_history(current_user: dict = Depends(get_current_user)):
+    """获取当前用户的历史记录（所有物品 + 认领记录）"""
+    user_id = current_user['user_id']
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        # 我发布的所有物品
+        cur.execute(
+            "SELECT id, type, title, category, status, image_path, created_at "
+            "FROM items WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
+        )
+        my_items = [dict(r) for r in cur.fetchall()]
+
+        # 我发起的认领记录（通过通知表反查）
+        cur.execute(
+            "SELECT id, title, content, link, created_at "
+            "FROM notifications WHERE user_id = ? AND (title LIKE '%申请%' OR content LIKE '%申请%') "
+            "ORDER BY created_at DESC",
+            (user_id,)
+        )
+        my_claims_raw = [dict(r) for r in cur.fetchall()]
+
+        # 我收到的通知（别人认领我的物品）
+        cur.execute(
+            "SELECT id, title, content, link, created_at "
+            "FROM notifications WHERE user_id = ? AND (title LIKE '%申请%' OR title LIKE '%认领%' OR title LIKE '%归还%') "
+            "ORDER BY created_at DESC",
+            (user_id,)
+        )
+        received_claims = [dict(r) for r in cur.fetchall()]
+
+    return {
+        "success": True,
+        "data": {
+            "my_items": my_items,
+            "my_claims": my_claims_raw,
+            "received_claims": received_claims
+        }
+    }

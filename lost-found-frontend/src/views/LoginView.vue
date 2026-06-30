@@ -104,7 +104,7 @@ const handleLogin = async () => {
       if (res.success) {
         authStore.setAuth(res.token, res.user)
         ElMessage.success('登录成功')
-        router.push('/items')
+        router.push(res.user?.role === 'admin' ? '/admin' : '/items')
       } else {
         ElMessage.error(res.message || '登录失败')
       }

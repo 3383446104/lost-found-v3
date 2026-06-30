@@ -24,9 +24,23 @@ async def unread_list(current_user: dict = Depends(get_current_user)):
     return {"notifications": notifications}
 
 
+@router.put("/read-all")
+async def mark_all_read(current_user: dict = Depends(get_current_user)):
+    """一键标记所有未读消息为已读"""
+    user_id = current_user['user_id']
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0',
+            (user_id,)
+        )
+        count = cursor.rowcount
+    return {"success": True, "count": count}
+
+
 @router.put("/{notif_id}/read")
 async def mark_read(notif_id: int, current_user: dict = Depends(get_current_user)):
-    """标记消息为已读（优化：单次更新，验证所有权）"""
+    """标记单条消息为已读"""
     user_id = current_user['user_id']
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -35,6 +49,5 @@ async def mark_read(notif_id: int, current_user: dict = Depends(get_current_user
             (notif_id, user_id)
         )
         if cursor.rowcount == 0:
-            # 可能消息不存在或不属于当前用户
             raise HTTPException(status_code=404, detail="消息不存在或无权操作")
     return {"success": True}

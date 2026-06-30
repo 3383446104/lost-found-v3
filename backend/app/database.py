@@ -114,8 +114,29 @@ def init_db():
             cursor.execute("ALTER TABLE items ADD COLUMN reject_reason TEXT")
             logger.info("迁移成功：items 表已添加 reject_reason 列")
 
+        # ---------- 迁移：为已有 users 表添加 avatar_path（如果不存在） ----------
+        cursor.execute("PRAGMA table_info(users)")
+        user_columns = [row['name'] for row in cursor.fetchall()]
+        if 'avatar_path' not in user_columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN avatar_path TEXT")
+            logger.info("迁移成功：users 表已添加 avatar_path 列")
+
+        # ---- 公告表 ----
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                is_pinned INTEGER DEFAULT 0,
+                admin_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (admin_id) REFERENCES users(id)
+            )
+        ''')
+
         # ---- 目录准备 ----
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
+        os.makedirs(os.path.join(settings.UPLOAD_FOLDER, "avatars"), exist_ok=True)
 
         # ---- 索引 ----
         # 复合索引（覆盖 user_id + is_read 查询）

@@ -9,10 +9,10 @@
         <label class="panel-label">匹配目标</label>
         <el-radio-group v-model="targetType" size="large">
           <el-radio-button value="found">
-            <el-icon><Search /></el-icon> 拾物物品
+            <el-icon><Search /></el-icon> 拾物（招领）
           </el-radio-button>
           <el-radio-button value="lost">
-            <el-icon><Search /></el-icon> 失物物品
+            <el-icon><Search /></el-icon> 失物
           </el-radio-button>
         </el-radio-group>
       </div>
@@ -119,7 +119,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { matchItems, tempUpload } from '@/api/items'
 import { getImageUrl } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
@@ -160,6 +160,10 @@ const clearPreview = () => {
   imagePath.value = ''
   if (fileInput.value) fileInput.value.value = ''
 }
+
+onUnmounted(() => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+})
 
 const doMatch = async () => {
   const payload = { target_type: targetType.value }

@@ -10,6 +10,36 @@
       </el-button>
     </div>
 
+    <!-- v3.3: 数据看板（总计找回替代今日找回） -->
+    <div class="stats-row" v-if="stats">
+      <div class="stat-card">
+        <span class="stat-num">{{ stats.active_count || 0 }}</span>
+        <span class="stat-label">展示中</span>
+      </div>
+      <div class="stat-card stat-lost">
+        <span class="stat-num">{{ stats.today_lost || 0 }}</span>
+        <span class="stat-label">今日失物</span>
+      </div>
+      <div class="stat-card stat-found">
+        <span class="stat-num">{{ stats.today_found || 0 }}</span>
+        <span class="stat-label">今日拾物</span>
+      </div>
+      <div class="stat-card stat-claimed">
+        <span class="stat-num">{{ stats.total_claimed || 0 }}</span>
+        <span class="stat-label">🏆 总计找回</span>
+      </div>
+    </div>
+
+    <!-- 公告栏 -->
+    <div class="announce-bar" v-if="announcements.length">
+      <div v-for="a in announcements" :key="a.id" class="announce-item" :class="{ pinned: a.is_pinned }">
+        <el-icon :size="16"><Bell /></el-icon>
+        <span class="announce-title">{{ a.title }}</span>
+        <span class="announce-content">{{ a.content?.substring(0, 80) }}{{ a.content?.length > 80 ? '...' : '' }}</span>
+        <span class="announce-time">{{ a.created_at }}</span>
+      </div>
+    </div>
+
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-radio-group v-model="filters.type" @change="loadItems" size="default">
@@ -121,6 +151,9 @@ import { getItems, getCategories } from '@/api/items'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
 import { Search, PictureFilled, Folder, LocationFilled, Plus } from '@element-plus/icons-vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
+import request from '@/utils/request'
+import { getAnnouncements } from '@/api/announcements'
+import { Bell } from '@element-plus/icons-vue'
 
 const items = ref([])
 const total = ref(0)
@@ -130,6 +163,8 @@ const loading = ref(false)
 const filters = ref({ type: '', category: '', keyword: '' })
 const categories = ref([])
 const showMine = ref(false)
+const stats = ref(null)
+const announcements = ref([])
 
 const authStore = useAuthStore()
 
@@ -161,9 +196,33 @@ const handleImgError = (e) => {
   e.target.style.display = 'none'
 }
 
+const loadStats = async () => {
+  try {
+    const res = await request.get('/stats/dashboard')
+    // v3.3: 响应格式 { success, data: { active_count, today_lost, today_found, total_claimed } }
+    // axios 拦截器已解包 response.data → res = { success, data: { ... } }
+    const d = res.data || res
+    stats.value = {
+      active_count: d.active_count ?? 0,
+      today_lost: d.today_lost ?? 0,
+      today_found: d.today_found ?? 0,
+      total_claimed: d.total_claimed ?? 0
+    }
+  } catch (e) {
+    console.error('加载统计数据失败:', e)
+    stats.value = null  // 不展示统计卡片而非展示错误数据
+  }
+}
+
+const loadAnnouncements = async () => {
+  try { const res = await getAnnouncements(); announcements.value = res.announcements || [] } catch { }
+}
+
 onMounted(() => {
   getCategories().then(res => { categories.value = res.categories || [] }).catch(() => {})
   loadItems()
+  loadStats()
+  loadAnnouncements()
 })
 </script>
 
@@ -184,6 +243,93 @@ onMounted(() => {
 .publish-cta {
   flex-shrink: 0;
   font-weight: 600;
+}
+
+/* ---- 公告栏 ---- */
+.announce-bar {
+  margin-bottom: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.announce-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.announce-item.pinned {
+  background: #FFF8E1;
+  border-color: #FFE082;
+}
+
+.announce-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.announce-content {
+  flex: 1;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announce-time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ---- 数据看板 ---- */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  text-align: center;
+  box-shadow: var(--shadow-xs);
+}
+
+.stat-num {
+  display: block;
+  font-size: var(--text-4xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.stat-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}
+
+.stat-lost .stat-num { color: #E57373; }
+.stat-found .stat-num { color: #66BB6A; }
+.stat-claimed .stat-num { color: var(--el-color-primary); }
+
+@media (max-width: 640px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* ---- 筛选栏 ---- */
