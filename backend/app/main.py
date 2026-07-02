@@ -19,16 +19,28 @@ async def lifespan(app: FastAPI):
 
 # ---- 创建应用 ----
 app = FastAPI(
-    title="校园失物智能寻回系统 API",
-    description="基于 CLIP 多模态匹配的校园失物智能寻回系统",
+    title="校园失物检索平台 API",
+    description="基于 CLIP 多模态匹配的校园失物检索平台",
     version="2.0.0",
     lifespan=lifespan
 )
 
 # ---- CORS 配置 ----
+import re
+
+class LocalhostRegexOrigin:
+    """允许所有 localhost 端口的开发环境 CORS 策略"""
+    _pattern = re.compile(r"^http://localhost:\d+$")
+
+    @classmethod
+    def match(cls, origin: str) -> bool:
+        if not origin:
+            return False
+        return bool(cls._pattern.match(origin))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"^http://localhost:\d+$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,7 +75,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 async def root():
     return {
-        "message": "校园失物智能寻回系统 API v2.0",
+        "message": "校园失物检索平台 API v2.0",
         "docs": "/docs",
         "status": "running"
     }

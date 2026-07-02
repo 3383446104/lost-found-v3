@@ -10,6 +10,7 @@ from ..database import get_db_connection
 from ..dependencies.auth import get_current_admin
 from ..services.match_service import auto_match_and_notify
 from ..utils.time_utils import format_beijing_time
+from ..config import settings
 from ..models.common import PagedResponse   # 新增导入
 
 
@@ -240,7 +241,7 @@ async def review_item(
                         <p>物品已退回草稿箱，您可以在发布页面重新编辑后提交。</p>
                         <p style="margin:24px 0;"><a href="{settings.BASE_URL}/publish?edit={item_id}" style="display:inline-block;padding:10px 24px;background:#D32F2F;color:#fff;text-decoration:none;border-radius:8px;">重新编辑</a></p>
                         </div></body></html>"""
-                        send_email(item_info['email'], f"【失物寻回】您的物品 '{item_info['title']}' 未通过审核", body, html=True)
+                        send_email(item_info['email'], f"【校园失物检索】您的物品 '{item_info['title']}' 未通过审核", body, html=True)
                     except Exception as e:
                         logger.warning(f"驳回邮件发送失败: {e}")
 
@@ -256,18 +257,50 @@ async def review_item(
 async def get_users(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    keyword: str = Query("", description="搜索用户名/手机号/邮箱"),
+    include_deleted: bool = Query(False, description="是否包含已注销用户"),
     current_admin: dict = Depends(get_current_admin),
 ):
-    """管理员查看用户列表"""
+    """管理员查看用户列表（默认隐藏已注销，支持关键词搜索+相似度降序）"""
     with get_db_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) as total FROM users")
-        total = cur.fetchone()["total"]
-        offset = (page - 1) * size
-        cur.execute(
-            "SELECT id, username, role, phone, email, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?",
-            (size, offset)
-        )
+        wheres = []
+        params = []
+
+        if not include_deleted:
+            wheres.append("role != 'deleted'")
+
+        if keyword:
+            wheres.append("(username LIKE ? OR phone LIKE ? OR email LIKE ?)")
+            params.extend([f"%{keyword}%"] * 3)
+
+        w = " AND ".join(wheres) if wheres else "1=1"
+
+        if keyword:
+            cur.execute(f"SELECT COUNT(*) as total FROM users WHERE {w}", params)
+            total = cur.fetchone()["total"]
+            offset = (page - 1) * size
+            cur.execute(
+                f"""SELECT id, username, role, phone, email, created_at,
+                   CASE
+                     WHEN username = ? THEN 100
+                     WHEN username LIKE ? THEN 80
+                     WHEN username LIKE ? THEN 60
+                     ELSE 30
+                   END AS relevance
+                   FROM users WHERE {w}
+                   ORDER BY relevance DESC, id DESC
+                   LIMIT ? OFFSET ?""",
+                [keyword, f"{keyword}%", f"%{keyword}%"] + params + [size, offset]
+            )
+        else:
+            cur.execute(f"SELECT COUNT(*) as total FROM users WHERE {w}", params)
+            total = cur.fetchone()["total"]
+            offset = (page - 1) * size
+            cur.execute(
+                f"SELECT id, username, role, phone, email, created_at FROM users WHERE {w} ORDER BY id DESC LIMIT ? OFFSET ?",
+                params + [size, offset]
+            )
         users = [dict(r) for r in cur.fetchall()]
     return {"total": total, "page": page, "size": size, "users": users}
 
@@ -285,6 +318,13 @@ async def update_user(
 
     with get_db_connection() as conn:
         cur = conn.cursor()
+        # 禁止操作已注销用户
+        cur.execute("SELECT role FROM users WHERE id=?", (user_id,))
+        u = cur.fetchone()
+        if not u:
+            raise HTTPException(404, "用户不存在")
+        if u["role"] == "deleted":
+            raise HTTPException(400, "已注销用户不可操作")
         if action == "set_role":
             role = payload.get("role", "user")
             if role not in ("user", "admin"):
@@ -323,6 +363,8 @@ async def create_user(
 
     with get_db_connection() as conn:
         cur = conn.cursor()
+        from ..api.auth import check_unique_contact
+        check_unique_contact(conn, payload.get("phone", "") or "", payload.get("email", "") or "")
         try:
             cur.execute(
                 "INSERT INTO users (username, password_hash, phone, email, role) VALUES (?,?,?,?,?)",
@@ -358,3 +400,163 @@ async def delete_user(
             (user_id,)
         )
     return {"success": True, "message": f"用户 {u['username']} 已删除"}
+
+
+# ---------- 物品管理 ----------
+@router.get("/items")
+async def get_all_items(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    keyword: str = Query(""),
+    item_type: str = Query(""),
+    item_status: str = Query(""),
+    review: str = Query(""),
+    category: str = Query(""),
+    current_admin: dict = Depends(get_current_admin),
+):
+    """管理员查看全部物品（全量+筛选）"""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        where = ["1=1"]
+        params = []
+
+        if keyword:
+            where.append("(title LIKE ? OR description LIKE ?)")
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+        if item_type:
+            where.append("type = ?")
+            params.append(item_type)
+        if item_status:
+            where.append("status = ?")
+            params.append(item_status)
+        if review:
+            where.append("review_status = ?")
+            params.append(review)
+        if category:
+            where.append("category = ?")
+            params.append(category)
+
+        w = " AND ".join(where)
+        cur.execute(f"SELECT COUNT(*) as total FROM items WHERE {w}", params)
+        total = cur.fetchone()["total"]
+
+        offset = (page - 1) * size
+        cur.execute(
+            f"SELECT id, type, title, description, category, image_path, contact, location, status, review_status, user_id, created_at, review_time FROM items WHERE {w} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params + [size, offset]
+        )
+        items = [dict(r) for r in cur.fetchall()]
+
+    from ..utils.time_utils import format_beijing_time
+    for item in items:
+        item["created_at"] = format_beijing_time(item.get("created_at"))
+        item["review_time"] = format_beijing_time(item.get("review_time"))
+
+    return {"total": total, "page": page, "size": size, "items": items}
+
+
+@router.put("/items/{item_id}/status")
+async def update_item_status(
+    item_id: int,
+    payload: dict,
+    current_admin: dict = Depends(get_current_admin),
+):
+    """管理员直接修改物品状态（pending→active 会强制走审核）"""
+    new_status = payload.get("status")
+    if new_status not in ("active", "closed", "claimed"):
+        raise HTTPException(400, "status 必须为 active/closed/claimed")
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT status, review_status, type FROM items WHERE id=?", (item_id,))
+        item = cur.fetchone()
+        if not item:
+            raise HTTPException(404, "物品不存在")
+
+        old_status = item["status"]
+
+        # pending→active：强制走审核流程
+        if old_status == "pending" and new_status == "active":
+            cur.execute(
+                """UPDATE items SET status='active', review_status='approved',
+                   reviewer_id=?, review_time=CURRENT_TIMESTAMP WHERE id=? AND status='pending'""",
+                (current_admin["user_id"], item_id)
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(409, "状态已被修改，请刷新")
+            from ..services.match_service import auto_match_and_notify
+            import asyncio
+            try:
+                asyncio.create_task(asyncio.to_thread(auto_match_and_notify, item_id, item["type"]))
+            except:
+                pass
+        else:
+            # 其他状态转换：直接改
+            cur.execute(
+                "UPDATE items SET status=? WHERE id=? AND status=?",
+                (new_status, item_id, old_status)
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(409, "状态已被修改，请刷新")
+
+    # claimed 计数器 +1
+    if new_status == "claimed":
+        from ..database import increment_counter
+        increment_counter('total_claimed', 1)
+
+    return {"success": True, "message": f"状态已变更为 {new_status}"}
+
+
+@router.post("/items/batch")
+async def batch_items(
+    payload: dict,
+    current_admin: dict = Depends(get_current_admin),
+):
+    """批量操作物品"""
+    ids = payload.get("ids", [])
+    action = payload.get("action")
+    if not ids or action not in ("approve", "close", "delete"):
+        raise HTTPException(400, "参数错误")
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        placeholders = ",".join("?" * len(ids))
+
+        if action == "approve":
+            cur.execute(
+                f"UPDATE items SET status='active', review_status='approved', reviewer_id=?, review_time=CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND review_status='pending'",
+                [current_admin["user_id"]] + ids
+            )
+            # 异步匹配
+            for iid in ids:
+                try:
+                    cur.execute("SELECT type FROM items WHERE id=?", (iid,))
+                    r = cur.fetchone()
+                    if r:
+                        from ..services.match_service import auto_match_and_notify
+                        import asyncio
+                        asyncio.create_task(asyncio.to_thread(auto_match_and_notify, iid, r["type"]))
+                except:
+                    pass
+
+        elif action == "close":
+            cur.execute(
+                f"UPDATE items SET status='closed' WHERE id IN ({placeholders}) AND status IN ('active','pending')",
+                ids
+            )
+
+        elif action == "delete":
+            # 先取图片路径
+            cur.execute(f"SELECT image_path FROM items WHERE id IN ({placeholders})", ids)
+            for r in cur.fetchall():
+                if r["image_path"]:
+                    import os
+                    try:
+                        os.remove(r["image_path"])
+                    except:
+                        pass
+            cur.execute(f"DELETE FROM items WHERE id IN ({placeholders})", ids)
+
+        count = cur.rowcount
+
+    return {"success": True, "count": count}

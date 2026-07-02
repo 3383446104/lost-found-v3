@@ -13,7 +13,7 @@
           <path d="M24 11c-5.5 0-10 4.5-10 10 0 6.5 10 16.5 10 16.5s10-10 10-16.5c0-5.5-4.5-10-10-10zm0 14c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z" fill="white"/>
           <circle cx="34" cy="14" r="5" fill="#D4A853"/>
         </svg>
-        <h1 class="dialog-title">校园失物智能寻回系统</h1>
+        <h1 class="dialog-title">校园失物检索平台</h1>
         <p class="dialog-subtitle">创建账号，开始寻回之旅</p>
       </div>
 
@@ -48,7 +48,7 @@
         <el-form-item label="手机号" prop="phone">
           <el-input
             v-model="form.phone"
-            placeholder="选填，11位手机号"
+            placeholder="11位手机号（必填）"
             :prefix-icon="Phone"
             size="large"
             clearable
@@ -127,7 +127,10 @@ const rules = {
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, max: 30, message: '长度 6-30 位', trigger: 'blur' }
   ],
-  phone: [{ validator: validatePhone, trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { validator: validatePhone, trigger: 'blur' }
+  ],
   email: [
     { required: true, message: '请输入邮箱', trigger: 'blur' },
     { validator: validateEmail, trigger: 'blur' }

@@ -1,8 +1,10 @@
 /* ========================================
-   校园失物智能寻回系统 — 现代极简设计系统 v3
+   校园失物检索平台 — 现代极简设计系统 v3
    风格参照: Linear / Notion / Vercel / Stripe
    设计原则: 克制、清晰、有层次的留白
    ======================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 /* ---- CSS 变量（覆盖 Element Plus + 项目级变量） ---- */
 :root {
@@ -73,7 +75,7 @@
   --shadow-focus: 0 0 0 3px rgba(27, 77, 62, 0.15);
 
   /* ========== 字体 ========== */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
                'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica,
                Arial, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono',
@@ -591,6 +593,28 @@ body {
 @media (min-width: 641px) {
   .hide-desktop {
     display: none !important;
+  }
+}
+
+/* 桌面大屏 1440px+ — 内容区放宽，减少两侧留白 */
+@media (min-width: 1440px) {
+  .page-container {
+    max-width: 1400px;
+    padding: var(--space-8) var(--space-6);
+  }
+  .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--space-6);
+  }
+}
+
+/* 超宽屏 1920px+ — 进一步放宽 */
+@media (min-width: 1920px) {
+  .page-container {
+    max-width: 1600px;
+  }
+  .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   }
 }
 

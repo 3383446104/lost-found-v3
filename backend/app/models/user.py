@@ -7,7 +7,7 @@ import re
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=2, max_length=20)
     password: str = Field(..., min_length=6, max_length=30)
-    phone: str = ""
+    phone: str = Field(..., min_length=11, max_length=11)
     email: Optional[EmailStr] = None
 
     @field_validator('username')
@@ -20,7 +20,7 @@ class UserRegister(BaseModel):
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v: str) -> str:
-        if v and not re.match(r'^1[3-9]\d{9}$', v):
+        if not re.match(r'^1[3-9]\d{9}$', v):
             raise ValueError('手机号格式不正确，请输入11位有效手机号')
         return v
 

@@ -10,35 +10,62 @@
       </el-button>
     </div>
 
-    <!-- v3.3: 数据看板（总计找回替代今日找回） -->
-    <div class="stats-row" v-if="stats">
-      <div class="stat-card">
-        <span class="stat-num">{{ stats.active_count || 0 }}</span>
-        <span class="stat-label">展示中</span>
+    <!-- 数据看板（统计卡片 + 饼图合一） -->
+    <div class="dashboard" v-if="stats">
+      <div class="dashboard-left">
+        <div class="stat-grid">
+          <div class="stat-item">
+            <span class="stat-num">{{ stats.active_count || 0 }}</span>
+            <span class="stat-label">展示中</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" style="color:#E57373">{{ stats.today_lost || 0 }}</span>
+            <span class="stat-label">今日失物</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" style="color:#66BB6A">{{ stats.today_found || 0 }}</span>
+            <span class="stat-label">今日拾物</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" style="color:var(--el-color-primary)">{{ stats.total_claimed || 0 }}</span>
+            <span class="stat-label">总计找回</span>
+          </div>
+        </div>
       </div>
-      <div class="stat-card stat-lost">
-        <span class="stat-num">{{ stats.today_lost || 0 }}</span>
-        <span class="stat-label">今日失物</span>
-      </div>
-      <div class="stat-card stat-found">
-        <span class="stat-num">{{ stats.today_found || 0 }}</span>
-        <span class="stat-label">今日拾物</span>
-      </div>
-      <div class="stat-card stat-claimed">
-        <span class="stat-num">{{ stats.total_claimed || 0 }}</span>
-        <span class="stat-label">🏆 总计找回</span>
+      <div class="dashboard-right" v-if="stats.categories?.length >= 3">
+        <div class="pie-mini" ref="pieChartRef"></div>
       </div>
     </div>
 
-    <!-- 公告栏 -->
-    <div class="announce-bar" v-if="announcements.length">
-      <div v-for="a in announcements" :key="a.id" class="announce-item" :class="{ pinned: a.is_pinned }">
-        <el-icon :size="16"><Bell /></el-icon>
-        <span class="announce-title">{{ a.title }}</span>
-        <span class="announce-content">{{ a.content?.substring(0, 80) }}{{ a.content?.length > 80 ? '...' : '' }}</span>
-        <span class="announce-time">{{ a.created_at }}</span>
+    <!-- 公告入口卡片 -->
+    <div class="announce-card" v-if="announcements.length" @click="annDrawerVisible = true">
+      <div class="announce-card-icon">
+        <el-icon :size="20"><Bell /></el-icon>
       </div>
+      <div class="announce-card-body">
+        <span class="announce-card-title" v-if="pinnedAnn">{{ pinnedAnn.title }}</span>
+        <span class="announce-card-title" v-else>系统公告</span>
+        <span class="announce-card-hint" v-if="announcements.length > 1">共 {{ announcements.length }} 条，点击查看全部</span>
+      </div>
+      <el-icon class="entry-arrow"><ArrowRight /></el-icon>
     </div>
+
+    <!-- 公告抽屉 -->
+    <el-drawer v-model="annDrawerVisible" title="系统公告" size="420px" direction="rtl">
+      <div class="ann-drawer-list">
+        <div v-for="a in announcements" :key="a.id" class="ann-drawer-item" :class="{ pinned: a.is_pinned }">
+          <div class="ann-drawer-head" @click="a._open = !a._open">
+            <el-tag v-if="a.is_pinned" type="warning" size="small" effect="dark">置顶</el-tag>
+            <span class="ann-drawer-title">{{ a.title }}</span>
+            <span class="ann-drawer-time">{{ a.created_at }}</span>
+            <el-icon class="ann-drawer-arrow" :class="{ open: a._open }"><ArrowDown /></el-icon>
+          </div>
+          <div class="ann-drawer-content" v-show="a._open">
+            <p>{{ a.content }}</p>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
@@ -145,7 +172,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories } from '@/api/items'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
@@ -153,7 +180,8 @@ import { Search, PictureFilled, Folder, LocationFilled, Plus } from '@element-pl
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
 import { getAnnouncements } from '@/api/announcements'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, ArrowRight } from '@element-plus/icons-vue'
+import * as echarts from 'echarts'
 
 const items = ref([])
 const total = ref(0)
@@ -165,6 +193,11 @@ const categories = ref([])
 const showMine = ref(false)
 const stats = ref(null)
 const announcements = ref([])
+const annDrawerVisible = ref(false)
+
+const pinnedAnn = computed(() => announcements.value.find(a => a.is_pinned))
+const pieChartRef = ref(null)
+let pieChart = null
 
 const authStore = useAuthStore()
 
@@ -206,11 +239,29 @@ const loadStats = async () => {
       active_count: d.active_count ?? 0,
       today_lost: d.today_lost ?? 0,
       today_found: d.today_found ?? 0,
-      total_claimed: d.total_claimed ?? 0
+      total_claimed: d.total_claimed ?? 0,
+      categories: d.categories || []
+    }
+    // 渲染饼图（仅≥3分类，等DOM更新后初始化）
+    await nextTick()
+    if (pieChart) { pieChart.dispose(); pieChart = null }
+    if (stats.value.categories.length >= 3 && pieChartRef.value) {
+      pieChart = echarts.init(pieChartRef.value)
+      pieChart.setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        series: [{
+          type: 'pie', radius: ['45%', '75%'], center: ['50%', '50%'],
+          itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 3 },
+          label: { show: false },
+          emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+          data: stats.value.categories.map(c => ({ name: c.name, value: c.count }))
+        }],
+        color: ['#2C5F4F','#4CAF50','#FF9800','#2196F3','#9C27B0','#E91E63','#607D8B']
+      })
     }
   } catch (e) {
     console.error('加载统计数据失败:', e)
-    stats.value = null  // 不展示统计卡片而非展示错误数据
+    stats.value = null
   }
 }
 
@@ -223,6 +274,10 @@ onMounted(() => {
   loadItems()
   loadStats()
   loadAnnouncements()
+})
+
+onUnmounted(() => {
+  if (pieChart) { pieChart.dispose(); pieChart = null }
 })
 </script>
 
@@ -245,91 +300,112 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* ---- 公告栏 ---- */
-.announce-bar {
-  margin-bottom: var(--space-5);
+/* ---- 数据看板（统计+饼图合一） ---- */
+.dashboard {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.announce-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
-.announce-item.pinned {
-  background: #FFF8E1;
-  border-color: #FFE082;
-}
-
-.announce-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.announce-content {
-  flex: 1;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.announce-time {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* ---- 数据看板 ---- */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.stat-card {
+  gap: var(--space-5);
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: var(--space-4) var(--space-5);
-  text-align: center;
+  padding: var(--space-5);
   box-shadow: var(--shadow-xs);
+  margin-bottom: var(--space-5);
 }
 
-.stat-num {
-  display: block;
-  font-size: var(--text-4xl);
+.dashboard-left { flex: 1; min-width: 0; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+  height: 100%;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-3);
+  background: var(--neutral-50);
+  border-radius: var(--radius-md);
+}
+
+.stat-item .stat-num {
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
 }
 
-.stat-label {
-  display: block;
-  font-size: var(--text-sm);
+.stat-item .stat-label {
+  font-size: var(--text-xs);
   color: var(--text-tertiary);
-  margin-top: var(--space-1);
+  margin-top: 2px;
 }
 
-.stat-lost .stat-num { color: #E57373; }
-.stat-found .stat-num { color: #66BB6A; }
-.stat-claimed .stat-num { color: var(--el-color-primary); }
+.dashboard-right {
+  flex-shrink: 0;
+  width: 170px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pie-mini { width: 150px; height: 150px; }
+
+/* ---- 公告入口卡片 ---- */
+.announce-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-6);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  margin-bottom: var(--space-5);
+  transition: all var(--transition-fast);
+}
+.announce-card:hover { border-color: var(--el-color-primary); box-shadow: var(--shadow-sm); }
+.announce-card-icon {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--el-color-primary);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.announce-card-body { flex: 1; min-width: 0; }
+.announce-card-title { font-weight: 600; color: var(--el-color-primary); font-size: var(--text-base); }
+.announce-card-hint { display: block; font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px; }
+.entry-arrow { color: var(--el-color-primary); flex-shrink: 0; }
+
+/* ---- 公告抽屉 ---- */
+.ann-drawer-list { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-4); }
+.ann-drawer-item { border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; }
+.ann-drawer-item.pinned { border-color: #FFE082; background: #FFFDF5; }
+.ann-drawer-head {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4); cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.ann-drawer-head:hover { background: var(--neutral-50); }
+.ann-drawer-title { font-weight: 500; color: var(--text-primary); flex: 1; }
+.ann-drawer-time { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
+.ann-drawer-arrow { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
+.ann-drawer-arrow.open { transform: rotate(180deg); }
+.ann-drawer-content {
+  padding: 0 var(--space-4) var(--space-4);
+  font-size: var(--text-base); line-height: 1.8; color: var(--text-secondary);
+  border-top: 1px solid var(--border-light);
+  margin: 0 var(--space-4);
+}
+.ann-drawer-content p { margin: var(--space-3) 0 0; }
 
 @media (max-width: 640px) {
-  .stats-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .dashboard { flex-direction: column; }
+  .dashboard-right { width: 100%; }
+  .pie-mini { width: 120px; height: 120px; }
 }
 
 /* ---- 筛选栏 ---- */

@@ -109,7 +109,7 @@
             </div>
             <div class="claim-body">
               <span class="claim-text">
-                {{ item.type === 'lost' ? '物品已找回？' : '失主已认领？' }}
+                {{ item.type === 'lost' ? '物品已找回？' : '物品已归还？' }}
               </span>
               <span class="claim-hint" v-if="hasClaimNotification">{{ claimNotificationText }}</span>
               <span class="claim-hint" v-else>确认后物品将从列表移除，移入历史记录</span>
@@ -121,7 +121,7 @@
               :loading="marking"
               class="claim-btn"
             >
-              {{ item.type === 'lost' ? '标记为已找回' : '标记为已认领' }}
+              {{ item.type === 'lost' ? '标记为已找回' : '标记为已归还' }}
             </el-button>
           </div>
         </div>
@@ -262,7 +262,7 @@ const handleClaim = async () => {
 // v3.3: 发布者自标记（替代原确认/拒绝）
 const marking = ref(false)
 const handleMarkClaimed = async () => {
-  const actionLabel = item.value?.type === 'lost' ? '已找回' : '已认领'
+  const actionLabel = item.value?.type === 'lost' ? '已找回' : '已归还'
   try {
     await ElMessageBox.confirm(
       `确认后将标记为"${actionLabel}"，物品将从列表页移除并移入历史记录。`,

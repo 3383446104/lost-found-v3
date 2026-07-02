@@ -1,4 +1,4 @@
-# 🏫 校园失物智能寻回系统
+# 校园失物检索平台
 
 > 基于 CLIP 多模态匹配的智能失物招领平台 | Vue 3 + FastAPI + AI
 
@@ -7,145 +7,86 @@
   <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/CLIP-ViT--B--32-FF6F00?logo=openai&logoColor=white" alt="CLIP">
+  <img src="https://img.shields.io/badge/Inter-font-6C6CE5?logo=googlefonts&logoColor=white" alt="Inter">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
-------
+---
 
-## 📖 项目简介
+## 项目简介
 
-一个面向高校校园的 **智能化失物招领平台**。传统校园失物招领依赖 QQ 群、BBS、服务台等分散渠道，失主查询困难，找回率低（传统 BBS 仅约 6.97%）。
+一个面向高校校园的**智能化失物检索平台**。利用 OpenAI **CLIP 多模态模型**实现「以图搜图」「以文搜图」「图文混合+颜色」多维度匹配，五阶段优化算法（类别/位置调节 + 时间衰减 + 分层阈值 + 动态权重 + 交叉验证 + 颜色增强）。
 
-本系统利用 OpenAI **CLIP 多模态模型**实现「以图搜图」「以文搜图」「图文混合匹配」，变“被动查询”为“主动发现”。管理员审核通过后自动匹配异类物品，**双向推送**站内通知 + 邮件，形成 **发布 → 审核 → 匹配 → 通知 → 认领** 的完整闭环。
+**完整闭环**：发布 → 审核 → 匹配 → 通知 → 认领/归还 → 自标记 → 历史记录
 
-<p align="center">
-  <strong>✨ 在线体验：待部署 &nbsp;|&nbsp; 📚 <a href="#-快速开始">快速开始</a> &nbsp;|&nbsp; 📄 <a href="PROJECT.md">完整文档</a></strong>
-</p>
+---
 
-------
+## 核心功能
 
-## 🎯 核心功能
+| 模块 | 功能 |
+|------|------|
+| 🔐 **用户认证** | 注册/登录、JWT 鉴权、权限分级（用户/管理员/已禁用/已注销） |
+| 📦 **物品管理** | 发布失物/拾物、分类筛选、关键词搜索、编辑/删除、图片上传 |
+| 🤖 **智能匹配** | CLIP 图文+颜色特征提取、五阶段加权相似度、Top 20 排序 |
+| ✅ **审核管理** | 审核通过/驳回+邮件通知、批量通过、用户管理 CRUD |
+| 🔔 **消息通知** | 站内通知 + HTML 邮件、未读红点、30 秒轮询、一键全部已读 |
+| 🎨 **现代化 UI** | 深/浅色模式、骨架屏加载、毛玻璃认证页、Inter 字体、1440px+ 桌面适配 |
+| 👤 **个人中心** | 修改用户名/密码/联系方式、注销账号 |
+| 🤝 **认领/归还** | 失物→我要归还、拾物→我要认领、发布者自标记找回/归还 |
+| 📊 **数据看板** | 展示中/今日失物/今日拾物/总计找回 + 分类占比饼图 |
+| 📢 **公告系统** | 管理员发布/编辑/删除、可见范围设置、首页抽屉展示 |
 
-| 模块            | 功能                                               |
-| --------------- | -------------------------------------------------- |
-| 🔐 **用户认证**  | 注册/登录、JWT 鉴权、权限分级（用户/管理员）       |
-| 📦 **物品管理**  | 发布失物/拾物、分类筛选、关键词搜索、编辑/删除     |
-| 🤖 **智能匹配**  | CLIP 图文特征提取、加权相似度计算、Top 20 结果排序 |
-| ✅ **审核管理**  | 管理员审核通过/驳回、审核后自动匹配推送            |
-| 🔔 **消息通知**  | 站内通知 + HTML 邮件、未读红点、30 秒轮询          |
-| 🎨 **现代化 UI** | 深/浅色模式、骨架屏加载、毛玻璃认证页、响应式布局  |
-| 👤 **个人中心**  | 修改密码、更新联系方式                             |
-| 🤝 **物品认领**  | 申请认领 → 通知发布者 → 确认/拒绝 → 状态变更       |
+---
 
-------
-
-## 🖼️ 界面预览
-
-|          登录页           |            首页            |          物品详情          |
-| :-----------------------: | :------------------------: | :------------------------: |
-| 校园航拍背景 + 毛玻璃卡片 | 卡片网格 + 筛选栏 + 骨架屏 | 两栏布局 + 状态标签 + 认领 |
-
-|    智能匹配     |      审核管理       |     深色模式     |
-| :-------------: | :-----------------: | :--------------: |
-| AI 相似度进度条 | 表格展开 + 批量操作 | 一键切换暗色主题 |
-
-------
-
-## 🏗️ 技术架构
+## 技术架构
 
 ```
-┌──────────────────────────────────┐
-│  前端: Vue 3 + Element Plus      │
-│  Pinia + Vue Router + Vite 8    │
-│  CSS 变量设计系统 + 深色模式     │
-└──────────────┬───────────────────┘
+┌──────────────────────────────────────┐
+│  前端: Vue 3 + Element Plus + ECharts │
+│  Pinia + Vue Router 5 + Vite 8       │
+│  Inter 字体 + CSS 变量设计系统        │
+└──────────────┬───────────────────────┘
                │ REST API (JWT)
-┌──────────────▼───────────────────┐
-│  后端: FastAPI (Python 3.11)     │
-│  Pydantic 2 + SQLite + bcrypt   │
-│  CLIP ViT-B-32 (OpenCLIP)       │
-│  BackgroundTasks 异步匹配        │
-└──────────────┬───────────────────┘
+┌──────────────▼───────────────────────┐
+│  后端: FastAPI (Python 3.11)         │
+│  Pydantic 2 + SQLite + bcrypt       │
+│  CLIP ViT-B-32 + 颜色直方图          │
+│  BackgroundTasks 异步匹配             │
+└──────────────┬───────────────────────┘
                │
    ┌───────────┼───────────┐
    ▼           ▼           ▼
  SQLite    CLIP 模型    SMTP 邮件
-(本地DB)   (~600MB)     (可选)
+(本地)     (~600MB)     (可选)
 ```
 
-### 技术选型
-
-| 技术                        | 用途                                  |
-| --------------------------- | ------------------------------------- |
-| **Vue 3** (Composition API) | 前端框架，`<script setup>` 语法       |
-| **Element Plus 2.14**       | UI 组件库，CSS 变量全局覆盖           |
-| **Pinia**                   | 状态管理（auth / notification store） |
-| **Vue Router 5**            | 路由 + 导航守卫                       |
-| **Vite 8** (Rolldown)       | 构建工具，API 代理                    |
-| **FastAPI**                 | 后端框架，自动生成 Swagger 文档       |
-| **SQLite**                  | 数据库（毕设阶段零配置）              |
-| **JWT (HS256)**             | 无状态认证，7 天有效期                |
-| **bcrypt**                  | 密码加盐哈希                          |
-| **OpenCLIP**                | ViT-B-32 图文跨模态特征提取           |
-| **smtplib**                 | QQ 邮箱 SMTP 邮件通知                 |
-
-------
-
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
 - **Python** ≥ 3.11
 - **Node.js** ≥ 20
-- **磁盘空间** ≥ 2GB（CLIP 模型首次下载约 600MB）
+- **磁盘空间** ≥ 2GB
 
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/3383446104/lost-found-v3.git
-cd lost-found-v3
-```
-
-### 2. 启动后端
+### 启动后端
 
 ```bash
 cd backend
-
-# 创建虚拟环境
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 配置环境变量（已提供默认值，生产环境请修改 SECRET_KEY）
-cp .env.example .env            # 如有模板文件
-
-# 启动服务（首次启动自动下载 CLIP 模型 ~600MB）
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-后端启动后访问：
-
-- API 文档：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/health
-
-### 3. 启动前端
+### 启动前端
 
 ```bash
 cd lost-found-frontend
-
-# 安装依赖
 npm install
-
-# 开发模式启动
 npm run dev                    # → http://localhost:5173
-
-# 生产构建
-npm run build                  # → dist/
 ```
 
-### 4. 创建管理员账号
+### 创建管理员
 
 ```bash
 cd backend
@@ -159,171 +100,69 @@ with get_db_connection() as conn:
 "
 ```
 
-------
+---
 
-## 📁 项目结构
-
-```
-lost-found-v3/
-├── README.md                 ← 本文件
-├── PROJECT.md                ← 完整项目文档（632行）
-├── CHANGELOG.md              ← 版本迭代日志
-├── backend/                  ← 后端 (FastAPI)
-│   ├── .env                  ← 环境变量
-│   ├── requirements.txt      ← Python 依赖
-│   ├── lost_found.db         ← SQLite 数据库
-│   ├── uploads/              ← 图片文件
-│   └── app/
-│       ├── main.py           ← 应用入口
-│       ├── config.py         ← 配置中心
-│       ├── database.py       ← 数据库 + 向量工具
-│       ├── clip_service.py   ← CLIP 特征提取服务
-│       ├── api/              ← 路由 (auth/items/admin/notifications)
-│       ├── services/         ← 业务逻辑 (自动匹配)
-│       ├── dependencies/     ← JWT 鉴权依赖
-│       └── utils/            ← 工具 (邮件/文件/时间)
-└── lost-found-frontend/      ← 前端 (Vue 3)
-    ├── index.html
-    ├── vite.config.js        ← Vite + API 代理
-    ├── public/
-    │   └── campus-aerial.jpg ← 校园航拍背景
-    └── src/
-        ├── main.js           ← 入口 (Element Plus + 主题)
-        ├── App.vue           ← 根组件
-        ├── styles/theme.css  ← 全局设计系统 (700+ 行)
-        ├── layouts/          ← 布局组件
-        ├── views/            ← 9 个页面组件
-        ├── components/       ← 可复用组件
-        ├── composables/      ← 组合式函数
-        ├── stores/           ← Pinia 状态管理
-        ├── api/              ← API 封装
-        ├── router/           ← 路由配置
-        └── utils/            ← 工具函数
-```
-
-------
-
-## 🔌 API 接口
+## API 接口
 
 ### 认证
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/register` | 用户注册 |
+| POST | `/api/login` | 用户登录 |
+| GET | `/api/me` | 获取个人信息 |
+| PUT | `/api/me` | 更新个人资料 |
+| DELETE | `/api/me` | 注销账号 |
+| POST | `/api/me/avatar` | 上传头像 |
 
-| 方法 | 路径            | 说明         |
-| ---- | --------------- | ------------ |
-| POST | `/api/register` | 用户注册     |
-| POST | `/api/login`    | 用户登录     |
-| GET  | `/api/me`       | 获取个人信息 |
-| PUT  | `/api/me`       | 更新个人信息 |
+### 物品 & 匹配
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/items/` | 发布物品 |
+| GET | `/api/items/` | 物品列表 |
+| GET | `/api/items/{id}` | 物品详情 |
+| PUT | `/api/items/{id}` | 编辑物品 |
+| DELETE | `/api/items/{id}` | 删除物品 |
+| POST | `/api/items/match` | 智能匹配 |
+| POST | `/api/items/{id}/claim` | 申请认领/归还 |
+| PUT | `/api/items/{id}/mark-claimed` | 自标记 |
 
-### 物品
+### 管理 & 通知
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/PUT | `/api/admin/reviews` | 审核列表/操作 |
+| GET/PUT/POST/DELETE | `/api/admin/users` | 用户管理 |
+| GET/PUT | `/api/admin/items` | 物品管理 |
+| POST | `/api/admin/items/batch` | 批量操作 |
+| GET/POST/PUT/DELETE | `/api/announcements` | 公告 CRUD |
+| GET | `/api/notifications/unread` | 未读列表 |
+| PUT | `/api/notifications/read-all` | 一键已读 |
+| GET | `/api/stats/dashboard` | 数据看板 |
 
-| 方法   | 路径                            | 说明                  |
-| ------ | ------------------------------- | --------------------- |
-| POST   | `/api/items/`                   | 发布物品              |
-| GET    | `/api/items/`                   | 物品列表（分页/筛选） |
-| GET    | `/api/items/{id}`               | 物品详情              |
-| PUT    | `/api/items/{id}`               | 编辑物品              |
-| DELETE | `/api/items/{id}`               | 删除物品              |
-| POST   | `/api/items/match`              | 智能匹配              |
-| POST   | `/api/items/{id}/claim`         | 申请认领              |
-| PUT    | `/api/items/{id}/claim/confirm` | 确认认领              |
+---
 
-### 管理员 & 通知
+## 设计系统
 
-| 方法 | 路径                              | 说明       |
-| ---- | --------------------------------- | ---------- |
-| GET  | `/api/admin/reviews`              | 待审核列表 |
-| PUT  | `/api/admin/reviews/{id}`         | 审核操作   |
-| GET  | `/api/notifications/unread/count` | 未读数量   |
-| GET  | `/api/notifications/unread`       | 未读列表   |
-| PUT  | `/api/notifications/{id}/read`    | 标记已读   |
-
-------
-
-## 🎨 设计系统
-
-- **品牌色**：`#1B4D3E` 深翠绿（学院风）
-- **中性色**：9 阶暖灰（`--neutral-50` ~ `--neutral-900`）
-- **阴影**：5 级深度（xs～xl）+ 焦点光环
-- **圆角**：6 级（4px～9999px）
-- **间距**：4px 网格（4～48px）
-- **字体**：11～32px 共 10 级
-- **动效**：150/200/300/350ms 四级缓动
+- **品牌色**：`#1B4D3E` 深翠绿 | **字体**：Inter + 系统中文字体栈
 - **深色模式**：完整暗色变量覆盖 + 系统主题跟随
+- **响应式**：480px / 768px / 1024px / 1440px / 1920px 五级断点
+- **匹配算法**：五阶段优化（类别/位置双向调节 + 时间衰减 + 分层阈值 + 动态权重 + 交叉验证 + 颜色直方图增强）
 
-------
+---
 
-## 🧪 核心算法
+## 迭代路线
 
-### 加权相似度融合
+| 版本 | 主题 | 状态 |
+|------|------|:--:|
+| V3.0 | 核心功能 + 现代 UI | ✅ |
+| V3.1 | 骨架屏/深色模式/个人中心/认领流程/轮询 | ✅ |
+| V3.1.1 | 头像上传/认领邮件/详情重构/一键已读/UI修复 | ✅ |
+| V3.2 | 登录跳转/管理面板/数据看板/个人中心补全 | ✅ |
+| V3.3 | 公告系统/五阶段匹配/颜色特征/物品管理/消息优化 | ✅ |
 
-```
-Similarity = 0.6 × CosSim(Image1, Image2) + 0.4 × CosSim(Text1, Text2)
-```
+详见 [CHANGELOG.md](CHANGELOG.md)
 
-- 双方均有图：标准加权
-- 纯文本匹配：直接使用文本相似度（不降权），确保可达 0.6 自动推送阈值
+---
 
-### 自动匹配流程
-
-```
-管理员审核通过
-  → BackgroundTasks 异步启动
-  → 查询异类活跃物品
-  → 逐对计算加权相似度
-  → 筛选 ≥ 0.6 的匹配
-  → 双向发送通知（新物品发布者 + 目标物品拥有者）
-  → 有邮箱的用户同步推送 HTML 邮件
-```
-
-------
-
-## 📊 需求覆盖
-
-| 模块       | 需求数 | 覆盖率  |
-| ---------- | :----: | :-----: |
-| 用户认证   |   6    |  100%   |
-| 物品管理   |   9    |  100%   |
-| 智能匹配   |   7    |  100%   |
-| 管理员审核 |   4    |  100%   |
-| 消息通知   |   6    |  100%   |
-| 非功能需求 |   12   |   92%   |
-| **总计**   | **44** | **98%** |
-
-详见 [PROJECT.md](PROJECT.md) 完整需求覆盖矩阵。
-
-------
-
-## 🗺️ 迭代路线
-
-| 版本 | 主题                                               |    状态    |
-| ---- | -------------------------------------------------- | :--------: |
-| V3.0 | 核心功能 + 现代 UI                                 |  ✅ 已完成  |
-| V3.1 | 骨架屏 / 深色模式 / 个人中心 / 认领流程 / 轮询     |  ✅ 已完成  |
-| V3.2 | 多图上传 / WebSocket / 搜索高亮 / 数据仪表盘       |  📋 计划中  |
-| V4.0 | PostgreSQL + pgvector / Celery / OSS / PWA / OAuth | 💡 远期规划 |
-
-详见 [CHANGELOG.md](CHANGELOG.md) 版本迭代记录。
-
-------
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request。
-
-1. Fork 本仓库
-2. 创建功能分支：`git checkout -b feature/amazing-feature`
-3. 提交更改：`git commit -m 'feat: add amazing feature'`
-4. 推送到分支：`git push origin feature/amazing-feature`
-5. 提交 Pull Request
-
-------
-
-## 📄 许可证
+## 许可证
 
 MIT License © 2026
-
-------
-
-<p align="center">
-  <em>让每一件失物都能回家 🏠</em>
-</p>

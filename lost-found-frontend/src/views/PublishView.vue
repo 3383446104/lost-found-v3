@@ -2,6 +2,10 @@
   <div class="page-container">
     <h1 class="page-title">{{ isEdit ? '编辑物品' : '发布物品' }}</h1>
     <p class="page-desc" v-if="!isEdit">填写物品信息，帮助失主更快找到失物</p>
+    <div v-if="isEdit && existingStatus === 'rejected'" class="re-edit-notice">
+      <el-icon><WarningFilled /></el-icon>
+      <span>该物品上次审核未通过，修改后将重新提交审核</span>
+    </div>
 
     <div class="publish-card">
       <el-form
@@ -101,7 +105,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { createItem, updateItem, getItem, getCategories } from '@/api/items'
 import { getImageUrl } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
-import { QuestionFilled, CircleCheckFilled, UploadFilled } from '@element-plus/icons-vue'
+import { QuestionFilled, CircleCheckFilled, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -123,6 +127,7 @@ const form = ref({
 const file = ref(null)
 const previewImageUrl = ref('')
 const existingImagePath = ref('')
+const existingStatus = ref('')
 
 const currentImageUrl = computed(() => {
   return existingImagePath.value ? getImageUrl(existingImagePath.value) : ''
@@ -213,6 +218,7 @@ onMounted(async () => {
           location: data.item.location || ''
         }
         existingImagePath.value = data.item.image_path || ''
+        existingStatus.value = data.item.status || ''
       }
     } catch {
       ElMessage.error('无法加载物品信息')
@@ -223,6 +229,22 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.re-edit-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: #FFF3E0;
+  border: 1px solid #FFE0B2;
+  border-radius: var(--radius-md);
+  color: #E65100;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .publish-card {
   background: var(--bg-card);
   border: 1px solid var(--border-light);

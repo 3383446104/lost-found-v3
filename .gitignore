@@ -12,6 +12,14 @@ __pycache__/
 *.log
 .pytest_cache/
 
+# 上传文件
+uploads/
+!uploads/avatars/.gitkeep
+
+# 临时文件
+temp_*
+*.tmp
+
 # IDE 编辑器配置
 .idea/
 .vscode/

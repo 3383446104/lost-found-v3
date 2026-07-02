@@ -88,7 +88,7 @@
         <!-- 联系方式 -->
         <section v-show="activeTab === 'contact'" class="settings-section">
           <h3 class="section-title">联系方式</h3>
-          <p class="section-hint">💡 手机号将在认领/归还申请中展示给对方，邮箱用于接收匹配通知。</p>
+          <p class="section-hint">手机号将在认领/归还申请中展示给对方，邮箱用于接收匹配通知。</p>
 
           <div class="settings-row">
             <span class="row-label">手机号</span>
@@ -162,7 +162,7 @@
 
         <!-- 危险操作 -->
         <section v-show="activeTab === 'danger'" class="settings-section danger-zone">
-          <h3 class="section-title" style="color:var(--el-color-danger)">⚠️ 危险操作</h3>
+          <h3 class="section-title" style="color:var(--el-color-danger)"><el-icon><WarningFilled /></el-icon> 危险操作</h3>
           <div class="danger-card">
             <p class="danger-desc">注销账号后所有物品将关闭，账号数据将保留但无法再登录。此操作不可恢复。</p>
             <el-button type="danger" @click="handleDeleteAccount" :loading="deleting" size="large">
@@ -180,7 +180,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { updateProfile, getMe, getHistory, deleteAccount } from '@/api/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User, Phone, Clock, WarningFilled } from '@element-plus/icons-vue'
+import { User, Phone, Clock, WarningFilled, Camera } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
@@ -249,7 +249,7 @@ const saveContact = async (field) => {
     if (field === 'phone') payload.phone = contactForm.phone
     if (field === 'email') payload.email = contactForm.email
     await updateProfile(payload)
-    ElMessage.success('已更新')
+    ElMessage.success('联系方式已更新')
     editingPhone.value = false
     editingEmail.value = false
     authStore.fetchUser()
@@ -289,7 +289,7 @@ const goClaimLink = (link) => {
 const deleting = ref(false)
 const handleDeleteAccount = async () => {
   try {
-    await ElMessageBox.confirm('注销后所有物品将关闭，账号数据将保留但无法再登录。此操作不可恢复。请输入用户名以确认。', '⚠️ 确认注销账号', {
+    await ElMessageBox.confirm('注销后所有物品将关闭，账号数据将保留但无法再登录。此操作不可恢复。请输入用户名以确认。', '确认注销账号', {
       confirmButtonText: '确认注销', cancelButtonText: '取消', type: 'error',
       inputPattern: new RegExp(`^${user.value?.username}$`),
       inputErrorMessage: '请输入正确的用户名以确认',

@@ -121,6 +121,20 @@ def init_db():
             cursor.execute("ALTER TABLE users ADD COLUMN avatar_path TEXT")
             logger.info("迁移成功：users 表已添加 avatar_path 列")
 
+        # ---- 统计计数表（持久化计数器，不受物品删除影响） ----
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS stats_counters (
+                key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
+        # 初始化 claimed 计数器（若不存在则从现有数据计算）
+        cursor.execute("INSERT OR IGNORE INTO stats_counters (key, value) VALUES ('total_claimed', 0)")
+        # 同步：将已有 claimed 物品数纳入（首次运行或数据恢复时）
+        cursor.execute("SELECT COUNT(*) as c FROM items WHERE status='claimed'")
+        historical = cursor.fetchone()["c"]
+        cursor.execute("UPDATE stats_counters SET value = MAX(value, ?) WHERE key='total_claimed'", (historical,))
+
         # ---- 公告表 ----
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS announcements (
@@ -128,11 +142,18 @@ def init_db():
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
                 is_pinned INTEGER DEFAULT 0,
+                target_role TEXT DEFAULT 'all',
                 admin_id INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (admin_id) REFERENCES users(id)
             )
         ''')
+        # 迁移：已有公告表加 target_role 列
+        cursor.execute("PRAGMA table_info(announcements)")
+        ann_cols = [r['name'] for r in cursor.fetchall()]
+        if 'target_role' not in ann_cols:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN target_role TEXT DEFAULT 'all'")
+            logger.info("迁移成功：announcements 表已添加 target_role 列")
 
         # ---- 目录准备 ----
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
@@ -230,6 +251,25 @@ def mark_notification_read(notification_id: int, user_id: int) -> None:
             (notification_id, user_id)
         )
         # 可检查 rowcount 判断是否更新成功，此处省略
+
+
+# ---------- 计数操作 ----------
+def increment_counter(key: str, delta: int = 1) -> None:
+    """持久化计数器 +delta（用于 claimed 总数等不受删除影响的统计）"""
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO stats_counters (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?",
+            (key, delta, delta)
+        )
+
+
+def get_counter(key: str) -> int:
+    """读取持久化计数器"""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM stats_counters WHERE key=?", (key,))
+        row = cur.fetchone()
+        return row["value"] if row else 0
 
 
 # ---------- 常量 ----------

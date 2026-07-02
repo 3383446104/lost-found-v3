@@ -12,7 +12,7 @@
               <circle cx="22" cy="8" r="2.5" fill="#D4A853"/>
             </svg>
           </span>
-          <span class="logo-text">校园失物寻回</span>
+          <span class="logo-text">校园失物检索</span>
         </router-link>
 
         <!-- 桌面端导航 -->
@@ -109,7 +109,7 @@
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-left">
-          <span class="footer-brand">校园失物智能寻回系统</span>
+          <span class="footer-brand">校园失物检索平台</span>
           <span class="footer-dot">·</span>
           <span class="footer-tagline">让每一件失物都能回家</span>
         </div>
@@ -534,6 +534,17 @@ const handleCommand = (command) => {
 
   .user-name {
     display: none;
+  }
+}
+
+@media (min-width: 1440px) {
+  .header-inner, .footer-inner {
+    max-width: 1400px;
+  }
+}
+@media (min-width: 1920px) {
+  .header-inner, .footer-inner {
+    max-width: 1600px;
   }
 }
 

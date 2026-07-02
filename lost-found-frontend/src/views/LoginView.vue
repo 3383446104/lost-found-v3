@@ -13,7 +13,7 @@
           <path d="M24 11c-5.5 0-10 4.5-10 10 0 6.5 10 16.5 10 16.5s10-10 10-16.5c0-5.5-4.5-10-10-10zm0 14c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z" fill="white"/>
           <circle cx="34" cy="14" r="5" fill="#D4A853"/>
         </svg>
-        <h1 class="dialog-title">校园失物智能寻回系统</h1>
+        <h1 class="dialog-title">校园失物检索平台</h1>
         <p class="dialog-subtitle">登录以继续使用</p>
       </div>
 

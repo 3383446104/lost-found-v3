@@ -14,6 +14,26 @@ import sqlite3
 router = APIRouter(tags=["认证"])
 
 
+def check_unique_contact(conn, phone: str, email: str, exclude_user_id: int = None):
+    """校验手机号和邮箱唯一性（空值跳过）。exclude_user_id 用于更新时排除自身"""
+    if phone:
+        cur = conn.cursor()
+        if exclude_user_id:
+            cur.execute("SELECT id FROM users WHERE phone=? AND id!=?", (phone, exclude_user_id))
+        else:
+            cur.execute("SELECT id FROM users WHERE phone=?", (phone,))
+        if cur.fetchone():
+            raise HTTPException(400, "该手机号已被其他账户使用")
+    if email:
+        cur = conn.cursor()
+        if exclude_user_id:
+            cur.execute("SELECT id FROM users WHERE email=? AND id!=?", (email, exclude_user_id))
+        else:
+            cur.execute("SELECT id FROM users WHERE email=?", (email,))
+        if cur.fetchone():
+            raise HTTPException(400, "该邮箱已被其他账户使用")
+
+
 @router.post("/register", status_code=201)
 async def register(user: UserRegister):
     """用户注册"""
@@ -24,6 +44,7 @@ async def register(user: UserRegister):
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        check_unique_contact(conn, user.phone, user.email or "")
         try:
             cursor.execute('''
                 INSERT INTO users (username, password_hash, phone, email)
@@ -142,6 +163,12 @@ async def update_profile(
 
     if not updates:
         raise HTTPException(400, "没有需要更新的字段")
+
+    # 手机/邮箱唯一性校验（排除自身）
+    new_phone = next((p for p, k in zip(params, updates) if 'phone' in k), None)
+    new_email = next((p for p, k in zip(params, updates) if 'email' in k), None)
+    with get_db_connection() as conn:
+        check_unique_contact(conn, new_phone or "", new_email or "", user_id)
 
     params.append(user_id)
     with get_db_connection() as conn:

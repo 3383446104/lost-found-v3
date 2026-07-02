@@ -3,165 +3,192 @@
     <h1 class="page-title">管理面板</h1>
 
     <el-tabs v-model="activeTab" type="border-card">
-      <!-- ====== 审核管理 Tab ====== -->
-      <el-tab-pane label="物品审核" name="review">
-        <div class="page-header">
-          <div>
-            <p class="page-desc">审核用户发布的物品，通过后将自动进行智能匹配并通知相关用户</p>
-          </div>
-          <span v-if="items.length && !loading" class="pending-count">
-            {{ total }} 条待审
-          </span>
+      <!-- ====== 物品管理 Tab（合并原审核+管理） ====== -->
+      <el-tab-pane label="物品管理" name="review">
+        <!-- 筛选行 -->
+        <div class="item-filter-row">
+          <el-input v-model="itemFilter.keyword" placeholder="搜索标题..." clearable size="small" style="width:180px" @input="onItemFilterChange" @clear="onItemFilterChange">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-select v-model="itemFilter.review" placeholder="审核" size="small" style="width:110px" @change="onItemFilterChange" clearable>
+            <el-option label="待审核" value="pending" />
+            <el-option label="已通过" value="approved" />
+            <el-option label="已驳回" value="rejected" />
+          </el-select>
+          <el-select v-model="itemFilter.status" placeholder="状态" size="small" style="width:110px" @change="onItemFilterChange" clearable>
+            <el-option label="展示中" value="active" />
+            <el-option label="待审核" value="pending" />
+            <el-option label="已找回/已归还" value="claimed" />
+            <el-option label="已关闭" value="closed" />
+            <el-option label="已驳回" value="rejected" />
+          </el-select>
+          <el-select v-model="itemFilter.type" placeholder="类型" size="small" style="width:90px" @change="onItemFilterChange" clearable>
+            <el-option label="失物" value="lost" />
+            <el-option label="拾物" value="found" />
+          </el-select>
+          <span v-if="total" class="item-count">共 {{ total }} 条</span>
         </div>
 
-        <!-- v3.3: 批量操作工具栏（使用表格内置全选复选框） -->
+        <!-- 批量操作工具栏 -->
         <div v-if="items.length && !loading" class="batch-toolbar">
-          <span class="batch-hint">勾选表格行进行批量操作</span>
-          <el-button
-            type="success"
-            :disabled="selectedIds.length === 0"
-            @click="handleBatchApprove"
-            :loading="batchLoading"
-          >
-            一键批量通过 (已选 {{ selectedIds.length }} 条)
+          <el-button type="success" size="small" :disabled="selectedIds.length===0" @click="handleBatch('approve')" :loading="batchLoading">
+            批量通过 ({{ selectedIds.length }})
+          </el-button>
+          <el-button type="warning" size="small" :disabled="selectedIds.length===0" @click="handleBatch('close')" :loading="batchLoading">
+            批量关闭
+          </el-button>
+          <el-button type="danger" size="small" :disabled="selectedIds.length===0" @click="handleBatch('delete')" :loading="batchLoading" plain>
+            批量删除
           </el-button>
         </div>
 
-        <el-empty v-if="items.length === 0 && !loading" description="暂无待审核物品" />
+        <el-empty v-if="items.length === 0 && !loading" :description="itemFilter.review==='pending'||!itemFilter.review?'暂无物品':'未找到匹配物品'" />
 
         <div v-else class="review-table-wrap">
-      <el-table
-        :data="items"
-        style="width:100%"
-        stripe
-        row-key="id"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="44" />
-        <el-table-column type="expand">
-          <template #default="{ row }">
-            <div class="expand-content">
-              <div class="expand-img" v-if="row.image_path">
-                <img :src="getImageUrl(row.image_path)" :alt="row.title" loading="lazy" />
-              </div>
-              <div v-else class="expand-img img-placeholder">
-                <el-icon :size="28"><PictureFilled /></el-icon>
-                <span>暂无图片</span>
-              </div>
-              <div class="expand-info">
-                <div class="expand-field">
-                  <span class="field-label">描述</span>
-                  <span class="field-value">{{ row.description || '无描述' }}</span>
+          <el-table :data="items" style="width:100%" stripe row-key="id" @selection-change="handleSelectionChange">
+            <el-table-column type="selection" width="44" />
+            <el-table-column type="expand">
+              <template #default="{ row }">
+                <div class="expand-content">
+                  <div class="expand-img" v-if="row.image_path">
+                    <img :src="getImageUrl(row.image_path)" :alt="row.title" loading="lazy" />
+                  </div>
+                  <div v-else class="expand-img img-placeholder">
+                    <el-icon :size="28"><PictureFilled /></el-icon>
+                    <span>暂无图片</span>
+                  </div>
+                  <div class="expand-info">
+                    <div class="expand-field"><span class="field-label">描述</span><span class="field-value">{{ row.description || '无描述' }}</span></div>
+                    <div class="expand-field"><span class="field-label">位置</span><span class="field-value">{{ row.location || '未填写' }}</span></div>
+                    <div class="expand-field"><span class="field-label">联系方式</span><span class="field-value">{{ row.contact || '未填写' }}</span></div>
+                  </div>
                 </div>
-                <div class="expand-field">
-                  <span class="field-label">位置</span>
-                  <span class="field-value">{{ row.location || '未填写' }}</span>
-                </div>
-                <div class="expand-field">
-                  <span class="field-label">分类</span>
-                  <span class="field-value">{{ row.category || '未分类' }}</span>
-                </div>
-              </div>
-              <div class="expand-actions">
-                <el-button type="success" @click="approve(row.id)" size="default">
-                  <el-icon><Select /></el-icon>通过
-                </el-button>
-                <el-button type="danger" @click="reject(row.id)" size="default" plain>
-                  <el-icon><CloseBold /></el-icon>驳回
-                </el-button>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="id" label="ID" width="64" align="center" />
-        <el-table-column prop="title" label="标题" min-width="180">
-          <template #default="{ row }">
-            <router-link :to="`/items/${row.id}`" class="item-link">{{ row.title }}</router-link>
-          </template>
-        </el-table-column>
-        <el-table-column prop="type" label="类型" width="90" align="center">
-          <template #default="{ row }">
-            <span
-              class="status-tag"
-              :style="{ background: ITEM_TYPE_MAP[row.type]?.bg, color: ITEM_TYPE_MAP[row.type]?.color }"
-            >
-              {{ ITEM_TYPE_MAP[row.type]?.label }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="category" label="分类" width="110" />
-        <el-table-column prop="created_at" label="发布时间" width="170" />
-        <el-table-column label="操作" width="170" align="center" fixed="right">
-          <template #default="{ row }">
-            <div class="action-btns">
-              <el-button type="success" size="small" @click="approve(row.id)">通过</el-button>
-              <el-button type="danger" size="small" @click="reject(row.id)" plain>驳回</el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column prop="title" label="标题" min-width="160">
+              <template #default="{ row }"><router-link :to="`/items/${row.id}`" class="item-link">{{ row.title }}</router-link></template>
+            </el-table-column>
+            <el-table-column prop="type" label="类型" width="80" align="center">
+              <template #default="{ row }"><span class="status-tag" :style="{background:ITEM_TYPE_MAP[row.type]?.bg,color:ITEM_TYPE_MAP[row.type]?.color}">{{ ITEM_TYPE_MAP[row.type]?.label }}</span></template>
+            </el-table-column>
+            <el-table-column prop="review_status" label="审核" width="80" align="center">
+              <template #default="{ row }">
+                <span v-if="row.review_status==='pending'" style="color:#FF9800">待审核</span>
+                <span v-else-if="row.review_status==='approved'" style="color:#4CAF50">已通过</span>
+                <span v-else style="color:#E57373">已驳回</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.status==='active'" type="success" size="small">展示中</el-tag>
+                <el-tag v-else-if="row.status==='pending'" type="warning" size="small">待审核</el-tag>
+                <el-tag v-else-if="row.status==='claimed'" type="info" size="small">{{ row.type === 'lost' ? '已找回' : '已归还' }}</el-tag>
+                <el-tag v-else size="small">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="时间" width="160" />
+            <el-table-column label="操作" width="200" align="center" fixed="right">
+              <template #default="{ row }">
+                <template v-if="row.review_status==='pending'">
+                  <el-button type="success" size="small" @click="approve(row.id)">通过</el-button>
+                  <el-button type="danger" size="small" @click="reject(row.id)" plain>驳回</el-button>
+                </template>
+                <template v-else>
+                  <el-dropdown @command="(cmd) => handleStatusChange(row, cmd)">
+                    <el-button size="small">改状态<el-icon><ArrowDown /></el-icon></el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="active" v-if="row.status!=='active'">设为展示中</el-dropdown-item>
+                        <el-dropdown-item command="closed" v-if="row.status!=='closed'">关闭</el-dropdown-item>
+                        <el-dropdown-item command="claimed" v-if="row.status!=='claimed'">{{ row.type === 'lost' ? '标记已找回' : '标记已归还' }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </template>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
 
-    <!-- 分页 -->
-    <div v-if="total > pageSize" class="pagination-wrap">
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="pageSize"
-        :total="total"
-        layout="prev, pager, next"
-        @current-change="loadItems"
-      />
-    </div>
+        <div v-if="total > pageSize" class="pagination-wrap">
+          <el-pagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="loadItems" />
+        </div>
 
-    <!-- 驳回对话框 -->
-    <el-dialog v-model="dialogVisible" title="驳回物品" width="440px" :close-on-click-modal="false">
-      <el-form label-position="top">
-        <el-form-item label="驳回理由（必填）">
-          <el-input
-            v-model="reason"
-            type="textarea"
-            :rows="4"
-            placeholder="请填写驳回理由，帮助用户修改..."
-            maxlength="200"
-            show-word-limit
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="danger" @click="confirmReject" :loading="rejecting">确认驳回</el-button>
-      </template>
-    </el-dialog>
+        <!-- 驳回对话框 -->
+        <el-dialog v-model="dialogVisible" title="驳回物品" width="440px" :close-on-click-modal="false">
+          <el-form label-position="top">
+            <el-form-item label="驳回理由（必填）">
+              <el-input v-model="reason" type="textarea" :rows="4" placeholder="请填写驳回理由..." maxlength="200" show-word-limit />
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="dialogVisible=false">取消</el-button>
+            <el-button type="danger" @click="confirmReject" :loading="rejecting">确认驳回</el-button>
+          </template>
+        </el-dialog>
       </el-tab-pane>
 
       <!-- ====== 用户管理 Tab ====== -->
       <el-tab-pane label="用户管理" name="users">
-        <div style="margin-bottom:12px">
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <el-button type="primary" size="small" @click="openCreateUserDialog">
             <el-icon><Plus /></el-icon>新增用户
           </el-button>
+          <el-input v-model="userKeyword" placeholder="搜索用户名/手机/邮箱..." clearable size="small" style="width:260px" @input="onUserSearch" @clear="onUserSearch">
+            <template #prefix>
+              <el-icon v-if="!userSearching"><Search /></el-icon>
+              <el-icon v-else class="is-loading"><Loading /></el-icon>
+            </template>
+          </el-input>
+          <el-switch v-model="showDeletedUsers" size="small" active-text="含已注销" @change="onUserSearch" />
+          <span v-if="userKeyword.trim() && !userSearching" class="search-result-hint">
+            找到 {{ userTotal }} 条结果
+          </span>
         </div>
         <div v-loading="userLoading">
-          <el-table :data="users" stripe style="width:100%">
+          <el-empty v-if="!userLoading && userKeyword.trim() && users.length === 0" description="未找到匹配的用户" />
+          <el-table v-else :data="users" stripe style="width:100%" :row-class-name="rowClassName">
             <el-table-column prop="id" label="ID" width="70" />
             <el-table-column prop="username" label="用户名" min-width="140" />
             <el-table-column prop="role" label="角色" width="110">
               <template #default="{ row }">
-                <el-tag :type="row.role==='admin'?'success':row.role==='disabled'?'danger':''" size="small">
-                  {{ row.role === 'admin' ? '管理员' : row.role === 'disabled' ? '已禁用' : '用户' }}
-                </el-tag>
+                <el-tag v-if="row.role==='admin'" type="success" size="small">管理员</el-tag>
+                <el-tag v-else-if="row.role==='disabled'" type="danger" size="small">已禁用</el-tag>
+                <el-tag v-else-if="row.role==='deleted'" type="info" size="small">已注销</el-tag>
+                <el-tag v-else size="small">用户</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="phone" label="手机号" width="130" />
             <el-table-column prop="email" label="邮箱" min-width="160" />
             <el-table-column prop="created_at" label="注册时间" width="170" />
-            <el-table-column label="操作" width="200" align="center">
+            <el-table-column label="操作" width="110" align="center">
               <template #default="{ row }">
-                <el-button v-if="row.role==='user'" type="primary" size="small" @click="setUserRole(row.id,'admin')">设为管理</el-button>
-                <el-button v-if="row.role==='admin'" size="small" @click="setUserRole(row.id,'user')">取消管理</el-button>
-                <el-button v-if="row.role!=='disabled'" type="danger" size="small" plain @click="toggleUser(row.id)">禁用</el-button>
-                <el-button v-else type="success" size="small" @click="toggleUser(row.id)">启用</el-button>
-                <el-button type="danger" size="small" plain @click="handleDeleteUser(row)" :disabled="row.role==='deleted'">删除</el-button>
+                <template v-if="row.role !== 'deleted'">
+                  <el-dropdown @command="(cmd) => handleUserAction(row, cmd)" trigger="click">
+                    <el-button size="small">操作 <el-icon><ArrowDown /></el-icon></el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="set-admin" v-if="row.role==='user'">
+                          <el-icon><Select /></el-icon>设为管理员
+                        </el-dropdown-item>
+                        <el-dropdown-item command="unset-admin" v-if="row.role==='admin'">
+                          <el-icon><CloseBold /></el-icon>取消管理员
+                        </el-dropdown-item>
+                        <el-dropdown-item command="disable" v-if="row.role==='user'||row.role==='admin'">
+                          <el-icon><Remove /></el-icon>禁用账号
+                        </el-dropdown-item>
+                        <el-dropdown-item command="enable" v-if="row.role==='disabled'">
+                          <el-icon><CircleCheck /></el-icon>启用账号
+                        </el-dropdown-item>
+                        <el-dropdown-item command="delete" divided style="color:var(--el-color-danger)">
+                          <el-icon><Delete /></el-icon>删除用户
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </template>
+                <span v-else class="deleted-hint">—</span>
               </template>
             </el-table-column>
           </el-table>
@@ -193,6 +220,9 @@
                 <el-tag v-if="row.is_pinned" type="warning" size="small" style="margin-left:6px">置顶</el-tag>
               </template>
             </el-table-column>
+            <el-table-column prop="target_role" label="范围" width="90">
+              <template #default="{ row }">{{ row.target_role==='all'?'全体':row.target_role==='user'?'用户':'管理' }}</template>
+            </el-table-column>
             <el-table-column prop="content" label="内容" min-width="200">
               <template #default="{ row }">{{ row.content?.substring(0, 60) }}{{ row.content?.length > 60 ? '...' : '' }}</template>
             </el-table-column>
@@ -219,6 +249,13 @@
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="annForm.is_pinned">置顶公告</el-checkbox>
+        </el-form-item>
+        <el-form-item label="可见范围">
+          <el-radio-group v-model="annForm.target_role">
+            <el-radio value="all">全体用户</el-radio>
+            <el-radio value="user">仅普通用户</el-radio>
+            <el-radio value="admin">仅管理员</el-radio>
+          </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -259,11 +296,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getPendingItems, reviewItem, batchApprove, getUsers, updateUser, createUser, deleteUser } from '@/api/admin'
+import { getPendingItems, reviewItem, batchApprove, getUsers, updateUser, createUser, deleteUser, getAllItems, updateItemStatus, batchItems } from '@/api/admin'
 import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from '@/api/announcements'
 import { getImageUrl, ITEM_TYPE_MAP } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PictureFilled, Select, CloseBold, Plus, Edit } from '@element-plus/icons-vue'
+import { PictureFilled, Select, CloseBold, Plus, Edit, Search, Loading, ArrowDown, Remove, CircleCheck, Delete } from '@element-plus/icons-vue'
 
 const activeTab = ref('review')
 const items = ref([])
@@ -285,21 +322,60 @@ const userTotal = ref(0)
 const userPage = ref(1)
 const userPageSize = ref(20)
 const userLoading = ref(false)
+const userKeyword = ref('')
+const userSearching = ref(false)
+const showDeletedUsers = ref(false)
+let userSearchTimer = null
 const createUserVisible = ref(false)
 const creatingUser = ref(false)
 const newUserForm = ref({ username: '', password: '', phone: '', email: '', role: 'user' })
 
+// 物品筛选
+const itemFilter = ref({ keyword: '', review: 'pending', status: '', type: '' })
+let itemFilterTimer = null
+
 const loadItems = async () => {
   loading.value = true
   try {
-    const res = await getPendingItems(page.value, pageSize.value)
+    const f = itemFilter.value
+    const params = { page: page.value, size: pageSize.value }
+    if (f.keyword.trim()) params.keyword = f.keyword.trim()
+    if (f.review) params.review = f.review
+    if (f.status) params.item_status = f.status
+    if (f.type) params.item_type = f.type
+    const res = await getAllItems(params)
     items.value = res.items || []
     total.value = res.total || 0
   } catch (e) {
-    console.error('加载审核列表失败', e)
-  } finally {
-    loading.value = false
-  }
+    console.error('加载物品列表失败', e)
+  } finally { loading.value = false }
+}
+
+const onItemFilterChange = () => {
+  clearTimeout(itemFilterTimer)
+  itemFilterTimer = setTimeout(() => { page.value = 1; loadItems() }, 300)
+}
+
+const handleStatusChange = async (row, status) => {
+  try {
+    await updateItemStatus(row.id, status)
+    ElMessage.success(`状态已变更`)
+    loadItems()
+  } catch { }
+}
+
+const handleBatch = async (action) => {
+  const label = { approve: '批量通过', close: '批量关闭', delete: '批量删除' }[action]
+  try {
+    if (action === 'delete') {
+      await ElMessageBox.confirm(`确认删除已选的 ${selectedIds.value.length} 件物品？此操作不可恢复。`, label, { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'error' })
+    }
+    batchLoading.value = true
+    const res = await batchItems({ ids: selectedIds.value, action })
+    ElMessage.success(`${label}完成，影响 ${res.count || selectedIds.value.length} 条`)
+    selectedIds.value = []
+    loadItems()
+  } catch { } finally { batchLoading.value = false }
 }
 
 const approve = async (id) => {
@@ -372,19 +448,35 @@ const handleBatchApprove = async () => {
   }
 }
 
+const onUserSearch = () => {
+  userSearching.value = true
+  clearTimeout(userSearchTimer)
+  userSearchTimer = setTimeout(() => {
+    userPage.value = 1
+    loadUsers().finally(() => { userSearching.value = false })
+  }, 300)
+}
+
 const loadUsers = async () => {
   userLoading.value = true
   try {
-    const res = await getUsers(userPage.value, userPageSize.value)
+    const res = await getUsers(userPage.value, userPageSize.value, userKeyword.value.trim(), showDeletedUsers.value)
     users.value = res.users || []
     userTotal.value = res.total || 0
   } catch { } finally { userLoading.value = false }
 }
 
+const handleUserAction = (row, cmd) => {
+  if (cmd === 'set-admin') setUserRole(row.id, 'admin')
+  else if (cmd === 'unset-admin') setUserRole(row.id, 'user')
+  else if (cmd === 'disable' || cmd === 'enable') toggleUser(row.id)
+  else if (cmd === 'delete') handleDeleteUser(row)
+}
+
 const setUserRole = async (id, role) => {
   try {
     await updateUser(id, { action: 'set_role', role })
-    ElMessage.success('角色已更新')
+    ElMessage.success(`已${role === 'admin' ? '设为管理员' : '取消管理员'}`)
     loadUsers()
   } catch { }
 }
@@ -392,7 +484,7 @@ const setUserRole = async (id, role) => {
 const toggleUser = async (id) => {
   try {
     await updateUser(id, { action: 'toggle_status' })
-    ElMessage.success('操作成功')
+    ElMessage.success('用户状态已更新')
     loadUsers()
   } catch { }
 }
@@ -434,16 +526,16 @@ const annLoading = ref(false)
 const annDialogVisible = ref(false)
 const annSaving = ref(false)
 const editingAnn = ref(null)
-const annForm = ref({ title: '', content: '', is_pinned: false })
+const annForm = ref({ title: '', content: '', is_pinned: false, target_role: 'all' })
 
 const loadAnnouncements = async () => {
   annLoading.value = true
-  try { const r = await getAnnouncements(); announcements.value = r.announcements || [] } catch { } finally { annLoading.value = false }
+  try { const r = await getAnnouncements(true); announcements.value = r.announcements || [] } catch { } finally { annLoading.value = false }
 }
 
 const openAnnDialog = (row) => {
   editingAnn.value = row || null
-  annForm.value = row ? { title: row.title, content: row.content, is_pinned: !!row.is_pinned } : { title: '', content: '', is_pinned: false }
+  annForm.value = row ? { title: row.title, content: row.content, is_pinned: !!row.is_pinned, target_role: row.target_role || 'all' } : { title: '', content: '', is_pinned: false, target_role: 'all' }
   annDialogVisible.value = true
 }
 
@@ -451,7 +543,7 @@ const handleSaveAnn = async () => {
   if (!annForm.value.title.trim() || !annForm.value.content.trim()) { ElMessage.warning('标题和内容为必填'); return }
   annSaving.value = true
   try {
-    const data = { title: annForm.value.title.trim(), content: annForm.value.content.trim(), is_pinned: annForm.value.is_pinned ? 1 : 0 }
+    const data = { title: annForm.value.title.trim(), content: annForm.value.content.trim(), is_pinned: annForm.value.is_pinned ? 1 : 0, target_role: annForm.value.target_role }
     if (editingAnn.value?.id) { await updateAnnouncement(editingAnn.value.id, data) } else { await createAnnouncement(data) }
     ElMessage.success(editingAnn.value?.id ? '已更新' : '已发布')
     annDialogVisible.value = false
@@ -468,10 +560,25 @@ const handleDeleteAnn = async (id) => {
   } catch { }
 }
 
+const rowClassName = ({ row }) => row.role === 'deleted' ? 'row-deleted' : ''
+
 onMounted(() => { loadItems(); loadUsers(); loadAnnouncements() })
 </script>
 
 <style scoped>
+.item-filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.item-count {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
@@ -587,6 +694,22 @@ onMounted(() => { loadItems(); loadUsers(); loadAnnouncements() })
   flex-direction: column;
   gap: var(--space-2);
   flex-shrink: 0;
+}
+
+:deep(.row-deleted) {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.search-result-hint {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.deleted-hint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .pagination-wrap {

@@ -67,47 +67,43 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore()
-  if (!authStore.token) {
-    authStore.restore()
+router.beforeEach((to, from) => {
+  let authStore
+  try { authStore = useAuthStore() } catch { return true }
+  if (!authStore || !authStore.token) {
+    authStore?.restore()
   }
-  const isLoggedIn = !!authStore.token
-  const isDisabled = authStore.user?.role === 'disabled'
+  const isLoggedIn = !!authStore?.token
+  const isDisabled = authStore?.user?.role === 'disabled'
 
   // v3.3: 禁用用户 → 清除登录态 → 跳转登录页
   if (isLoggedIn && isDisabled) {
     authStore.logout()
-    next('/login')
-    return
+    return '/login'
   }
 
   // 需登录但未登录 → /login
   if (to.meta.requiresAuth && !isLoggedIn) {
-    next('/login')
-    return
+    return '/login'
   }
 
   // v3.3: 仅未登录页面但已登录 → 按角色跳转
   if (to.meta.requiresGuest && isLoggedIn) {
-    next(authStore.isAdmin ? '/admin' : '/items')
-    return
+    return authStore.isAdmin ? '/admin' : '/items'
   }
 
   // 需管理员但非管理员 → 首页
   if (to.meta.requiresAdmin && !authStore.isAdmin) {
-    next('/items')
-    return
+    return '/items'
   }
-
-  next()
 })
 
 // 全局后置守卫：刷新未读消息
 import { useNotificationStore } from '@/stores/notification'
 router.afterEach((to, from) => {
-  const authStore = useAuthStore()
-  if (authStore.token) {
+  let authStore
+  try { authStore = useAuthStore() } catch { return }
+  if (authStore?.token) {
     const notifStore = useNotificationStore()
     notifStore.fetchUnreadCount()
   }

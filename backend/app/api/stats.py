@@ -44,9 +44,17 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
         )
         today_found = cur.fetchone()[0]
 
-        # 总计找回（累计 claimed 数量，不含其他状态）
-        cur.execute("SELECT COUNT(*) FROM items WHERE status='claimed'")
-        total_claimed = cur.fetchone()[0]
+        # 总计找回（持久化计数器，不受物品删除影响）
+        try:
+            cur.execute("SELECT value FROM stats_counters WHERE key='total_claimed'")
+            total_claimed = cur.fetchone()[0]
+        except Exception:
+            cur.execute("SELECT COUNT(*) FROM items WHERE status='claimed'")
+            total_claimed = cur.fetchone()[0]
+
+        # 分类占比（活跃物品）
+        cur.execute("SELECT category, COUNT(*) as c FROM items WHERE status='active' AND review_status='approved' GROUP BY category ORDER BY c DESC")
+        categories = [{"name": r["category"] or "其他", "count": r["c"]} for r in cur.fetchall()]
 
     return {
         "success": True,
@@ -54,6 +62,7 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
             "active_count": active_count,
             "today_lost": today_lost,
             "today_found": today_found,
-            "total_claimed": total_claimed
+            "total_claimed": total_claimed,
+            "categories": categories
         }
     }

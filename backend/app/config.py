@@ -4,7 +4,7 @@ from typing import Optional, Set, List
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "校园失物智能寻回系统"
+    APP_NAME: str = "校园失物检索平台"
     API_V1_STR: str = "/api"
 
     # 安全配置
@@ -25,9 +25,11 @@ class Settings(BaseSettings):
     # 日志
     LOG_LEVEL: str = "INFO"
 
-    # 匹配阈值
-    MATCH_THRESHOLD: float = 0.3
-    AUTO_MATCH_THRESHOLD: float = 0.6
+    # 匹配阈值（五阶段优化分层）
+    MATCH_THRESHOLD_MANUAL: float = 0.20    # 手动匹配：宽松，用户自己筛选
+    MATCH_THRESHOLD_AUTO: float = 0.65      # 自动匹配通知：严格
+    MATCH_THRESHOLD_EMAIL: float = 0.75     # 邮件通知：最严格，仅极高置信度
+    MAX_AUTO_MATCH_NOTIFICATIONS: int = 3
 
     # 前端基础URL（用于邮件链接）
     BASE_URL: str = "http://localhost:5173"

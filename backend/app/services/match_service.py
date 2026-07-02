@@ -11,11 +11,13 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
     新物品审核通过后自动匹配并推送通知
     """
     try:
-        # 1. 获取新物品信息（使用上下文管理器）
+        from datetime import datetime, timezone
+
+        # 1. 获取新物品信息（含类别、位置、时间）
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT user_id, title, image_vector, text_vector
+                SELECT user_id, title, category, location, created_at, image_vector, text_vector, image_path
                 FROM items WHERE id = ?
             ''', (new_item_id,))
             new_item = cursor.fetchone()
@@ -26,9 +28,9 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             # 2. 确定匹配目标类型
             target_type = 'found' if item_type == 'lost' else 'lost'
 
-            # 3. 查询所有已审核且状态为 active 的目标物品（排除自身，但类型不同，自然排除）
+            # 3. 查询所有已审核且状态为 active 的目标物品
             cursor.execute('''
-                SELECT id, user_id, title, image_vector, text_vector
+                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, image_path
                 FROM items
                 WHERE type = ? AND status = 'active' AND review_status = 'approved'
             ''', (target_type,))
@@ -38,20 +40,45 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             logger.info(f"新物品 {new_item_id} 没有可匹配的目标物品")
             return
 
-        # 4. 计算相似度
+        # 4. 计算相似度（五阶段+颜色优化）
         new_img_vec = json_to_vector(new_item['image_vector']) if new_item['image_vector'] else None
         new_text_vec = json_to_vector(new_item['text_vector']) if new_item['text_vector'] else None
+        now = datetime.now(timezone.utc)
+        # 提取新物品颜色特征
+        try:
+            new_color_vec = clip_service.get_color_histogram(new_item['image_path']) if new_item['image_path'] else None
+        except Exception:
+            new_color_vec = None
 
-        matches = []   # 用于存储匹配信息，后续插入数据库和发送通知
+        matches = []
         for target in target_items:
             target_img_vec = json_to_vector(target['image_vector']) if target['image_vector'] else None
             target_text_vec = json_to_vector(target['text_vector']) if target['text_vector'] else None
+            # 提取目标物品颜色特征
+            try:
+                target_color_vec = clip_service.get_color_histogram(target['image_path']) if target['image_path'] else None
+            except Exception:
+                target_color_vec = None
+
+            # 计算目标物品已发布天数（时间衰减）
+            try:
+                target_date = datetime.fromisoformat(str(target['created_at']).replace('Z', '+00:00'))
+                days_old = max(0, (now - target_date).days)
+            except Exception:
+                days_old = 0
 
             similarity = clip_service.compute_weighted_similarity(
-                new_img_vec, new_text_vec, target_img_vec, target_text_vec
+                new_img_vec, new_text_vec,
+                target_img_vec, target_text_vec,
+                cat1=new_item['category'] or '',
+                cat2=target['category'] or '',
+                loc1=new_item['location'] or '',
+                loc2=target['location'] or '',
+                days_old=days_old,
+                color1=new_color_vec, color2=target_color_vec,
             )
 
-            if similarity >= settings.AUTO_MATCH_THRESHOLD:
+            if similarity >= settings.MATCH_THRESHOLD_AUTO:
                 matches.append({
                     'lost_item_id': new_item_id if item_type == 'lost' else target['id'],
                     'found_item_id': new_item_id if item_type == 'found' else target['id'],
@@ -62,10 +89,19 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 })
 
         if not matches:
-            logger.info(f"新物品 {new_item_id} 未找到高相似度匹配 (阈值 {settings.AUTO_MATCH_THRESHOLD})")
+            logger.info(f"新物品 {new_item_id} 未找到高相似度匹配 (阈值 {settings.MATCH_THRESHOLD_AUTO})")
             return
 
-        logger.info(f"新物品 {new_item_id} 匹配到 {len(matches)} 条结果")
+        # 按相似度降序，只保留 Top-N
+        matches.sort(key=lambda m: m['similarity'], reverse=True)
+        if len(matches) > settings.MAX_AUTO_MATCH_NOTIFICATIONS:
+            logger.info(
+                f"新物品 {new_item_id} 匹配到 {len(matches)} 条，"
+                f"超过上限 {settings.MAX_AUTO_MATCH_NOTIFICATIONS}，仅推送 Top {settings.MAX_AUTO_MATCH_NOTIFICATIONS}"
+            )
+            matches = matches[:settings.MAX_AUTO_MATCH_NOTIFICATIONS]
+
+        logger.info(f"新物品 {new_item_id} 推送 {len(matches)} 条匹配通知")
 
         # 5. 批量插入匹配记录（事务）
         with get_db_connection() as conn:
@@ -99,7 +135,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 add_notification(match['target_user_id'], target_title, target_content, target_link)
 
                 target_user = users.get(match['target_user_id'])
-                if target_user and target_user.get('email'):
+                if target_user and target_user.get('email') and match['similarity'] >= settings.MATCH_THRESHOLD_EMAIL:
                     send_match_notification(
                         email=target_user['email'],
                         username=target_user['username'],
@@ -121,7 +157,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                     new_link = f"/items/{match['lost_item_id']}"
                 add_notification(new_item['user_id'], new_title, new_content, new_link)
 
-                if new_item_owner and new_item_owner.get('email'):
+                if new_item_owner and new_item_owner.get('email') and match['similarity'] >= settings.MATCH_THRESHOLD_EMAIL:
                     send_match_notification(
                         email=new_item_owner['email'],
                         username=new_item_owner['username'],

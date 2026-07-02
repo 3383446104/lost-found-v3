@@ -1,6 +1,6 @@
 # 迭代日志 (CHANGELOG)
 
-> 校园失物智能寻回系统 — 版本迭代记录
+> 校园失物检索平台 — 版本迭代记录
 
 ---
 
@@ -502,4 +502,56 @@ git checkout HEAD~1
 
 ---
 
-> **当前版本**: V3.3.1 | **下一迭代**: V3.5 — 微信小程序 / pgvector / 多图上传 / AI防冒领 / 激励机制
+> **当前版本**: V3.3.1 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery / OSS / PWA
+
+---
+
+## V3.3.2 — 匹配算法增强 + UI 升级 (2026-07-02)
+
+### 迭代目标
+五阶段匹配算法重构、公告系统、物品管理统一Tab、Inter字体、桌面适配、消息优化。
+
+---
+
+### 1. 五阶段智能匹配算法 ✅
+
+- **类别/位置双向调节**：同类+5%, 不同-8%; 同位置+3%, 不同-4%
+- **时间衰减**：90天线性衰减至50%
+- **分层阈值**：手动0.20/自动0.65/邮件0.75
+- **动态权重**：图+色→0.50+0.30+0.20; 纯文→1.0
+- **交叉验证**：图文矛盾→降权50%-75%
+- **颜色增强**：27维RGB直方图+余弦相似度
+
+### 2. 公告系统 + 物品管理Tab ✅
+
+- `announcements` 表 + CRUD + 分页 + `target_role`
+- 首页入口卡片 → el-drawer → 内联展开
+- 物品审核+管理合并为统一Tab + 多维筛选 + 批量操作
+
+### 3. UI 升级 ✅
+
+- Inter 字体 + 1440px/1920px 桌面适配
+- 去 emoji → Element Plus 图标
+- ElMessage 全局优化（2000ms+关闭按钮+max=2+grouping）
+- 系统更名：校园失物检索平台
+
+### 4. 后端优化 ✅
+
+- 手机号注册必填 + 邮箱唯一性
+- 管理员新增/删除用户端点
+- `get_current_user` deleted 角色拦截
+- 统计计数器持久化（`stats_counters` 表）
+
+---
+
+### 文件变更
+
+| 类型 | 数量 | 文件 |
+|------|:----:|------|
+| 后端新建 | 2 | `stats.py`, `announcements.py` |
+| 后端修改 | 6 | `clip_service.py`, `match_service.py`, `items.py`, `admin.py`, `auth.py`, `database.py` |
+| 前端修改 | 10+ | `HomeView`, `AdminView`, `MatchView`, `ItemDetailView`, `ProfileView`, `LoginView`, `RegisterView`, `theme.css`, `main.js`, `router` |
+
+---
+
+> **当前版本**: V3.3.2 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS / PWA

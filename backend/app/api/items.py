@@ -20,7 +20,7 @@ router = APIRouter(prefix="/items", tags=["物品"])
 
 # ---------- 配置默认值 ----------
 MAX_UPLOAD_SIZE = getattr(settings, "MAX_UPLOAD_SIZE", 5 * 1024 * 1024)
-MATCH_THRESHOLD = getattr(settings, "MATCH_THRESHOLD", 0.3)
+MATCH_THRESHOLD = getattr(settings, "MATCH_THRESHOLD_MANUAL", 0.20)
 ALLOWED_EXTENSIONS = getattr(settings, "ALLOWED_EXTENSIONS", {"jpg", "jpeg", "png", "gif", "webp"})
 
 # ---------- 辅助函数 ----------
@@ -85,7 +85,7 @@ async def create_item(
                 f.write(content)
         except Exception as e:
             logger.error(f"保存图片失败: {e}")
-            raise HTTPException(500, "图片保存失败")
+            raise HTTPException(500, "图片上传失败，请稍后重试")
 
         try:
             image_vector = await run_in_threadpool(clip_service.get_image_feature, image_path)
@@ -118,7 +118,7 @@ async def create_item(
     except Exception as e:
         delete_file_if_exists(image_path)
         logger.error(f"数据库插入失败: {e}")
-        raise HTTPException(500, "发布失败，请稍后重试")
+        raise HTTPException(500, "发布失败，请检查内容后重试")
 
     logger.info(f"用户 {current_user['user_id']} 发布了物品 {item_id}")
     return {"success": True, "id": item_id}
@@ -134,20 +134,13 @@ async def get_items(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
-    """获取物品列表（管理员可见所有；普通用户可见已审核活跃物品 + 自己的物品）"""
-    is_admin = False
+    """获取物品列表（首页统一规则：已审核+活跃 OR 自己的物品，管理员也不例外）"""
     viewer_id = None
     token = request.headers.get('Authorization')
     if token and token.startswith('Bearer '):
         payload = verify_token(token.replace('Bearer ', ''))
         if payload:
             viewer_id = payload['user_id']
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT role FROM users WHERE id = ?', (viewer_id,))
-                user = cursor.fetchone()
-                if user and user['role'] == 'admin':
-                    is_admin = True
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -158,13 +151,12 @@ async def get_items(
         params = []
         count_params = []
 
-        if not is_admin:
-            # v3.3: 普通用户可见 — 已审核+活跃的物品 OR 自己的物品(排除已找回/已关闭)
-            viewer_param = viewer_id if viewer_id else -1
-            base_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
-            count_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
-            params.append(viewer_param)
-            count_params.append(viewer_param)
+        # 统一规则：已审核+活跃的物品 OR 自己的物品(排除已找回/已关闭)
+        viewer_param = viewer_id if viewer_id else -1
+        base_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
+        count_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
+        params.append(viewer_param)
+        count_params.append(viewer_param)
 
         if user_id:
             base_query += " AND user_id = ?"
@@ -293,7 +285,11 @@ async def mark_item_claimed(
             (user_id, f"/items/{item_id}")
         )
 
-        action_label = '已找回' if item['type'] == 'lost' else '已认领'
+        action_label = '已找回' if item['type'] == 'lost' else '已归还'
+
+    # 事务已提交，计数器 +1
+    from ..database import increment_counter
+    increment_counter('total_claimed', 1)
 
     logger.info(f"用户 {user_id} 将物品 {item_id} 标记为 {action_label}")
     return {"success": True, "message": f"物品已标记为{action_label}", "new_status": "claimed"}
@@ -355,7 +351,7 @@ async def update_item(
                     f.write(content)
             except Exception as e:
                 logger.error(f"保存新图片失败: {e}")
-                raise HTTPException(500, "图片保存失败")
+                raise HTTPException(500, "图片上传失败，请稍后重试")
 
             try:
                 image_vector = await run_in_threadpool(clip_service.get_image_feature, temp_path)
@@ -403,6 +399,16 @@ async def update_item(
               new_image_path, image_vector_json,
               vector_to_json(text_vector), review_status, status,
               reviewer_id, review_time, reject_reason, item_id))
+
+    # 如果是从驳回状态重新提交，标记旧驳回通知为已读
+    if item['review_status'] == 'rejected':
+        from ..database import add_notification
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE notifications SET is_read=1 WHERE user_id=? AND link=? AND title LIKE '%驳回%'",
+                (user_id, f"/items/{item_id}")
+            )
 
     logger.info(f"用户 {user_id} 更新了物品 {item_id}")
     return {"success": True, "id": item_id}
@@ -467,9 +473,11 @@ async def match_items(req: MatchRequest):
 
     query_img_vec = None
     query_text_vec = None
+    query_color_vec = None
     try:
         if image_path:
             query_img_vec = await run_in_threadpool(clip_service.get_image_feature, image_path)
+            query_color_vec = await run_in_threadpool(clip_service.get_color_histogram, image_path)
         if req.text:
             query_text_vec = await run_in_threadpool(clip_service.get_text_feature, req.text)
     except Exception as e:
@@ -479,7 +487,7 @@ async def match_items(req: MatchRequest):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, title, description, image_vector, text_vector, image_path, category
+            SELECT id, title, description, image_vector, text_vector, image_path, category, location, created_at
             FROM items
             WHERE type = ? AND status = 'active' AND review_status = 'approved'
         ''', (req.target_type,))
@@ -490,24 +498,56 @@ async def match_items(req: MatchRequest):
     for item in target_items:
         target_img_vec = json_to_vector(item['image_vector'])
         target_text_vec = json_to_vector(item['text_vector'])
+        # 提取目标物品颜色特征
+        try:
+            target_color_vec = await run_in_threadpool(clip_service.get_color_histogram, item['image_path']) if item['image_path'] else None
+        except Exception:
+            target_color_vec = None
+        # 时间衰减（兼容 SQLite "YYYY-MM-DD HH:MM:SS" 和 ISO 格式）
+        try:
+            from datetime import datetime, timezone
+            ts = str(item['created_at'])
+            for fmt in (None, '%Y-%m-%d %H:%M:%S'):
+                try:
+                    target_date = datetime.fromisoformat(ts.replace('Z', '+00:00')) if fmt is None else datetime.strptime(ts[:19], fmt).replace(tzinfo=timezone.utc)
+                    break
+                except Exception:
+                    continue
+            days_old = max(0, (datetime.now(timezone.utc) - target_date).days)
+        except Exception:
+            days_old = 0
         try:
             similarity = await run_in_threadpool(
                 clip_service.compute_weighted_similarity,
-                query_img_vec, query_text_vec, target_img_vec, target_text_vec
+                query_img_vec, query_text_vec, target_img_vec, target_text_vec,
+                cat1='', cat2=item['category'] or '',
+                loc1='', loc2=item['location'] or '',
+                days_old=days_old,
+                color1=query_color_vec, color2=target_color_vec,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"匹配物品 {item['id']} 时出错: {e}")
             continue
-        if similarity > threshold:
+        logger.info(f"  匹配计算: 物品{item['id']} 相似度={similarity:.4f}")
+        if similarity >= threshold:
             results.append({
                 'id': item['id'],
                 'title': item['title'],
                 'description': item['description'],
                 'category': item['category'],
+                'location': item['location'],
                 'image_path': item['image_path'],
-                'similarity': round(similarity, 4)
+                'similarity': round(similarity, 4),
+                'created_at': item['created_at'],
             })
 
     results.sort(key=lambda x: x['similarity'], reverse=True)
+
+    if not results:
+        logger.info(
+            f"手动匹配无结果: target_type={req.target_type} target_items_count={len(target_items)} "
+            f"threshold={threshold} has_image={query_img_vec is not None} has_text={query_text_vec is not None}"
+        )
 
     if image_path and is_temp_file(image_path):
         delete_file_if_exists(image_path)
@@ -560,10 +600,12 @@ async def claim_item(
         owner = cursor.fetchone()
 
         # 根据物品类型生成不同的通知文案
+        # lost=失物(发布者丢了东西) → 别人捡到要"归还"给发布者
+        # found=拾物(发布者捡了东西) → 别人来"认领"自己丢的东西
         if item['type'] == 'lost':
-            action_word = '认领'   # 有人认领你丢失的物品
+            action_word = '归还'
         else:
-            action_word = '归还'   # 有人要归还你捡到的物品
+            action_word = '认领'
 
         title = f"[{action_word}申请] 用户 '{claimer['username']}' 想要{action_word}您的物品"
         content = f"物品 '{item['title']}' 收到{action_word}申请。申请人联系方式：{claimer_phone}。请及时联系确认。"
@@ -578,12 +620,12 @@ async def claim_item(
     if owner and owner['email']:
         try:
             from ..utils.email_utils import send_email
-            subject = f"【失物寻回】您的物品 '{item['title']}' 有新的{action_word}申请"
+            subject = f"【校园失物检索】您的物品 '{item['title']}' 有新的{action_word}申请"
             body = f"""
             <html>
             <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f7fc;">
                 <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-                    <h2 style="color: #2c3e50;">失物寻回系统</h2>
+                    <h2 style="color: #2c3e50;">校园失物检索平台</h2>
                     <p style="font-size: 16px; color: #333;">亲爱的 <strong>{owner['username']}</strong>：</p>
                     <p style="font-size: 15px; color: #444;">用户 <strong>{claimer['username']}</strong> 想要{action_word}您发布的物品 <strong>"{item['title']}"</strong>。</p>
                     <p style="font-size: 14px; color: #666;">📞 申请人联系方式：<strong>{claimer_phone}</strong></p>
@@ -591,7 +633,7 @@ async def claim_item(
                         <a href="{settings.BASE_URL}/items/{item_id}" style="display: inline-block; padding: 10px 24px; background: #1B4D3E; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 500;">查看详情</a>
                     </p>
                     <hr style="border: none; border-top: 1px solid #eaeef2; margin: 24px 0;">
-                    <p style="font-size: 12px; color: #999;">—— 校园失物智能寻回系统 · 自动通知 ——</p>
+                    <p style="font-size: 12px; color: #999;">—— 校园失物检索平台 · 自动通知 ——</p>
                 </div>
             </body>
             </html>
