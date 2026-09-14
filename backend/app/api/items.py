@@ -2,12 +2,14 @@
 import os
 import uuid
 import asyncio
+import functools
+from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from ..config import settings
 from ..database import get_db_connection, vector_to_json, json_to_vector, CATEGORIES
-from ..dependencies.auth import get_current_user, verify_token
+from ..dependencies.auth import get_current_user, resolve_optional_viewer
 from ..utils.file import allowed_file
 from ..utils.time_utils import format_beijing_time
 from ..clip_service import clip_service
@@ -20,10 +22,78 @@ router = APIRouter(prefix="/items", tags=["物品"])
 
 # ---------- 配置默认值 ----------
 MAX_UPLOAD_SIZE = getattr(settings, "MAX_UPLOAD_SIZE", 5 * 1024 * 1024)
-MATCH_THRESHOLD = getattr(settings, "MATCH_THRESHOLD_MANUAL", 0.20)
 ALLOWED_EXTENSIONS = getattr(settings, "ALLOWED_EXTENSIONS", {"jpg", "jpeg", "png", "gif", "webp"})
 
+
+def _match_threshold_default() -> float:
+    """手动匹配默认下界（v3.5.0-R-T4）。
+
+    **每次调用时**从 ``settings.MATCH_THRESHOLD_MANUAL`` 读取，与同模块的
+    ``resolve_legend()`` 共享**同一数据源**。
+
+    历史：旧实现 ``MATCH_THRESHOLD = getattr(settings, ...)`` 是**导入期快照**——
+    与 ``resolve_legend()`` 的「每次访问 settings」语义不一致；线上通过环境变量
+    调整 ``MATCH_THRESHOLD_MANUAL`` 后，旧快照仍读旧值，配置变更**只在图例**生效、
+    实际过滤仍按旧值，行为割裂。
+    """
+    return float(settings.MATCH_THRESHOLD_MANUAL)
+
+
+def resolve_legend() -> dict:
+    """解析前端图例阈值（C5：图例派生，单一数据源）。
+
+    ``legend.high`` = 能触发**自动推送**的区间下界（默认 = ``MATCH_THRESHOLD_AUTO``）；
+    ``legend.mid``  = **手动匹配**的宽松下界（默认 = ``MATCH_THRESHOLD_MANUAL``）。
+    ``MATCH_LEGEND_HIGH`` / ``MATCH_LEGEND_MID`` 为可选覆盖（None 即派生）。
+
+    Returns:
+        ``{"high": float, "mid": float}``，随 ``POST /match`` 响应的 ``legend`` 字段下发，
+        彻底消除前端硬编码（v3.4.1：前端 0.75/0.5 vs 后端 0.20）割裂。
+    """
+    high = settings.MATCH_LEGEND_HIGH
+    mid = settings.MATCH_LEGEND_MID
+    if high is None:
+        high = settings.MATCH_THRESHOLD_AUTO
+    if mid is None:
+        mid = settings.MATCH_THRESHOLD_MANUAL
+    return {"high": float(high), "mid": float(mid)}
+
+
 # ---------- 辅助函数 ----------
+def _query_dim(query_img_vec, query_text_vec) -> Optional[int]:
+    """当前模型输出的向量维度（= 查询向量长度；无图无文 → ``None``）。
+
+    以**实际查询向量长度**为准（而非 config 声明值）：它才真正反映
+    「当前运行模型」的输出维度，可同时覆盖「切了模型但库未重嵌入」的场景。
+    """
+    if query_img_vec is not None:
+        return len(query_img_vec)
+    if query_text_vec is not None:
+        return len(query_text_vec)
+    return None
+
+
+def _assert_vector_dims_match(query_dim: Optional[int], target_items) -> None:
+    """R2 维度预检：库中目标向量维度 ≠ 当前模型维度 → 抛 ``HTTPException(500)``。
+
+    动机：打分循环的 ``except → continue`` 会把「未重嵌入导致的 ``np.dot`` 维度不符」
+    **静默**吞成「匹配为空」（HTTP 200 + ``matches: []``），与「真的没找到」外观一致
+    → 全站匹配静默失效。此预检在**逐条打分前**把该情形变成**明确错误**，
+    提示先运行重嵌入脚本。
+    """
+    if query_dim is None:
+        return
+    for item in target_items:
+        for col in ("image_vector", "text_vector"):
+            vec = json_to_vector(item[col]) if item[col] else None
+            if vec is not None and len(vec) != query_dim:
+                raise HTTPException(
+                    500,
+                    f"向量维度不匹配（库中 {len(vec)} 维 / 当前模型 {query_dim} 维），"
+                    "请先运行 scripts/reembed_all_vectors.py 重嵌入",
+                )
+
+
 def is_safe_path(base_dir: str, target_path: str) -> bool:
     base = os.path.abspath(base_dir)
     target = os.path.abspath(os.path.join(base, os.path.basename(target_path)))
@@ -31,7 +101,9 @@ def is_safe_path(base_dir: str, target_path: str) -> bool:
 
 async def run_in_threadpool(func, *args, **kwargs):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, func, *args, **kwargs)
+    if kwargs:
+        func = functools.partial(func, **kwargs)
+    return await loop.run_in_executor(None, func, *args)
 
 def delete_file_if_exists(file_path: str):
     if file_path and os.path.exists(file_path):
@@ -71,6 +143,7 @@ async def create_item(
 
     image_path = None
     image_vector = None
+    color_vector = None
     if image is not None and image.filename:
         content = await image.read()
         if not allowed_file(image.filename, content):
@@ -89,6 +162,8 @@ async def create_item(
 
         try:
             image_vector = await run_in_threadpool(clip_service.get_image_feature, image_path)
+            # R4：同步计算 27 维颜色直方图并随物品持久化，匹配时免重复磁盘 IO
+            color_vector = await run_in_threadpool(clip_service.get_color_histogram, image_path)
         except Exception as e:
             delete_file_if_exists(image_path)
             logger.error(f"图片特征提取失败: {e}")
@@ -109,10 +184,10 @@ async def create_item(
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO items (type, title, description, category, image_path,
-                                   image_vector, text_vector, contact, location, status, user_id, review_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   image_vector, text_vector, color_vector, contact, location, status, user_id, review_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (type, title, description, category, image_path,
-                  vector_to_json(image_vector), vector_to_json(text_vector),
+                  vector_to_json(image_vector), vector_to_json(text_vector), vector_to_json(color_vector),
                   contact, location, 'pending', current_user['user_id'], 'pending'))
             item_id = cursor.lastrowid
     except Exception as e:
@@ -135,12 +210,10 @@ async def get_items(
     offset: int = Query(0, ge=0)
 ):
     """获取物品列表（首页统一规则：已审核+活跃 OR 自己的物品，管理员也不例外）"""
-    viewer_id = None
-    token = request.headers.get('Authorization')
-    if token and token.startswith('Bearer '):
-        payload = verify_token(token.replace('Bearer ', ''))
-        if payload:
-            viewer_id = payload['user_id']
+    # C1：公开接口身份统一经 resolve_optional_viewer 解析；
+    # 无/非法 token 或 status!='active'（disabled/deleted）一律降级为匿名。
+    viewer = resolve_optional_viewer(request)
+    viewer_id = viewer["user_id"] if viewer else None
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -214,7 +287,7 @@ async def uploaded_file(filename: str):
     return FileResponse(file_path)
 
 
-@router.get("/{item_id}")
+@router.get("/{item_id:int}")
 async def get_item(item_id: int, request: Request):
     """获取物品详情（公开，未审核物品仅限发布者/管理员查看）"""
     with get_db_connection() as conn:
@@ -224,17 +297,12 @@ async def get_item(item_id: int, request: Request):
         if not item:
             raise HTTPException(404, "物品不存在")
 
-        token = request.headers.get('Authorization')
-        viewer_id = None
-        is_admin = False
-        if token and token.startswith('Bearer '):
-            payload = verify_token(token.replace('Bearer ', ''))
-            if payload:
-                viewer_id = payload.get('user_id')
-                cursor.execute('SELECT role FROM users WHERE id = ?', (viewer_id,))
-                user = cursor.fetchone()
-                if user and user['role'] == 'admin':
-                    is_admin = True
+    # C1：公开接口身份统一经 resolve_optional_viewer 解析；
+    # 无/非法 token 或 status!='active'（disabled/deleted）降级为匿名，
+    # 从而不再以「属主」身份放行自己的未审核物品。
+    viewer = resolve_optional_viewer(request)
+    viewer_id = viewer["user_id"] if viewer else None
+    is_admin = bool(viewer and viewer["role"] == "admin")
 
     if not (is_admin or item['user_id'] == viewer_id):
         if item['review_status'] != 'approved' or item['status'] != 'active':
@@ -250,7 +318,7 @@ async def get_item(item_id: int, request: Request):
     return {"item": result}
 
 
-@router.put("/{item_id}/mark-claimed")
+@router.put("/{item_id:int}/mark-claimed")
 async def mark_item_claimed(
     item_id: int,
     current_user: dict = Depends(get_current_user)
@@ -295,7 +363,7 @@ async def mark_item_claimed(
     return {"success": True, "message": f"物品已标记为{action_label}", "new_status": "claimed"}
 
 
-@router.put("/{item_id}")
+@router.put("/{item_id:int}")
 async def update_item(
     item_id: int,
     request: Request,
@@ -306,7 +374,7 @@ async def update_item(
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT user_id, image_path, image_vector, type, review_status, status FROM items WHERE id = ?', (item_id,))
+        cursor.execute('SELECT user_id, image_path, image_vector, color_vector, type, review_status, status FROM items WHERE id = ?', (item_id,))
         item = cursor.fetchone()
         if not item:
             raise HTTPException(404, "物品不存在")
@@ -335,6 +403,7 @@ async def update_item(
 
     new_image_path = item['image_path']
     image_vector = None
+    color_vector = None
     if 'image' in form:
         file = form['image']
         if file and file.filename:
@@ -355,6 +424,8 @@ async def update_item(
 
             try:
                 image_vector = await run_in_threadpool(clip_service.get_image_feature, temp_path)
+                # R4：换图时必须同步更新颜色直方图，否则留下脏数据
+                color_vector = await run_in_threadpool(clip_service.get_color_histogram, temp_path)
             except Exception as e:
                 delete_file_if_exists(temp_path)
                 logger.error(f"新图片特征提取失败: {e}")
@@ -376,6 +447,8 @@ async def update_item(
             raise HTTPException(500, "文本特征提取失败")
 
     image_vector_json = vector_to_json(image_vector) if image_vector is not None else item['image_vector']
+    # R4：换图时 color_vector 已重算；未换图时保留库中原值（避免脏数据 / 丢特征）
+    color_vector_json = vector_to_json(color_vector) if color_vector is not None else item['color_vector']
     review_status = item['review_status']
     status = item['status']
     reviewer_id = None
@@ -391,13 +464,13 @@ async def update_item(
             UPDATE items SET
                 title = ?, description = ?, category = ?,
                 contact = ?, location = ?, image_path = ?,
-                image_vector = ?, text_vector = ?,
+                image_vector = ?, text_vector = ?, color_vector = ?,
                 review_status = ?, status = ?,
                 reviewer_id = ?, review_time = ?, reject_reason = ?
             WHERE id = ?
         ''', (title, description, category, contact, location,
               new_image_path, image_vector_json,
-              vector_to_json(text_vector), review_status, status,
+              vector_to_json(text_vector), color_vector_json, review_status, status,
               reviewer_id, review_time, reject_reason, item_id))
 
     # 如果是从驳回状态重新提交，标记旧驳回通知为已读
@@ -414,7 +487,7 @@ async def update_item(
     return {"success": True, "id": item_id}
 
 
-@router.delete("/{item_id}")
+@router.delete("/{item_id:int}")
 async def delete_item(
     item_id: int,
     current_user: dict = Depends(get_current_user)
@@ -450,8 +523,8 @@ async def delete_item(
 
 
 @router.post("/match")
-async def match_items(req: MatchRequest):
-    """智能匹配（基于图片或文本描述）"""
+async def match_items(req: MatchRequest, current_user: dict = Depends(get_current_user)):
+    """智能匹配（基于图片或文本描述，需登录）"""
     if not req.image_path and not req.text:
         raise HTTPException(400, "需要提供图片路径或文本描述")
 
@@ -487,46 +560,67 @@ async def match_items(req: MatchRequest):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, title, description, image_vector, text_vector, image_path, category, location, created_at
+            SELECT id, title, description, image_vector, text_vector, color_vector, image_path, category, location, created_at
             FROM items
             WHERE type = ? AND status = 'active' AND review_status = 'approved'
         ''', (req.target_type,))
         target_items = cursor.fetchall()
 
-    threshold = req.threshold if req.threshold is not None else MATCH_THRESHOLD
+    threshold = req.threshold if req.threshold is not None else _match_threshold_default()
+
+    # 匹配来源（按查询实际可用输入判定）：仅文 → text；仅图 → image；图文 → mixed。
+    if query_img_vec is not None and query_text_vec is not None:
+        match_source = "mixed"
+    elif query_img_vec is not None:
+        match_source = "image"
+    else:
+        match_source = "text"
+
+    # R2 维度预检：在逐条打分前拦截「模型维度 ≠ 库中向量维度」，避免静默返回空集
+    _assert_vector_dims_match(_query_dim(query_img_vec, query_text_vec), target_items)
+
     results = []
+    skipped = 0
     for item in target_items:
         target_img_vec = json_to_vector(item['image_vector'])
         target_text_vec = json_to_vector(item['text_vector'])
-        # 提取目标物品颜色特征
-        try:
-            target_color_vec = await run_in_threadpool(clip_service.get_color_histogram, item['image_path']) if item['image_path'] else None
-        except Exception:
-            target_color_vec = None
+        # 颜色特征：优先取库中已持久化的 color_vector（R4，免重复磁盘 IO）；
+        # 缺失（NULL，老数据尚未回填）时才回退实时计算，保证老数据不炸。
+        target_color_vec = json_to_vector(item['color_vector']) if item['color_vector'] else None
+        if target_color_vec is None and item['image_path']:
+            try:
+                target_color_vec = await run_in_threadpool(clip_service.get_color_histogram, item['image_path'])
+            except Exception as e:
+                logger.warning(f"物品 {item['id']} 颜色直方图回退计算失败: {e}")
+                target_color_vec = None
         # 时间衰减（兼容 SQLite "YYYY-MM-DD HH:MM:SS" 和 ISO 格式）
         try:
-            from datetime import datetime, timezone
             ts = str(item['created_at'])
+            target_date = None
             for fmt in (None, '%Y-%m-%d %H:%M:%S'):
                 try:
                     target_date = datetime.fromisoformat(ts.replace('Z', '+00:00')) if fmt is None else datetime.strptime(ts[:19], fmt).replace(tzinfo=timezone.utc)
                     break
                 except Exception:
                     continue
-            days_old = max(0, (datetime.now(timezone.utc) - target_date).days)
+            if target_date is None:
+                days_old = 0
+            else:
+                days_old = max(0, (datetime.now(timezone.utc) - target_date).days)
         except Exception:
             days_old = 0
         try:
             similarity = await run_in_threadpool(
                 clip_service.compute_weighted_similarity,
                 query_img_vec, query_text_vec, target_img_vec, target_text_vec,
-                cat1='', cat2=item['category'] or '',
-                loc1='', loc2=item['location'] or '',
+                cat1=req.category or '', cat2=item['category'] or '',
+                loc1=req.location or '', loc2=item['location'] or '',
                 days_old=days_old,
                 color1=query_color_vec, color2=target_color_vec,
             )
         except Exception as e:
-            logger.warning(f"匹配物品 {item['id']} 时出错: {e}")
+            skipped += 1
+            logger.error(f"匹配物品 {item['id']} 时打分出错（已跳过）: {e}")
             continue
         logger.info(f"  匹配计算: 物品{item['id']} 相似度={similarity:.4f}")
         if similarity >= threshold:
@@ -538,26 +632,37 @@ async def match_items(req: MatchRequest):
                 'location': item['location'],
                 'image_path': item['image_path'],
                 'similarity': round(similarity, 4),
+                'match_source': match_source,
                 'created_at': item['created_at'],
             })
 
     results.sort(key=lambda x: x['similarity'], reverse=True)
 
     if not results:
+        # 区分「真的没找到」与「全挂了」：若所有目标都因异常被跳过，属系统性错误
+        # （如维度不符/特征损坏），必须记 ERROR，避免运维把「模型不兼容」误当「无命中」。
+        if target_items and skipped == len(target_items):
+            logger.error(
+                f"手动匹配全部失败：{skipped}/{len(target_items)} 条目标打分均抛异常，"
+                "**并非「未找到」**！疑似模型维度不匹配（未重嵌入）或特征损坏，"
+                "请检查并运行 scripts/reembed_all_vectors.py"
+            )
         logger.info(
             f"手动匹配无结果: target_type={req.target_type} target_items_count={len(target_items)} "
-            f"threshold={threshold} has_image={query_img_vec is not None} has_text={query_text_vec is not None}"
+            f"threshold={threshold} has_image={query_img_vec is not None} has_text={query_text_vec is not None} "
+            f"skipped={skipped}"
         )
 
     if image_path and is_temp_file(image_path):
         delete_file_if_exists(image_path)
 
-    return {"matches": results[:20]}
+    return {"matches": results[:20], "legend": resolve_legend()}
 
 
-@router.post("/{item_id}/claim")
+@router.post("/{item_id:int}/claim")
 async def claim_item(
     item_id: int,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
     """申请认领/归还物品（发送站内通知 + 邮件给物品发布者）"""
@@ -616,7 +721,7 @@ async def claim_item(
             (item['user_id'], title, content, link)
         )
 
-    # 发送邮件通知（事务外）
+    # 发送邮件通知（后台任务，不阻塞事件循环；同步 send_email 会自动进线程池）
     if owner and owner['email']:
         try:
             from ..utils.email_utils import send_email
@@ -638,7 +743,7 @@ async def claim_item(
             </body>
             </html>
             """
-            send_email(owner['email'], subject, body, html=True)
+            background_tasks.add_task(send_email, owner['email'], subject, body, True)
         except Exception as e:
             logger.warning(f"发送认领邮件失败: {e}")
 

@@ -1,0 +1,118 @@
+classDiagram
+    %% ---- 数据模型 (SQLite 表, 以 Python 视角抽象) ----
+    class User {
+        +int id
+        +str username
+        +str password_hash
+        +str phone
+        +str email
+        +str role  %% user|admin|disabled|deleted (语义重叠, 见评审 §3.4)
+        +str avatar_path  %% V3.3 已废弃
+        +str created_at
+    }
+    class Item {
+        +int id
+        +str type  %% lost|found
+        +str title
+        +str description
+        +str category
+        +str image_path
+        +str image_vector  %% 512维 JSON
+        +str text_vector   %% 512维 JSON
+        +str contact
+        +str location
+        +str status
+        +int user_id
+        +str review_status
+        +int reviewer_id
+        +str review_time
+        +str reject_reason
+        +str created_at
+        +str updated_at
+    }
+    class Match {
+        +int id
+        +int lost_item_id
+        +int found_item_id
+        +float similarity_score
+        +int is_confirmed
+        +str created_at
+    }
+    class Notification {
+        +int id
+        +int user_id
+        +str title
+        +str content
+        +str link
+        +int is_read
+        +str created_at
+    }
+    class Announcement {
+        +int id
+        +str title
+        +str content
+        +int is_pinned
+        +str target_role
+        +int admin_id
+        +str created_at
+    }
+    class StatsCounter {
+        +str key
+        +int value
+    }
+
+    User "1" --> "0..*" Item : 发布
+    User "1" --> "0..*" Notification : 接收
+    User "1" --> "0..*" Announcement : 发布(admin)
+    Item "1" --> "0..*" Match : lost_item_id
+    Item "1" --> "0..*" Match : found_item_id
+    User "1" --> "0..*" Item : 审核(reviewer)
+
+    %% ---- 服务类 ----
+    class CLIPService {
+        -CLIPService _instance
+        -model _model
+        -preprocess _preprocess
+        -device _device
+        +__new__()
+        +_initialize()
+        +get_image_feature(path) np.ndarray
+        +get_text_feature(text) np.ndarray
+        +get_color_histogram(path) np.ndarray
+        +compute_color_similarity(h1,h2) float
+        +compute_weighted_similarity(...) float
+    }
+    class MatchService {
+        +auto_match_and_notify(item_id, type) None
+    }
+    class DatabaseModule {
+        +get_db_connection() contextmanager
+        +init_db() None
+        +vector_to_json(vec) str
+        +json_to_vector(str) np.ndarray
+        +add_notification(...) None
+        +increment_counter(key,delta) None
+        +get_counter(key) int
+    }
+    class AuthDependency {
+        +create_access_token(data) str
+        +verify_token(token) dict
+        +get_current_user(cred) dict
+        +get_current_admin(user) dict
+    }
+    class EmailUtils {
+        +send_email(to,subj,body,html) bool
+        +send_match_notification(...) bool
+    }
+
+    MatchService --> CLIPService : 使用
+    MatchService --> DatabaseModule : 使用
+    MatchService --> EmailUtils : 使用
+    AuthDependency --> DatabaseModule : 查询角色
+    DatabaseModule ..> Item : 持久化
+    DatabaseModule ..> User : 持久化
+    CLIPService ..> Item : 读取 image_path
+
+    note for CLIPService "单例+懒加载; get_color_histogram 结果未持久化(评审 R4)"
+    note for User "role 字段同时承载权限与状态(评审 §3.4)"
+    note for EmailUtils "smtplib 同步阻塞(评审 R5)"

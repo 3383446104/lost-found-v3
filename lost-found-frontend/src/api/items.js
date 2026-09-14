@@ -19,7 +19,8 @@ export const updateItem = (id, formData) => request.put(`/items/${id}`, formData
 // 删除物品
 export const deleteItem = (id) => request.delete(`/items/${id}`)
 
-// 智能匹配
+// 智能匹配（v3.5.0：响应含 matches[].match_source 与顶层 legend{high,mid}）
+// 首页「用一句话描述，帮你找」入口与 MatchView 均复用本函数，不新增端点。
 export const matchItems = (data) => request.post('/items/match', data)
 
 // 临时上传

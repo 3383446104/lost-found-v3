@@ -48,6 +48,11 @@
             maxlength="500"
             show-word-limit
           />
+          <p class="field-hint">与标题一起计入匹配文本向量；可用窗口约 {{ TEXT_TOWER_WINDOW }} 字，建议把关键特征前置。</p>
+          <p v-if="descCharCount > TEXT_TOWER_WINDOW" class="field-hint field-hint-warn">
+            <el-icon><WarningFilled /></el-icon>
+            <span>已输入 {{ descCharCount }} 字：超出 {{ TEXT_TOWER_WINDOW }} 字的部分不影响匹配精度，建议把关键特征写在前 {{ TEXT_TOWER_WINDOW }} 字内。</span>
+          </p>
         </el-form-item>
 
         <div class="form-row">
@@ -128,6 +133,11 @@ const file = ref(null)
 const previewImageUrl = ref('')
 const existingImagePath = ref('')
 const existingStatus = ref('')
+
+// 模型文本塔可用窗口（汉字）：物品文本向量由「标题 + ' ' + 描述」编码，
+// 超出窗口的部分被**静默截断**，故仅提示、绝不拦截/截断用户输入。
+const TEXT_TOWER_WINDOW = 50
+const descCharCount = computed(() => (form.value.description || '').length)
 
 const currentImageUrl = computed(() => {
   return existingImagePath.value ? getImageUrl(existingImagePath.value) : ''
@@ -262,6 +272,20 @@ onMounted(async () => {
 
 .form-grow {
   flex: 1;
+}
+
+.field-hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin: var(--space-1) 0 0;
+  line-height: 1.5;
+}
+
+.field-hint-warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: #E65100;
 }
 
 :deep(.el-form-item__label) {

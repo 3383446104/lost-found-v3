@@ -41,7 +41,25 @@
       <!-- 文字描述 -->
       <div class="panel-section">
         <label class="panel-label">文字描述 <span class="label-badge">文本匹配</span></label>
-        <el-input v-model="text" type="textarea" :rows="3" placeholder="描述物品特征，例如：黑色双肩包、带有红色挂件的钥匙串..." maxlength="300" show-word-limit />
+        <el-input v-model="text" type="textarea" :rows="3" placeholder="用一句话描述物品，例如：黑色皮质长款钱包，正面有金属拉链和圆形徽章，里面夹着校园卡..." maxlength="300" show-word-limit />
+        <p class="panel-hint">建议用完整自然语言描述；把最关键的特征（颜色 / 品牌 / 特殊标记）写在前 {{ TEXT_TOWER_WINDOW }} 字内，识别更准。</p>
+        <p v-if="textCharCount > TEXT_TOWER_WINDOW" class="panel-hint panel-hint-warn">
+          <el-icon><WarningFilled /></el-icon>
+          <span>已输入 {{ textCharCount }} 字：超出 {{ TEXT_TOWER_WINDOW }} 字的部分不影响匹配精度，建议把关键特征写在前 {{ TEXT_TOWER_WINDOW }} 字内。</span>
+        </p>
+      </div>
+
+      <!-- 类别与位置（可选，提升匹配精度） -->
+      <div class="panel-section">
+        <label class="panel-label">类别与位置 <span class="label-badge">可选</span></label>
+        <div class="form-row">
+          <el-select v-model="category" placeholder="选择类别" clearable style="flex:1" size="large">
+            <el-option v-for="cat in categories" :key="cat" :label="cat" :value="cat" />
+          </el-select>
+          <el-input v-model="location" placeholder="丢失或发现地点" clearable style="flex:1" size="large">
+            <template #prefix><el-icon><LocationFilled /></el-icon></template>
+          </el-input>
+        </div>
       </div>
 
       <!-- 匹配按钮 -->
@@ -56,9 +74,9 @@
       <div class="results-head">
         <h2 class="results-heading">匹配结果 <span class="result-count">{{ results.length }} 条</span></h2>
         <div class="results-legend">
-          <span class="legend-item high">≥75% 高置信</span>
-          <span class="legend-item mid">≥50% 中等</span>
-          <span class="legend-item low">&lt;50% 参考</span>
+          <span class="legend-item high">≥{{ (legend.high * 100).toFixed(0) }}% 高置信</span>
+          <span class="legend-item mid">≥{{ (legend.mid * 100).toFixed(0) }}% 中等</span>
+          <span class="legend-item low">&lt;{{ (legend.mid * 100).toFixed(0) }}% 参考</span>
         </div>
       </div>
 
@@ -75,6 +93,7 @@
             <h3 class="card-title">{{ r.title }}</h3>
             <p class="card-desc" v-if="r.description">{{ r.description?.substring(0, 80) }}{{ r.description?.length > 80 ? '...' : '' }}</p>
             <div class="card-tags">
+              <span class="meta-src" :class="'src-' + (r.match_source || 'mixed')">{{ matchSourceLabel(r.match_source) }}</span>
               <span class="meta-cat" v-if="r.category">{{ r.category }}</span>
               <span class="meta-loc" v-if="r.location">
                 <el-icon :size="12"><LocationFilled /></el-icon>{{ r.location }}
@@ -86,20 +105,23 @@
               </div>
               <span class="similarity-text" :class="badgeClass(r.similarity)">{{ (r.similarity * 100).toFixed(1) }}%</span>
             </div>
+            <p class="similarity-note">相似度由 AI 估算，仅供参考</p>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 空结果 -->
-    <el-empty v-if="searched && !results.length" description="未找到匹配物品">
+    <el-empty v-if="searched && !results.length" description="暂未找到相似的物品">
       <template #extra>
         <div class="empty-hints">
-          <p><el-icon><Opportunity /></el-icon> 试试以下调整：</p>
+          <p><el-icon><Opportunity /></el-icon> 可以这样再试试：</p>
           <ul>
-            <li>确保目标类型选择正确（失物↔拾物交叉匹配）</li>
-            <li>同时提供图片和文字描述可提高匹配精度</li>
-            <li>调整描述关键词，例如颜色、品牌、特征标记</li>
+            <li>用一句自然语言完整描述，例如「黑色皮质长款钱包，正面有金属拉链」</li>
+            <li>把最关键的特征（颜色 / 品牌 / 特殊标记）写在前 50 字内</li>
+            <li>同时上传图片并补充文字描述，命中率更高</li>
+            <li>确认目标类型是否正确（失物 ↔ 拾物交叉匹配）</li>
+            <li>相似度由 AI 估算，结果仅供参考，请结合实物核对</li>
           </ul>
         </div>
       </template>
@@ -108,22 +130,45 @@
 </template>
 
 <script setup>
-import { ref, onUnmounted } from 'vue'
-import { matchItems, tempUpload } from '@/api/items'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { matchItems, tempUpload, getCategories } from '@/api/items'
 import { getImageUrl } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
-import { Search, UploadFilled, Connection, PictureFilled, LocationFilled, Opportunity } from '@element-plus/icons-vue'
+import { Search, UploadFilled, Connection, PictureFilled, LocationFilled, Opportunity, WarningFilled } from '@element-plus/icons-vue'
 
+// 图例本地回落常量：后端未升级（无 legend）时保证不炸
+const LEGEND_FALLBACK = { high: 0.75, mid: 0.5 }
+
+// 模型文本塔可用窗口（汉字）：context_length 52 − [CLS] − [SEP] = 50。
+// 超长输入会被**静默截断**，故仅提示、绝不拦截/截断用户输入。
+const TEXT_TOWER_WINDOW = 50
+
+const route = useRoute()
 const text = ref('')
 const targetType = ref('found')
+const category = ref('')
+const location = ref('')
+const categories = ref([])
 const imagePath = ref('')
 const previewUrl = ref('')
 const fileInput = ref(null)
 const results = ref([])
 const matching = ref(false)
 const searched = ref(false)
+const legend = ref({ ...LEGEND_FALLBACK })
+let autoRan = false
 
-const badgeClass = (sim) => sim >= 0.75 ? 'high' : sim >= 0.5 ? 'mid' : 'low'
+// 已输入字符数（与 el-input show-word-limit / 模型窗口同口径：中文一字一字符）
+const textCharCount = computed(() => (text.value || '').length)
+
+const matchSourceLabel = (src) => (
+  src === 'image' ? '按图匹配'
+    : src === 'text' ? '按描述匹配'
+      : '图文混合'
+)
+
+const badgeClass = (sim) => sim >= legend.value.high ? 'high' : sim >= legend.value.mid ? 'mid' : 'low'
 
 const triggerUpload = () => { fileInput.value?.click() }
 
@@ -149,12 +194,24 @@ const clearPreview = () => {
   if (fileInput.value) fileInput.value.value = ''
 }
 
+onMounted(() => {
+  getCategories().then(res => { categories.value = res.categories || [] }).catch(() => {})
+  // 支持首页 /match?text=... 直达：预填并**显式执行一次**匹配（不做输入即搜）
+  const q = route.query.text
+  if (typeof q === 'string' && q.trim() && !autoRan) {
+    autoRan = true
+    text.value = q.trim()
+    doMatch()
+  }
+})
 onUnmounted(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.value) })
 
 const doMatch = async () => {
   const payload = { target_type: targetType.value }
   if (imagePath.value) payload.image_path = imagePath.value
   if (text.value.trim()) payload.text = text.value.trim()
+  if (category.value) payload.category = category.value
+  if (location.value) payload.location = location.value
   if (!payload.image_path && !payload.text) {
     ElMessage.warning('请上传图片或输入文字描述')
     return
@@ -164,6 +221,15 @@ const doMatch = async () => {
   try {
     const res = await matchItems(payload)
     results.value = res.matches || []
+    // 图例以后端 legend 为单一数据源；缺失时回落本地常量（后端未升级也不炸）
+    if (res.legend && typeof res.legend === 'object') {
+      legend.value = {
+        high: typeof res.legend.high === 'number' ? res.legend.high : LEGEND_FALLBACK.high,
+        mid: typeof res.legend.mid === 'number' ? res.legend.mid : LEGEND_FALLBACK.mid
+      }
+    } else {
+      legend.value = { ...LEGEND_FALLBACK }
+    }
     if (results.value.length === 0) ElMessage.info('未找到匹配物品')
   } catch (error) {
     if (error.response?.status === 404) { ElMessage.error('图片已过期，请重新上传'); clearPreview() }
@@ -204,6 +270,11 @@ const doMatch = async () => {
 
 .panel-hint {
   font-size: var(--text-sm); color: var(--text-tertiary); margin: 0;
+}
+
+.panel-hint-warn {
+  display: flex; align-items: center; gap: var(--space-1);
+  color: #E65100;
 }
 
 .upload-area {
@@ -278,6 +349,19 @@ const doMatch = async () => {
   font-size: var(--text-xs); color: var(--text-tertiary);
   display: flex; align-items: center; gap: 2px;
 }
+.meta-src {
+  font-size: var(--text-xs); font-weight: 500;
+  padding: 2px 10px; border-radius: var(--radius-full);
+  background: var(--neutral-100); color: var(--text-secondary);
+}
+.meta-src.src-image { background: #E3F2FD; color: #1565C0; }
+.meta-src.src-text  { background: #F3E5F5; color: #6A1B9A; }
+.meta-src.src-mixed { background: #E8F5E9; color: #2E7D32; }
+
+.similarity-note {
+  font-size: var(--text-xs); color: var(--text-muted);
+  margin: var(--space-2) 0 0; text-align: right;
+}
 
 .similarity-bar { display: flex; align-items: center; gap: 8px; }
 .similarity-track { flex: 1; height: 5px; background: var(--neutral-200); border-radius: var(--radius-full); overflow: hidden; }
@@ -296,8 +380,13 @@ const doMatch = async () => {
 .empty-hints ul { margin: 0; padding-left: var(--space-5); font-size: var(--text-sm); color: var(--text-secondary); }
 .empty-hints li { margin-bottom: var(--space-1); }
 
+.form-row {
+  display: flex; gap: var(--space-3); align-items: center;
+}
+
 @media (max-width: 640px) {
   .match-panel { padding: var(--space-5); border-radius: var(--radius-lg); }
   .upload-area { padding: var(--space-5); min-height: 100px; }
+  .form-row { flex-direction: column; }
 }
 </style>

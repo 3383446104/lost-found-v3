@@ -38,7 +38,7 @@ async def mark_all_read(current_user: dict = Depends(get_current_user)):
     return {"success": True, "count": count}
 
 
-@router.put("/{notif_id}/read")
+@router.put("/{notif_id:int}/read")
 async def mark_read(notif_id: int, current_user: dict = Depends(get_current_user)):
     """标记单条消息为已读"""
     user_id = current_user['user_id']

@@ -10,6 +10,10 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
     """
     新物品审核通过后自动匹配并推送通知
     """
+    # 灰度总开关：重嵌入完成前/灰度期置 false，直接短路，不产生任何匹配与推送。
+    if not settings.AUTO_MATCH_ENABLED:
+        logger.info(f"自动匹配已关闭（AUTO_MATCH_ENABLED=false），跳过物品 {new_item_id}")
+        return
     try:
         from datetime import datetime, timezone
 
@@ -17,7 +21,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT user_id, title, category, location, created_at, image_vector, text_vector, image_path
+                SELECT user_id, title, category, location, created_at, image_vector, text_vector, color_vector, image_path
                 FROM items WHERE id = ?
             ''', (new_item_id,))
             new_item = cursor.fetchone()
@@ -30,7 +34,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
 
             # 3. 查询所有已审核且状态为 active 的目标物品
             cursor.execute('''
-                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, image_path
+                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, color_vector, image_path
                 FROM items
                 WHERE type = ? AND status = 'active' AND review_status = 'approved'
             ''', (target_type,))
@@ -44,21 +48,51 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
         new_img_vec = json_to_vector(new_item['image_vector']) if new_item['image_vector'] else None
         new_text_vec = json_to_vector(new_item['text_vector']) if new_item['text_vector'] else None
         now = datetime.now(timezone.utc)
-        # 提取新物品颜色特征
-        try:
-            new_color_vec = clip_service.get_color_histogram(new_item['image_path']) if new_item['image_path'] else None
-        except Exception:
-            new_color_vec = None
+        # 颜色特征：优先取库中持久化的 color_vector（R4，免重复磁盘 IO）；
+        # 缺失（NULL，老数据尚未回填）时才回退实时计算。
+        new_color_vec = json_to_vector(new_item['color_vector']) if new_item['color_vector'] else None
+        if new_color_vec is None and new_item['image_path']:
+            try:
+                new_color_vec = clip_service.get_color_histogram(new_item['image_path'])
+            except Exception as e:
+                logger.warning(f"物品 {new_item_id} 颜色直方图回退计算失败: {e}")
+                new_color_vec = None
+
+        # R2 维度预检：新物品向量维度 ≠ 库中目标向量维度 → 记 ERROR 并跳过。
+        # 否则「切模型未重嵌入」会在后台被静默吞成「未找到高相似度匹配」，与真实无命中混淆。
+        new_dim = None
+        if new_img_vec is not None:
+            new_dim = len(new_img_vec)
+        elif new_text_vec is not None:
+            new_dim = len(new_text_vec)
+        if new_dim is not None:
+            for target in target_items:
+                mismatch_dim = None
+                for col in ("image_vector", "text_vector"):
+                    vec = json_to_vector(target[col]) if target[col] else None
+                    if vec is not None and len(vec) != new_dim:
+                        mismatch_dim = len(vec)
+                        break
+                if mismatch_dim is not None:
+                    logger.error(
+                        f"自动匹配跳过（物品 {new_item_id}）：向量维度不匹配"
+                        f"（库中 {mismatch_dim} 维 / 当前模型 {new_dim} 维），"
+                        "请先运行 scripts/reembed_all_vectors.py 重嵌入"
+                    )
+                    return
 
         matches = []
         for target in target_items:
             target_img_vec = json_to_vector(target['image_vector']) if target['image_vector'] else None
             target_text_vec = json_to_vector(target['text_vector']) if target['text_vector'] else None
-            # 提取目标物品颜色特征
-            try:
-                target_color_vec = clip_service.get_color_histogram(target['image_path']) if target['image_path'] else None
-            except Exception:
-                target_color_vec = None
+            # 颜色特征：优先取库，缺失回退实时计算
+            target_color_vec = json_to_vector(target['color_vector']) if target['color_vector'] else None
+            if target_color_vec is None and target['image_path']:
+                try:
+                    target_color_vec = clip_service.get_color_histogram(target['image_path'])
+                except Exception as e:
+                    logger.warning(f"物品 {target['id']} 颜色直方图回退计算失败: {e}")
+                    target_color_vec = None
 
             # 计算目标物品已发布天数（时间衰减）
             try:

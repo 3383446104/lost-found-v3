@@ -23,3 +23,19 @@ temp_*
 # IDE 编辑器配置
 .idea/
 .vscode/
+
+# 本地数据库（含真实业务数据，不入版本控制；开发库请本地生成）
+backend/lost_found.db
+backend/lost_found.db.bak-*
+
+# 模型权重缓存（ViT-H-14 约 3.83GB，禁止入库）
+backend/models/
+
+# 测试与调试临时产物
+backend/.junitxml/
+backend/_junit*.xml
+backend/_lead_run*.txt
+backend/_r4_*
+_uploads.txt
+lost-found-frontend/_build.txt
+lost-found-frontend/_nm.txt

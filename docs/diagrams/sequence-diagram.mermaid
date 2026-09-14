@@ -1,0 +1,66 @@
+sequenceDiagram
+    autonumber
+    participant FE as 前端 Vue3
+    participant API as FastAPI 路由层
+    participant DEP as dependencies/auth.py
+    participant SVC as services/match_service.py
+    participant CLIP as clip_service.py
+    participant DB as SQLite
+    participant MAIL as SMTP
+
+    %% ---------- 认证 ----------
+    FE->>API: POST /api/login {username,password}
+    API->>DB: SELECT id,role,password_hash
+    API->>API: bcrypt.checkpw
+    alt role == disabled
+        API-->>FE: 403 账号已被禁用
+    end
+    API->>DEP: create_access_token({user_id,username})
+    API-->>FE: {success,token,user}
+    Note over FE: setAuth -> localStorage
+
+    %% ---------- 发布 ----------
+    FE->>API: POST /api/items/ (FormData + image)
+    API->>API: allowed_file / size / validate
+    API->>CLIP: run_in_threadpool(get_image_feature)
+    API->>CLIP: run_in_threadpool(get_text_feature)
+    API->>DB: INSERT items (status=pending, review=pending)
+    API-->>FE: {success,id}
+
+    %% ---------- 审核 + 自动匹配 ----------
+    FE->>API: PUT /api/admin/reviews/{id} {action:approved}
+    API->>DEP: get_current_admin (DB 读 role)
+    API->>DB: UPDATE ... WHERE id=? AND review_status='pending'
+    alt rowcount == 0
+        API-->>FE: 409 审核冲突
+    end
+    API->>SVC: BackgroundTasks.add_task(auto_match_and_notify)
+    API-->>FE: {success,status:approved}
+    activate SVC
+    SVC->>DB: SELECT 异类 active+approved 候选
+    loop 每个候选
+        SVC->>CLIP: get_color_histogram(image_path)  %% 未持久化,每次重算
+        SVC->>CLIP: compute_weighted_similarity(...)
+    end
+    SVC->>DB: INSERT matches
+    SVC->>DB: add_notification 双向
+    alt 相似度 >= 0.75
+        SVC->>MAIL: send_match_notification (同步阻塞)
+    end
+    deactivate SVC
+
+    %% ---------- 手动匹配 ----------
+    FE->>API: POST /api/items/match {image_path|text,target_type}
+    API->>CLIP: 查询特征(图/文/色)
+    API->>DB: SELECT 候选
+    loop 每个候选
+        API->>CLIP: get_color_histogram  %% R4: 重复磁盘 IO
+        API->>CLIP: compute_weighted_similarity
+    end
+    API-->>FE: {matches: top20}
+
+    %% ---------- 认领 ----------
+    FE->>API: POST /api/items/{id}/claim
+    API->>DB: 校验 status/防重复/插入通知
+    API->>MAIL: send_email (同步, 阻塞事件循环) %% R5
+    API-->>FE: {success}

@@ -74,7 +74,7 @@ router.beforeEach((to, from) => {
     authStore?.restore()
   }
   const isLoggedIn = !!authStore?.token
-  const isDisabled = authStore?.user?.role === 'disabled'
+  const isDisabled = authStore?.user?.status === 'disabled'
 
   // v3.3: 禁用用户 → 清除登录态 → 跳转登录页
   if (isLoggedIn && isDisabled) {

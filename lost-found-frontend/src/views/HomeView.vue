@@ -10,6 +10,24 @@
       </el-button>
     </div>
 
+    <!-- 智能查找入口：用一句话描述，帮你找（跳转 /match 并自动执行一次匹配） -->
+    <div class="smart-entry">
+      <el-input
+        v-model="smartQuery"
+        placeholder="用一句话描述，帮你找（例如：黑色皮质长款钱包，正面有金属拉链）"
+        clearable
+        size="large"
+        @keyup.enter="goSmartMatch"
+        class="smart-input"
+      >
+        <template #prefix><el-icon><MagicStick /></el-icon></template>
+        <template #append>
+          <el-button type="primary" :icon="Search" @click="goSmartMatch">智能查找</el-button>
+        </template>
+      </el-input>
+      <p class="smart-hint">用自然语言描述即可，无需纠结关键词；关键特征（颜色 / 品牌 / 标记）写在前 50 字内更准。</p>
+    </div>
+
     <!-- 数据看板（统计卡片 + 饼图合一） -->
     <div class="dashboard" v-if="stats">
       <div class="dashboard-left">
@@ -81,13 +99,16 @@
         </el-select>
         <el-input
           v-model="filters.keyword"
-          placeholder="搜索关键词..."
+          placeholder="按关键词精确搜索"
           clearable
           :prefix-icon="Search"
           @keyup.enter="loadItems"
           @clear="loadItems"
           style="width:200px"
         />
+        <el-button text type="primary" class="smart-jump" @click="goSmartMatchFromKeyword">
+          <el-icon><MagicStick /></el-icon>按描述智能查找 →
+        </el-button>
         <el-checkbox v-model="showMine" @change="loadItems" class="mine-checkbox">
           仅显示我的
         </el-checkbox>
@@ -173,10 +194,12 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories } from '@/api/items'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
-import { Search, PictureFilled, Folder, LocationFilled, Plus } from '@element-plus/icons-vue'
+import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
 import { getAnnouncements } from '@/api/announcements'
@@ -200,6 +223,23 @@ const pieChartRef = ref(null)
 let pieChart = null
 
 const authStore = useAuthStore()
+const router = useRouter()
+
+// 智能查找入口：一句话描述 → 跳 /match 并自动执行一次匹配
+const smartQuery = ref('')
+const goSmartMatch = () => {
+  const q = smartQuery.value.trim()
+  if (!q) {
+    ElMessage.warning('请输入一句话描述，例如「黑色皮质长款钱包」')
+    return
+  }
+  router.push({ path: '/match', query: { text: q } })
+}
+// 防止用户把长句输进 LIKE 精确搜索框：取当前 keyword 作为描述带去 /match
+const goSmartMatchFromKeyword = () => {
+  const q = (filters.value.keyword || '').trim()
+  router.push({ path: '/match', query: q ? { text: q } : {} })
+}
 
 const loadItems = async () => {
   loading.value = true
@@ -299,6 +339,23 @@ onUnmounted(() => {
   flex-shrink: 0;
   font-weight: 600;
 }
+
+/* ---- 智能查找入口 ---- */
+.smart-entry {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-xs);
+}
+.smart-input { max-width: 100%; }
+.smart-hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin: var(--space-2) 0 0;
+}
+.smart-jump { white-space: nowrap; }
 
 /* ---- 数据看板（统计+饼图合一） ---- */
 .dashboard {

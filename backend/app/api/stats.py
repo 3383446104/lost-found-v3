@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from ..database import get_db_connection
 from ..dependencies.auth import get_current_user
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter(prefix="/stats", tags=["数据统计"])
 
@@ -17,7 +17,18 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
     - today_found: 今日新增拾物（仅已审核通过且活跃的）
     - total_claimed: 总计找回数（status='claimed' 的累计值）
     """
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # 「今日」以北京时间（UTC+8）为口径计算。items.created_at 由 SQLite
+    # CURRENT_TIMESTAMP 写入，存的是 UTC（固定宽度 "YYYY-MM-DD HH:MM:SS"）。
+    # 因此需要显式换算北京时间当日的 [00:00, 24:00) 半开区间对应的 UTC 边界，
+    # 再用字符串字典序范围比较（对该固定格式正确且高效），避免东八区
+    # 00:00–08:00 时段因本地日期与 UTC 日期相差一天而漏计。
+    BEIJING = timezone(timedelta(hours=8))
+    now_bj = datetime.now(BEIJING)
+    start_bj = now_bj.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_utc = start_bj.astimezone(timezone.utc)
+    end_utc = start_utc + timedelta(days=1)
+    start_str = start_utc.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = end_utc.strftime("%Y-%m-%d %H:%M:%S")
 
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -30,17 +41,17 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
 
         # 今日新增失物 — 仅统计已审核通过且活跃的物品
         cur.execute(
-            "SELECT COUNT(*) FROM items WHERE created_at LIKE ? AND type='lost'"
-            " AND review_status='approved' AND status='active'",
-            (f"{today_str}%",)
+            "SELECT COUNT(*) FROM items WHERE created_at >= ? AND created_at < ?"
+            " AND type='lost' AND review_status='approved' AND status='active'",
+            (start_str, end_str)
         )
         today_lost = cur.fetchone()[0]
 
         # 今日新增拾物 — 仅统计已审核通过且活跃的物品
         cur.execute(
-            "SELECT COUNT(*) FROM items WHERE created_at LIKE ? AND type='found'"
-            " AND review_status='approved' AND status='active'",
-            (f"{today_str}%",)
+            "SELECT COUNT(*) FROM items WHERE created_at >= ? AND created_at < ?"
+            " AND type='found' AND review_status='approved' AND status='active'",
+            (start_str, end_str)
         )
         today_found = cur.fetchone()[0]
 

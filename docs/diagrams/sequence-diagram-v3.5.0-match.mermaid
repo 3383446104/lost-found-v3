@@ -1,0 +1,34 @@
+%% v3.5.0 增量：POST /api/items/match 跨模态匹配 时序图
+%% 对应设计文档 docs/review/v3.5.0-incremental-design.md §4.1
+sequenceDiagram
+    autonumber
+    participant FE as 前端 MatchView
+    participant API as items.py: match_items
+    participant DEP as dependencies/auth
+    participant CLIP as clip_service
+    participant BE as ClipBackend(cn_clip)
+    participant DB as SQLite
+
+    FE->>API: POST /api/items/match {image_path|text, target_type, category, location}
+    Note over API: 无 Authorization → 403 "Not authenticated"（HTTPBearer auto_error=True，冻结）
+    Note over API: 非法 token → 401（冻结）
+    API->>DEP: get_current_user(Bearer)
+    API->>API: 校验 image_path/text 至少一项 + target_type∈{lost,found}（否则 400）
+    alt image_path 存在
+        API->>CLIP: run_in_threadpool(get_image_feature)
+        CLIP->>BE: encode_image(path)
+        API->>CLIP: run_in_threadpool(get_color_histogram)  %% 27维，与模型无关
+    end
+    alt text 存在
+        API->>CLIP: run_in_threadpool(get_text_feature)
+        CLIP->>BE: encode_text(text)  %% Chinese-CLIP context_length=52，长中文不截断
+    end
+    API->>DB: SELECT 候选(type=target_type, status=active, review_status=approved)
+    loop 每个候选
+        API->>CLIP: run_in_threadpool(compute_weighted_similarity, 查询向量, 目标向量, ...)
+        Note over CLIP: ① 三自相似 + 双跨模态(qtext·timg, qimg·ttext)<br/>② 缺维度动态归一化 ③ 类别/位置 ④ 时间衰减 ⑤ 跨模态一致性惩罚(只降权,下限×0.5)
+    end
+    API->>API: 过滤 >= threshold（默认 MATCH_THRESHOLD_MANUAL）→ 降序 → Top20
+    API->>API: 每项补 match_source ∈ {text,image,mixed}（按查询输入判定）
+    API-->>FE: {matches:[...], legend:{high,mid}}  %% legend 修掉前端硬编码图例不一致
+    Note over FE: 用 res.legend 渲染图例与 badgeClass；卡片标注"按描述匹配/按图匹配"

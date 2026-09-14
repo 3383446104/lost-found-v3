@@ -3,7 +3,7 @@ import os
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
-from ..models.user import UserRegister, UserLogin
+from ..models.user import UserRegister, UserLogin, ProfileUpdate
 from ..database import get_db_connection
 from ..dependencies.auth import create_access_token, get_current_user
 from ..config import settings
@@ -58,7 +58,12 @@ async def register(user: UserRegister):
     return {
         "success": True,
         "token": token,
-        "user": {"id": user_id, "username": user.username}
+        "user": {
+            "id": user_id,
+            "username": user.username,
+            "role": "user",
+            "status": "active"
+        }
     }
 
 
@@ -67,7 +72,7 @@ async def login(user: UserLogin):
     """用户登录"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, role, password_hash FROM users WHERE username = ?', (user.username,))
+        cursor.execute('SELECT id, username, role, status, password_hash FROM users WHERE username = ?', (user.username,))
         db_user = cursor.fetchone()
 
     if not db_user:
@@ -76,8 +81,10 @@ async def login(user: UserLogin):
     if not bcrypt.checkpw(user.password.encode('utf-8'), db_user['password_hash'].encode('utf-8')):
         raise HTTPException(status_code=401, detail="密码错误")
 
-    if db_user['role'] == 'disabled':
+    if db_user['status'] == 'disabled':
         raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+    if db_user['status'] == 'deleted':
+        raise HTTPException(status_code=403, detail="账号已注销")
 
     token = create_access_token({"user_id": db_user['id'], "username": db_user['username']})
     return {
@@ -86,7 +93,8 @@ async def login(user: UserLogin):
         "user": {
             "id": db_user['id'],
             "username": db_user['username'],
-            "role": db_user['role']
+            "role": db_user['role'],
+            "status": db_user['status']
         }
     }
 
@@ -96,7 +104,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """获取当前用户信息"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, role, phone, email, created_at FROM users WHERE id = ?', (current_user['user_id'],))
+        cursor.execute('SELECT id, username, role, status, phone, email, created_at FROM users WHERE id = ?', (current_user['user_id'],))
         user = cursor.fetchone()
 
     return {
@@ -104,6 +112,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
             "id": user['id'],
             "username": user['username'],
             "role": user['role'],
+            "status": user['status'],
             "phone": user['phone'],
             "email": user['email'],
             "created_at": user['created_at']
@@ -113,10 +122,12 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 @router.put("/me")
 async def update_profile(
-    payload: dict,
+    payload: ProfileUpdate,
     current_user: dict = Depends(get_current_user)
 ):
     """更新个人资料（密码/邮箱/手机号）"""
+    # 转为「仅含请求显式提供字段」的 dict，使下方分支逻辑与旧 dict 版本完全等价
+    payload = payload.model_dump(exclude_unset=True)
     user_id = current_user['user_id']
     updates = []
     params = []
@@ -192,9 +203,9 @@ async def delete_account(current_user: dict = Depends(get_current_user)):
             "UPDATE items SET status='closed' WHERE user_id=? AND status IN ('active','pending')",
             (user_id,)
         )
-        # 软删除用户
+        # 软删除用户（用户名加后缀，状态置 deleted）
         cursor.execute(
-            "UPDATE users SET username=username || '_deleted_' || id, role='deleted' WHERE id=?",
+            "UPDATE users SET username=username || '_deleted_' || id, status='deleted' WHERE id=?",
             (user_id,)
         )
     return {"success": True, "message": "账号已注销"}

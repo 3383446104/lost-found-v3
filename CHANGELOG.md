@@ -555,3 +555,196 @@ git checkout HEAD~1
 ---
 
 > **当前版本**: V3.3.2 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS / PWA
+
+---
+
+## V3.3.3 — 工程加固 + 文档对齐 (2026-09-12)
+
+### 迭代目标
+在交付答辩前的架构评审基础上，补齐仓库首个自动化回归测试套件，修复评审确认的 3 项 P0 缺陷，并将全部文档与代码对齐。
+
+> 依据：[架构评审报告](docs/review/architecture-review-2026-09-12.md)（共识别 P0×3 / P1×4 / P2×4，本轮处理 P0 三项）。
+
+### 1. 自动化测试套件（仓库首个）✅
+- ➕ `backend/tests/`：pytest + FastAPI TestClient，**45 用例全绿**
+  - `test_auth.py`(8) / `test_items.py`(14) / `test_admin.py`(7) / `test_stats.py`(4)
+  - `test_adversarial_auth.py`(5) / `test_adversarial_stats.py`(4) / `test_adversarial_meta.py`(2) / `test_adversarial_admin_toggle.py`(1)
+- ➕ `backend/pytest.ini`、`backend/requirements-dev.txt`（pytest / httpx）
+- `conftest.py` 隔离方案：临时 DB 文件 + CLIP 假向量桩 + SMTP 阻断 + 上传目录重定向；**不加载 ~600MB 模型、不触网**
+- 运行：`venv\Scripts\python.exe -m pytest tests/ -v`
+
+### 2. P0 缺陷修复 ✅
+| 编号 | 缺陷 | 修复 |
+|------|------|------|
+| R1 | 禁用用户已签发 JWT 仍可越权访问全部接口 | `dependencies/auth.py` 增补 `role=='disabled'` → 403 拦截 |
+| R2 | 「今日失物/今日拾物」东八区 00:00–08:00 统计错位 | `api/stats.py` 改为北京时间当日的 UTC 半开区间范围比较 |
+| R3 | `bcrypt` 未直接声明依赖（`passlib` 实际未使用） | `requirements.txt` 直接将 `passlib[bcrypt]` 替换为 `bcrypt==5.0.0` |
+
+### 3. 文档与代码对齐 ✅
+- `PROJECT.md`：§2 目录树 / §3.3 匹配权重与阈值 / §3.4 自动匹配阈值 / §3.6 轮询说明 / §4 补公告与计数表 / §5 补公告端点与端点总数 36 / §8.4 环境变量 / §9 算法公式 / §10 增自动化测试 / §11 版本演进
+- `README.md`：移除已删除的 `POST /api/me/avatar`、补 `GET /api/me/history`、补迭代路线 V3.3.1–V3.3.3、新增「运行测试」
+- 逐条对照见 [docs/review/doc-sync-2026-09-12.md](docs/review/doc-sync-2026-09-12.md)
+
+### 文档勘误
+- 早期 V3.3 条目记载「❌ 移除分类占比和累计活跃」，但**代码实际仍保留分类占比**（`api/stats.py` 仍返回 `categories`，`views/HomeView.vue` 仍用 ECharts 渲染饼图）。历史条目按惯例保留原文，此处注明其与现状不符。
+
+> **当前版本**: V3.3.3 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS / PWA
+
+---
+
+## V3.4.0 — 语义与性能加固 (2026-09-12)
+
+### 迭代目标
+在架构评审（P0 三项已随 V3.3.3 修复）基础上，落地增量修复设计 [docs/review/design-fix-batch-2026-09-12.md](docs/review/design-fix-batch-2026-09-12.md) 中确认的 **C1 / C2 / R4 / R5 / R6 / R7 / R9 / R10 / O2** 整改项，重点是**账户状态语义拆分**、**颜色特征持久化**、**匹配性能与异步化**、**路由与契约健壮化**，并将回归测试扩充至 **70 用例**。
+
+> 依据：[架构评审报告](docs/review/architecture-review-2026-09-12.md)、[增量修复设计](docs/review/design-fix-batch-2026-09-12.md)。本轮以**后端 schema / 语义 / 契约**为主，前端除路由守卫状态字段外无改动；文档同步见 [变更总结](docs/review/v3.4.0-change-summary-2026-09-12.md)。
+
+### 1. 数据结构变更（S1）✅
+| 变更 | 说明 |
+|------|------|
+| `users.status` 新增 | 账号状态 `active`/`disabled`/`deleted`；迁移在「加列」分支内完成旧值折算（`role='disabled'` → `status='disabled'` 且 `role='user'`；`role='deleted'` → `status='deleted'` 且 `role='user'`；其余 `active`） |
+| `items.color_vector` 新增 | 27 维 RGB 颜色直方图（JSON），用于颜色相似度增强与跨请求复用 |
+| 迁移方式 | `database.py:126-143` 幂等迁移（`PRAGMA table_info` 探测后按需 `ALTER TABLE ADD COLUMN`），可重复执行 |
+
+### 2. 账户状态语义拆分（S2 / C2）✅
+- `role` 收敛为 `user`/`admin`；禁用/注销迁移到 `status`
+- `PUT /api/admin/users/{id}` 的 `toggle_status` **只翻转 `status`、保留 `role`**
+- 登录（`api/auth.py`）按 `status` 分流：`disabled` → 403「账号已被禁用，请联系管理员」；`deleted` → 403「账号已注销」
+- 前端路由守卫判定字段由 `role==='disabled'` 改为 `status==='disabled'`
+
+### 3. 公开接口账号状态校验（C1）✅
+- 新增 `resolve_optional_viewer(request)`：公开接口对携带 token 的禁用/注销用户**降级为匿名**（返回公开内容而非 403）
+- 应用于 `GET /api/items/`、`GET /api/items/{id}`
+
+### 4. 匹配性能与异步（S3 / R4 / R5）✅
+- **R4** 颜色特征持久化到 `items.color_vector`：发布/换图时计算，匹配时优先读取、缺失时回退现算
+- **R5** 邮件与自动匹配通知改为 `BackgroundTasks` 异步投递，避免阻塞请求
+
+### 5. 路由 / 契约 / 健壮化（S4 / R6 / R7 / R9）✅
+- **R6** 物品路由改用 Starlette `{item_id:int}` 路径转换器，消除 `/{id}` 与其子路径的匹配顺序问题
+- **R7** 去除静默吞异常，关键路径显式记录日志
+- **R9** 请求体改用 Pydantic 模型（宽松声明），非法参数保持返回 **400**（而非 422），维持既有契约
+
+### 6. 清理与版本（S5 / R10 / O2）✅
+- **R10** 依赖声明与配置清理（移除失效 CORS 配置项）；`APP_VERSION` 提升至 `3.4.0`
+- **O2** 管理员不能禁用/删除**自己的**账号（target==current → 400）；允许操作其他管理员账号
+
+### 7. 文档对齐 ✅
+- `PROJECT.md` / `README.md` / `SRS.md` 同步改写至 **v3.4.0**
+- 7 份根目录产品文档归档至 `docs/product/`（英文 slug、加历史横幅）；评审类归位 `docs/review/`、图件归位 `docs/diagrams/`
+- 新建 `docs/README.md` 文档总索引、`docs/review/v3.4.0-change-summary-2026-09-12.md` 变更总结
+- ⚠️ **路径迁移说明**：本版将原 `docs/*.md` 迁入 `docs/review/`（图件迁入 `docs/diagrams/`）；更早条目中出现的 `docs/architecture-review-2026-09-12.md`、`docs/doc-sync-2026-09-12.md` 等旧路径，即对应 `docs/review/` 下同名文件（上述链接已同步修正为现行路径）。
+
+### 自动化测试
+| 测试文件 | 用例数 |
+|----------|:--:|
+| `test_auth.py` | 8 |
+| `test_items.py` | 14 |
+| `test_admin.py` | 7 |
+| `test_stats.py` | 4 |
+| `test_adversarial_auth.py` | 6 |
+| `test_adversarial_stats.py` | 4 |
+| `test_adversarial_meta.py` | 2 |
+| `test_adversarial_admin_toggle.py` | 1 |
+| `test_adversarial_batch_fixes.py` | 24 |
+| **总计** | **70**（70 passed / 0 failed ✅）|
+
+### 数据库备份
+- 升级前备份：`backend/lost_found.db.bak-20260912`
+
+---
+
+> **当前版本**: V3.4.0 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS + PWA
+
+---
+
+## V3.4.1 — 契约补齐 (2026-09-12)
+
+### 迭代目标
+补齐 v3.4.0 评审遗留的最后一处一致性问题：`POST /api/items/match` 此前在后端**无鉴权依赖**（仅依赖前端路由守卫），本轮将其补齐为需登录端点，使接口契约与页面访问控制一致。
+
+> 历史背景：v3.4.0 文档（`SRS.md` §5.2 / §9.3、`PROJECT.md` §11.1）曾如实标注该端点为「无鉴权」遗留项；本轮即针对该项的收尾修复。
+
+### 1. 补齐 `POST /api/items/match` 鉴权 ✅
+- 源码：`backend/app/api/items.py:458` → `async def match_items(req: MatchRequest, current_user: dict = Depends(get_current_user)):`
+- 实测契约：
+  - 缺 `Authorization` 头 → **403** `{"detail":"Not authenticated"}`（`HTTPBearer` auto_error）
+  - token 非法 / 过期 → **401** `{"detail":"无效或过期的 Token"}`
+- 前端无改动：`/match` 路由本就有 `requiresAuth` 守卫，axios 拦截器自动附带 token
+
+### 2. 版本与测试 ✅
+- `backend/app/config.py:8`：`APP_VERSION` → `"3.4.1"`（OpenAPI `version` 随之）
+- 更新 3 条路由顺序用例 + 新增 2 条鉴权契约用例（`backend/tests/test_items.py`：14 → 16）
+- **72 passed / 0 failed**（原 70）
+
+---
+
+> **当前版本**: V3.4.1 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS + PWA
+
+---
+
+## V3.5.0 — 中文化模型 + 图文跨模态检索 (2026-09-14)
+
+### 迭代目标
+把「以文搜图」从**名不副实**变为**真能力**：默认模型由英文预训练的 `open_clip ViT-B-32` 换为中文图文跨模态的 **Chinese-CLIP ViT-H-14**（OFA-Sys `cn_clip`），并**启用 img·text 跨模态通道**（此前系统只比两个自相似度、从不计算图文对齐）；同时把阈值/权重 config 化、可回滚、可标定，并加装维度错配的运行期防线。保留 `open_clip` 作为**可一键回滚**后端。
+
+> 依据：增量 PRD [docs/product/PRD-v3.5.0-incremental.md](docs/product/PRD-v3.5.0-incremental.md)、架构设计 [docs/review/v3.5.0-incremental-design.md](docs/review/v3.5.0-incremental-design.md)、QA 回归 [docs/review/qa-v3.5.0-regression-2026-09-13.md](docs/review/qa-v3.5.0-regression-2026-09-13.md)。
+
+### 1. 模型双后端抽象（D1）✅
+- ➕ `backend/app/clip_backend.py`：新增 `ClipBackend` **协议**（`encode_image` / `encode_text` / `embed_dim` / `is_available`）+ `OpenClipBackend`（回滚，行为等价 v3.4.1）+ `ChineseClipBackend`（默认）+ `get_backend()` **工厂**（按 `settings.CLIP_BACKEND` 选择）。
+- 默认 `CLIP_BACKEND="cn_clip"` → **ViT-H-14**（`embed_dim=1024`，**联合投影维度**，非视觉宽度 1280、非 512）；回滚 `"open_clip"` → **ViT-B-32**（512 维）。
+- **未知 `CLIP_BACKEND` 取值 → 抛 `RuntimeError`，禁止静默降级**（新旧向量空间不兼容，静默降级会拿新查询向量比旧库向量）。
+- `cn_clip` 为 **lazy import**（仅在后端 `_ensure_loaded` 内导入），保证未安装该包时 pytest **收集阶段不崩**。
+- `CLIPService` 退化为**兼容壳**，公开方法名/签名冻结（`_initialize` / `get_image_feature` / `get_text_feature` / `get_color_histogram` / `compute_color_similarity` / `compute_weighted_similarity`）。
+- 安装：`cn_clip` 须 **`pip install cn_clip --no-deps`**（其 `setup.py` 硬钉 `lmdb==1.3.0`，Windows 无 wheel 会编译失败；推理不需要 lmdb）；权重默认走 **ModelScope**（`CLIP_CN_USE_MODELSCOPE=True`），或置 `CLIP_CN_CKPT_PATH` 指向本地 `.pt` 实现**运行期零网络**。
+
+### 2. 跨模态四通道打分 + 阶段5 重构（D2 / D3）✅
+- 打分通道由「图-图 0.50 / 文-文 0.30 / 色 0.20」三自相似，扩为**四通道跨模态**：
+  - `sim_img_img`（`q_img·t_img`）权重 **0.35**；
+  - `sim_cross`（**0.35**）= 可用方向加权平均，内权重 `W_CROSS_T2I`（`q_text·t_img`）/ `W_CROSS_I2T`（`q_img·t_text`）各 **0.5**；
+  - `sim_text_text` 权重 **0.15**；`sim_color` 权重 **0.15**。
+  - 缺维度按比例**动态归一化**（权重和恒为 1），全缺 → `0.0`。
+- **阶段5 升级为真跨模态一致性惩罚**：`cc = min(可用跨模态方向)`；仅当 `max(sim_ii, sim_tt) ≥ CROSS_PENALTY_SELF_HIGH`（0.55）触发；**只降权、对 cc 单调**，因子 ∈ `[CROSS_PENALTY_FLOOR, 1.0]`（默认下界 **0.50**，即最大对折）；`CROSS_PENALTY_ENABLED` 可一键关闭。旧「两自相似比大小」的假交叉验证**移除**。
+- 全部权重/阈值/开关**经 config 驱动**（`app/config.py` 新增 `MATCH_W_*` / `MATCH_W_CROSS_*` / `CROSS_PENALTY_*` 等），代码内不硬编码。
+
+### 3. 匹配接口契约（不新增端点）✅
+- `POST /api/items/match` 结果项**新增 `match_source`**（∈ `text` / `image` / `mixed`，按查询实际可用输入判定）；
+- 响应顶层**新增 `legend: {high, mid}`**，默认由 `MATCH_THRESHOLD_AUTO` / `MATCH_THRESHOLD_MANUAL` **派生**（可由 `MATCH_LEGEND_HIGH` / `MATCH_LEGEND_MID` 覆盖），**修掉前端硬编码图例**（v3.4.1 前端 0.75/0.5 vs 后端 0.20 的割裂）；
+- **403/401 契约冻结不变**：缺 `Authorization` → 403 `{"detail":"Not authenticated"}`；非法 token → 401；
+- 手动阈值默认值统一走 `_match_threshold_default()`（**每次访问 settings**，消除导入期快照导致的「配置变更只在图例生效」割裂）。
+
+### 4. 阈值重标定与可回滚 ✅
+- 三档阈值重设（**均为初值**）：`MATCH_THRESHOLD_MANUAL` **0.20 → 0.35**、`AUTO` **0.65 → 0.55**、`EMAIL` **0.75 → 0.70**；
+- 新增 `AUTO_MATCH_ENABLED` 自动推送总开关（灰度期置 false，重嵌入期间暂停推送）；
+- 自动匹配路径新增**维度预检**：库中向量维度 ≠ 当前模型维度 → 记 `ERROR` 并跳过（避免被静默吞成「未找到」）。
+
+### 5. 运维脚本（3 个新增）✅
+- ➕ `backend/scripts/reembed_all_vectors.py`：**全量重嵌入** `image_vector` / `text_vector`——库文件**冷备**（`lost_found.db.bak-*`）/ `--dry-run`（只读 + 输出 **ETA**）/ **断点续跑**（`--resume`，含 fingerprint 校验）/ **幂等**；`color_vector`（27 维，与模型无关）不动。
+- ➕ `backend/scripts/calibrate_thresholds.py`：**PR 曲线** + `Recall@1/3/5/10` + `--grid` 权重网格（步长 0.05、和 = 1.0）+ `--degenerate-check`（确认 `sim_ii ≡ 1.0` 的接线自检）/ `--stats`（结构自检，不加载模型）。
+- ➕ `backend/scripts/backfill_color_vectors.py`：回填历史 `items.color_vector`（27 维）。
+
+### 6. 评测集 ✅
+- ➕ `backend/eval/eval_set_v3.5.0.json`：**60 对 = 30 正 / 30 负**（40 对纯文查询 + 20 对图片查询）；其中 **6 对「同图自比」退化对**（`sim_ii ≡ 1.0`）已在标定计算中**剔除** → **有效样本 24 正 / 30 负**。
+- 小样本免责继续有效：`n` 小、置信区间宽，阈值须随真实数据增长**持续复标**。
+
+### 7. 维度错配的运行期防线（R4 / R2）✅
+- **编码后断言**：`app/clip_backend.py::_assert_embed_dim`——每个 `encode_*` 在 L2 归一化后、返回前断言输出维度 == 声明的 `embed_dim`，不符抛 `RuntimeError`（拦下「声明 512、实际 1024」类契约漂移）；
+- **打分前预检**：`/match` 在逐条打分前调用 `_assert_vector_dims_match`，库中向量维度 ≠ 当前模型维度 → **HTTP 500**（提示先运行 `reembed_all_vectors.py`）；自动匹配路径同样预检 → 记 `ERROR`。
+- 动机：原先 `np.dot` 维度不符被 `except: continue` **静默吞成空结果**，与「真的没找到」外观一致 → 全站匹配静默失效。
+
+### 8. 文档与测试 ✅
+- 文档同步至 v3.5.0：`PROJECT.md` / `SRS.md` / `README.md` / `docs/README.md` / 增量 PRD（含 ViT-H-14 维度 512 → **1024 联合投影**修正）。
+- 自动化测试扩至 **185 用例（183 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` 等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例。
+
+### ⚠️ 如实声明（重要）
+- **阈值与权重均为初值、尚未用真实模型标定**；须经 `calibrate_thresholds.py`（`--grid` + `Recall@3 不下降` 断言）回填后，方可视为收敛，**不得表述为「已定稿 / 已可靠标定」**；
+- **真实 Chinese-CLIP 权重（3.83GB）从未在本机下载验证**（本机带宽约 2.2 小时）；本版**全部结论均为「已打桩验证」**，「已用真实模型验证」这一档**为空**；
+- 换模型后**必须重嵌入全库向量**（`image_vector` / `text_vector`）；**两代向量空间不兼容、不可混用**（`color_vector` 27 维不受影响、不重算）；
+- 历史 `matches.similarity_score` 存的是**旧口径**分数，展示时不得与新的「相似度 XX%」并列比较。
+
+### 回归基线
+- 升级前备份：`backend/lost_found.db.bak-*`（重嵌入脚本自动冷备）。
+
+---
+
+> **当前版本**: V3.5.0 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS + PWA

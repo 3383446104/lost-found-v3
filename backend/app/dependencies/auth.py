@@ -1,5 +1,5 @@
 # app/dependencies/auth.py
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
@@ -43,7 +43,7 @@ async def get_current_user(
     # 使用上下文管理器查询用户是否存在
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, role FROM users WHERE id = ?', (payload.get('user_id'),))
+        cursor.execute('SELECT id, role, status FROM users WHERE id = ?', (payload.get('user_id'),))
         user = cursor.fetchone()
 
     if not user:
@@ -51,10 +51,15 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户不存在"
         )
-    if user['role'] == 'deleted':
+    if user['status'] == 'deleted':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="账号已注销"
+        )
+    if user['status'] == 'disabled':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="账号已被禁用，请联系管理员"
         )
 
     # 可选：记录成功访问日志（调试时用）
@@ -79,3 +84,30 @@ async def get_current_admin(
         )
 
     return current_user
+
+
+def resolve_optional_viewer(request: Request) -> Dict[str, Any] | None:
+    """公开接口的可选身份解析（C1）。
+
+    用于 ``GET /items/`` 与 ``GET /items/{id}`` 这类**公开**端点：携带合法且
+    账号状态为 ``active`` 的 token 时返回 ``{"user_id": int, "role": str}``，
+    否则（无 token / token 非法 / 用户不存在 / status != 'active'）一律返回
+    ``None``（降级为匿名），从而让 disabled / deleted 用户不再以「属主」身份
+    看到未审核数据。
+
+    与 ``get_current_user`` 的区别：本函数**不抛异常**——公开接口允许匿名访问，
+    只是把禁用/注销身份降级掉。返回 ``role`` 以便 ``get_item`` 仍能识别管理员。
+    """
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    payload = verify_token(auth[7:])
+    if not payload:
+        return None
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, role, status FROM users WHERE id=?", (payload.get("user_id"),))
+        row = cur.fetchone()
+    if not row or row["status"] != "active":
+        return None  # disabled / deleted / 不存在 → 降级为匿名
+    return {"user_id": row["id"], "role": row["role"]}

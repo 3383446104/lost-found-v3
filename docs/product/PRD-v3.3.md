@@ -1,8 +1,14 @@
+> ⚠️ **历史快照 · v3.3 产品阶段** — 本文档为 v3.3 期间的产品设计快照，**不代表当前实现**。
+> 系统的数据库 schema、角色模型（`role` ∈ {user, admin} + `status` ∈ {active, disabled, deleted}）、匹配算法权重与阈值、接口契约，**一律以仓库根 `PROJECT.md` 与源码（v3.4.0）为准**。
+> 阅读时如遇与代码冲突，以代码为准；关键冲突点已在本页就地加脚注（`📌 v3.4.0 更正`）。
+
+---
+
 # 校园智能失物检索平台 — v3.3 产品需求文档 (PRD)
 
 > **版本**：v1.0 | **日期**：2026-06-30 | **作者**：产品团队
 >
-> **上游文档**：[竞品分析报告](./校园智能失物检索平台_竞品分析与产品定位报告.md) | [用户角色与场景](./校园智能失物检索平台_核心用户角色与场景设计.md) | [SRS v3.2](./lost-found-v3/SRS.md)
+> **上游文档**：[竞品分析报告](./competitive-analysis.md) | [用户角色与场景](./personas-and-scenarios.md) | [SRS](../../SRS.md)
 
 ---
 
@@ -130,6 +136,8 @@ v3.3:
 
 #### 禁用用户登录拦截
 `POST /api/login` 增加检查：
+
+> 📌 **v3.4.0 更正**：账号状态已从 `role` 拆分到独立 `status` 列，此判定应为 `if db_user['status'] == 'disabled'`（源码 `app/api/auth.py:84`）；`role` 现仅含 `user`/`admin`。
 ```python
 if db_user['role'] == 'disabled':
     raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
@@ -610,6 +618,8 @@ GET /api/stats/dashboard
 
 v3.3 不涉及数据库表结构修改。所有变更均为逻辑层修改。
 
+> 📌 **v3.4.0 更正**：v3.4.0 **确有 schema 变更**——`users` 新增 `status TEXT DEFAULT 'active'`，`items` 新增 `color_vector TEXT`（幂等迁移见 `app/database.py:126-143`）。本文档「无 Schema 变更」仅对 v3.3 成立。
+
 ### 6.2 数据迁移说明
 
 | 项目 | 说明 |
@@ -679,7 +689,7 @@ v3.3 不涉及数据库表结构修改。所有变更均为逻辑层修改。
 > **文档维护者**：产品团队 | **最后更新**：2026-06-30
 >
 > **关联文档**：
-> - [竞品分析与产品定位报告](./校园智能失物检索平台_竞品分析与产品定位报告.md)
-> - [核心用户角色与场景设计](./校园智能失物检索平台_核心用户角色与场景设计.md)
-> - [SRS v3.2](./lost-found-v3/SRS.md)
-> - [项目文档 v3.2](./lost-found-v3/PROJECT.md)
+> - [竞品分析与产品定位报告](./competitive-analysis.md)
+> - [核心用户角色与场景设计](./personas-and-scenarios.md)
+> - [SRS](../../SRS.md)
+> - [项目文档](../../PROJECT.md)

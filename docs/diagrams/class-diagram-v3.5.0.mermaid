@@ -1,0 +1,125 @@
+%% v3.5.0 增量：后端模型抽象层 + 跨模态打分 类图
+%% 对应设计文档 docs/review/v3.5.0-incremental-design.md §3
+classDiagram
+    %% ---- D1：后端抽象层（策略 + 工厂）----
+    class ClipBackend {
+        <<Protocol>>
+        +str name
+        +int embed_dim
+        +is_available() bool
+        +encode_image(image_path) Optional~np.ndarray~
+        +encode_text(text) Optional~np.ndarray~
+    }
+    class OpenClipBackend {
+        +str name = "open_clip"
+        +int embed_dim = 512
+        -_model
+        -_preprocess
+        -_tokenizer
+        -_device
+        +_ensure_loaded()
+        +encode_image(image_path) np.ndarray
+        +encode_text(text) np.ndarray
+        +is_available() bool
+    }
+    class ChineseClipBackend {
+        +str name = "cn_clip"
+        +int embed_dim = 512
+        -_model
+        -_preprocess
+        -_context_length = 52
+        -_use_modelscope = True
+        -_ckpt_path = ""
+        -_device
+        +_ensure_loaded()  %% lazy import cn_clip
+        +encode_image(image_path) np.ndarray
+        +encode_text(text) np.ndarray
+        +is_available() bool
+    }
+    class BackendFactory {
+        +get_backend(settings) ClipBackend
+    }
+    ClipBackend <|.. OpenClipBackend : implements
+    ClipBackend <|.. ChineseClipBackend : implements
+    BackendFactory ..> ClipBackend : creates
+
+    %% ---- 兼容壳（公开方法名冻结，conftest 桩依赖）----
+    class CLIPService {
+        -CLIPService _instance
+        -ClipBackend _backend
+        +__new__()
+        +_initialize()
+        +get_backend() ClipBackend
+        +get_image_feature(path) np.ndarray
+        +get_text_feature(text) np.ndarray
+        +get_color_histogram(path) np.ndarray
+        +compute_color_similarity(h1,h2) float
+        +compute_weighted_similarity(...) float
+    }
+    CLIPService --> ClipBackend : delegates
+
+    %% ---- 打分内部通道（新增跨模态）----
+    class SimilarityChannels {
+        +float sim_img_img
+        +float sim_text_text
+        +float sim_cross_t2i  %% cos(query_text, target_img)
+        +float sim_cross_i2t  %% cos(query_img, target_text)
+        +float sim_cross
+        +float sim_color
+        +bool has_img_img
+        +bool has_text_text
+        +bool has_cross
+        +bool has_color
+    }
+    CLIPService ..> SimilarityChannels : builds
+
+    %% ---- 契约 ----
+    class MatchRequest {
+        +Optional~str~ image_path
+        +Optional~str~ text
+        +str target_type
+        +Optional~float~ threshold
+        +Optional~str~ category
+        +Optional~str~ location
+    }
+    class MatchResultItem {
+        +int id
+        +str title
+        +str description
+        +str category
+        +str location
+        +Optional~str~ image_path
+        +float similarity
+        +str match_source  %% text|image|mixed
+        +str created_at
+    }
+    class Legend {
+        +float high  %% 默认派生 = MATCH_THRESHOLD_AUTO
+        +float mid   %% 默认派生 = MATCH_THRESHOLD_MANUAL
+    }
+    class MatchResponse {
+        +List~MatchResultItem~ matches
+        +Legend legend
+    }
+    MatchResponse "1" o-- "0..*" MatchResultItem
+    MatchResponse "1" o-- "1" Legend
+
+    %% ---- 脚本 ----
+    class ReembedRunner {
+        +run(db_path, encoder, dry_run, backup_only, resume, batch_size) ReembedStats
+        -backup_db(db_path) str
+        -pending_items(conn) list
+    }
+    class ThresholdCalibrator {
+        +load_eval_set(path) EvalSet
+        +evaluate(threshold, with_penalty) Metrics
+        +suggest_thresholds(metrics) dict
+        +recall_at_k(ranks, k) float
+        +grid_search_weights(eval_set) dict
+    }
+    ReembedRunner --> CLIPService : encoder(注入;生产=单例)
+    ThresholdCalibrator --> CLIPService : 复用同一公式
+
+    note for ChineseClipBackend "lazy import cn_clip；与 open_clip 顶层命名空间隔离，可共存回滚；权重默认 ModelScope 或本地 .pt"
+    note for CLIPService "公开方法名冻结：conftest 靠 monkeypatch 这些名字阻断真实模型"
+    note for MatchResponse "legend 默认从阈值派生，修掉前端硬编码图例不一致；不新增端点"

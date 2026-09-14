@@ -48,6 +48,7 @@ def init_db():
                 phone TEXT,
                 email TEXT,
                 role TEXT DEFAULT 'user',
+                status TEXT DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -63,6 +64,7 @@ def init_db():
                 image_path TEXT,
                 image_vector TEXT,
                 text_vector TEXT,
+                color_vector TEXT,
                 contact TEXT,
                 location TEXT,
                 status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claimed', 'done', 'rejected', 'closed')),
@@ -121,6 +123,25 @@ def init_db():
             cursor.execute("ALTER TABLE users ADD COLUMN avatar_path TEXT")
             logger.info("迁移成功：users 表已添加 avatar_path 列")
 
+        # ---------- 迁移：账户状态拆分 —— users 新增 status（C2）----------
+        # 幂等来源：数据映射写在本分支内，列一旦存在则整段跳过，重复启动不再改写。
+        cursor.execute("PRAGMA table_info(users)")
+        user_columns = [row['name'] for row in cursor.fetchall()]
+        if 'status' not in user_columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'")
+            # 一次性数据映射（仅在「新增列」分支内执行，故只跑一次）
+            cursor.execute("UPDATE users SET status='disabled', role='user' WHERE role='disabled'")
+            cursor.execute("UPDATE users SET status='deleted',  role='user' WHERE role='deleted'")
+            cursor.execute("UPDATE users SET status='active'                  WHERE status IS NULL")
+            logger.info("迁移成功：users 表已添加 status 列并完成一次性数据映射")
+
+        # ---------- 迁移：items 新增 color_vector（R4 颜色向量持久化）----------
+        cursor.execute("PRAGMA table_info(items)")
+        item_columns = [row['name'] for row in cursor.fetchall()]
+        if 'color_vector' not in item_columns:
+            cursor.execute("ALTER TABLE items ADD COLUMN color_vector TEXT")
+            logger.info("迁移成功：items 表已添加 color_vector 列")
+
         # ---- 统计计数表（持久化计数器，不受物品删除影响） ----
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stats_counters (
@@ -157,7 +178,6 @@ def init_db():
 
         # ---- 目录准备 ----
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
-        os.makedirs(os.path.join(settings.UPLOAD_FOLDER, "avatars"), exist_ok=True)
 
         # ---- 索引 ----
         # 复合索引（覆盖 user_id + is_read 查询）

@@ -154,8 +154,8 @@
             <el-table-column prop="role" label="角色" width="110">
               <template #default="{ row }">
                 <el-tag v-if="row.role==='admin'" type="success" size="small">管理员</el-tag>
-                <el-tag v-else-if="row.role==='disabled'" type="danger" size="small">已禁用</el-tag>
-                <el-tag v-else-if="row.role==='deleted'" type="info" size="small">已注销</el-tag>
+                <el-tag v-else-if="row.status==='disabled'" type="danger" size="small">已禁用</el-tag>
+                <el-tag v-else-if="row.status==='deleted'" type="info" size="small">已注销</el-tag>
                 <el-tag v-else size="small">用户</el-tag>
               </template>
             </el-table-column>
@@ -164,7 +164,7 @@
             <el-table-column prop="created_at" label="注册时间" width="170" />
             <el-table-column label="操作" width="110" align="center">
               <template #default="{ row }">
-                <template v-if="row.role !== 'deleted'">
+                <template v-if="row.status !== 'deleted'">
                   <el-dropdown @command="(cmd) => handleUserAction(row, cmd)" trigger="click">
                     <el-button size="small">操作 <el-icon><ArrowDown /></el-icon></el-button>
                     <template #dropdown>
@@ -175,10 +175,10 @@
                         <el-dropdown-item command="unset-admin" v-if="row.role==='admin'">
                           <el-icon><CloseBold /></el-icon>取消管理员
                         </el-dropdown-item>
-                        <el-dropdown-item command="disable" v-if="row.role==='user'||row.role==='admin'">
+                        <el-dropdown-item command="disable" v-if="row.status==='active'">
                           <el-icon><Remove /></el-icon>禁用账号
                         </el-dropdown-item>
-                        <el-dropdown-item command="enable" v-if="row.role==='disabled'">
+                        <el-dropdown-item command="enable" v-if="row.status==='disabled'">
                           <el-icon><CircleCheck /></el-icon>启用账号
                         </el-dropdown-item>
                         <el-dropdown-item command="delete" divided style="color:var(--el-color-danger)">
@@ -560,7 +560,7 @@ const handleDeleteAnn = async (id) => {
   } catch { }
 }
 
-const rowClassName = ({ row }) => row.role === 'deleted' ? 'row-deleted' : ''
+const rowClassName = ({ row }) => row.status === 'deleted' ? 'row-deleted' : ''
 
 onMounted(() => { loadItems(); loadUsers(); loadAnnouncements() })
 </script>

@@ -1,5 +1,6 @@
 # app/api/admin.py
 import logging
+import os
 from enum import Enum
 from typing import Optional
 
@@ -11,7 +12,13 @@ from ..dependencies.auth import get_current_admin
 from ..services.match_service import auto_match_and_notify
 from ..utils.time_utils import format_beijing_time
 from ..config import settings
-from ..models.common import PagedResponse   # 新增导入
+from ..models.admin import (
+    BatchApproveRequest,
+    UserUpdateRequest,
+    AdminCreateUserRequest,
+    BatchItemsRequest,
+    ItemStatusUpdate,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -86,12 +93,12 @@ async def get_pending_items(
 # ---------- 批量审核 ----------
 @router.post("/reviews/batch-approve")
 async def batch_approve_items(
-    payload: dict,
+    payload: BatchApproveRequest,
     background_tasks: BackgroundTasks,
     current_admin: dict = Depends(get_current_admin),
 ):
     """批量审核通过（驳回不支持批量，需逐一填写理由）"""
-    item_ids = payload.get("item_ids", [])
+    item_ids = payload.item_ids
     if not item_ids:
         raise HTTPException(400, "请提供要审核的物品 ID 列表")
     if len(item_ids) > 50:
@@ -142,7 +149,7 @@ async def batch_approve_items(
     }
 
 
-@router.put("/reviews/{item_id}")
+@router.put("/reviews/{item_id:int}")
 async def review_item(
     item_id: int,
     payload: ReviewAction,
@@ -228,7 +235,7 @@ async def review_item(
                     'INSERT INTO notifications (user_id, title, content, link) VALUES (?,?,?,?)',
                     (item_info['user_id'], notif_title, notif_content, f"/items/{item_id}")
                 )
-                # 邮件通知
+                # 邮件通知（后台任务，不阻塞事件循环；send_email 内部已捕获异常）
                 if item_info['email']:
                     try:
                         from ..utils.email_utils import send_email
@@ -241,7 +248,13 @@ async def review_item(
                         <p>物品已退回草稿箱，您可以在发布页面重新编辑后提交。</p>
                         <p style="margin:24px 0;"><a href="{settings.BASE_URL}/publish?edit={item_id}" style="display:inline-block;padding:10px 24px;background:#D32F2F;color:#fff;text-decoration:none;border-radius:8px;">重新编辑</a></p>
                         </div></body></html>"""
-                        send_email(item_info['email'], f"【校园失物检索】您的物品 '{item_info['title']}' 未通过审核", body, html=True)
+                        background_tasks.add_task(
+                            send_email,
+                            item_info['email'],
+                            f"【校园失物检索】您的物品 '{item_info['title']}' 未通过审核",
+                            body,
+                            True,
+                        )
                     except Exception as e:
                         logger.warning(f"驳回邮件发送失败: {e}")
 
@@ -268,7 +281,7 @@ async def get_users(
         params = []
 
         if not include_deleted:
-            wheres.append("role != 'deleted'")
+            wheres.append("status != 'deleted'")
 
         if keyword:
             wheres.append("(username LIKE ? OR phone LIKE ? OR email LIKE ?)")
@@ -281,7 +294,7 @@ async def get_users(
             total = cur.fetchone()["total"]
             offset = (page - 1) * size
             cur.execute(
-                f"""SELECT id, username, role, phone, email, created_at,
+                f"""SELECT id, username, role, status, phone, email, created_at,
                    CASE
                      WHEN username = ? THEN 100
                      WHEN username LIKE ? THEN 80
@@ -298,45 +311,46 @@ async def get_users(
             total = cur.fetchone()["total"]
             offset = (page - 1) * size
             cur.execute(
-                f"SELECT id, username, role, phone, email, created_at FROM users WHERE {w} ORDER BY id DESC LIMIT ? OFFSET ?",
+                f"SELECT id, username, role, status, phone, email, created_at FROM users WHERE {w} ORDER BY id DESC LIMIT ? OFFSET ?",
                 params + [size, offset]
             )
         users = [dict(r) for r in cur.fetchall()]
     return {"total": total, "page": page, "size": size, "users": users}
 
 
-@router.put("/users/{user_id}")
+@router.put("/users/{user_id:int}")
 async def update_user(
     user_id: int,
-    payload: dict,
+    payload: UserUpdateRequest,
     current_admin: dict = Depends(get_current_admin),
 ):
-    """管理员修改用户角色或禁用"""
-    action = payload.get("action")
+    """管理员修改用户角色或启用/禁用状态"""
+    action = payload.action
     if action not in ("set_role", "toggle_status"):
         raise HTTPException(400, "action 必须为 set_role 或 toggle_status")
+
+    # O2：禁止管理员禁用自己，避免把自己锁死（与 delete_user 的「不能删除自己」一致）
+    if action == "toggle_status" and user_id == current_admin["user_id"]:
+        raise HTTPException(400, "不能禁用自己的账号")
 
     with get_db_connection() as conn:
         cur = conn.cursor()
         # 禁止操作已注销用户
-        cur.execute("SELECT role FROM users WHERE id=?", (user_id,))
+        cur.execute("SELECT role, status FROM users WHERE id=?", (user_id,))
         u = cur.fetchone()
         if not u:
             raise HTTPException(404, "用户不存在")
-        if u["role"] == "deleted":
+        if u["status"] == "deleted":
             raise HTTPException(400, "已注销用户不可操作")
         if action == "set_role":
-            role = payload.get("role", "user")
+            role = payload.role if payload.role is not None else "user"
             if role not in ("user", "admin"):
                 raise HTTPException(400, "role 必须为 user 或 admin")
             cur.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
         elif action == "toggle_status":
-            cur.execute("SELECT role FROM users WHERE id=?", (user_id,))
-            u = cur.fetchone()
-            if not u:
-                raise HTTPException(404, "用户不存在")
-            new_role = "user" if u["role"] == "disabled" else "disabled"
-            cur.execute("UPDATE users SET role=? WHERE id=?", (new_role, user_id))
+            # 仅翻转 status（active ↔ disabled），role 保持不变（C2 核心修复）
+            new_status = "active" if u["status"] == "disabled" else "disabled"
+            cur.execute("UPDATE users SET status=? WHERE id=?", (new_status, user_id))
         if cur.rowcount == 0:
             raise HTTPException(404, "用户不存在")
     return {"success": True, "message": "操作成功"}
@@ -344,17 +358,17 @@ async def update_user(
 
 @router.post("/users")
 async def create_user(
-    payload: dict,
+    payload: AdminCreateUserRequest,
     current_admin: dict = Depends(get_current_admin),
 ):
     """管理员新增用户"""
-    username = payload.get("username", "").strip()
-    password = payload.get("password", "").strip()
+    username = payload.username.strip()
+    password = payload.password.strip()
     if len(username) < 2 or len(username) > 20:
         raise HTTPException(400, "用户名长度 2-20 位")
     if len(password) < 6 or len(password) > 30:
         raise HTTPException(400, "密码长度 6-30 位")
-    role = payload.get("role", "user")
+    role = payload.role
     if role not in ("user", "admin"):
         raise HTTPException(400, "role 必须为 user 或 admin")
 
@@ -364,11 +378,11 @@ async def create_user(
     with get_db_connection() as conn:
         cur = conn.cursor()
         from ..api.auth import check_unique_contact
-        check_unique_contact(conn, payload.get("phone", "") or "", payload.get("email", "") or "")
+        check_unique_contact(conn, payload.phone or "", payload.email or "")
         try:
             cur.execute(
                 "INSERT INTO users (username, password_hash, phone, email, role) VALUES (?,?,?,?,?)",
-                (username, password_hash, payload.get("phone", ""), payload.get("email", ""), role)
+                (username, password_hash, payload.phone, payload.email, role)
             )
             user_id = cur.lastrowid
         except Exception:
@@ -376,7 +390,7 @@ async def create_user(
     return {"success": True, "user": {"id": user_id, "username": username, "role": role}}
 
 
-@router.delete("/users/{user_id}")
+@router.delete("/users/{user_id:int}")
 async def delete_user(
     user_id: int,
     current_admin: dict = Depends(get_current_admin),
@@ -396,7 +410,7 @@ async def delete_user(
 
         cur.execute("UPDATE items SET status='closed' WHERE user_id=? AND status IN ('active','pending')", (user_id,))
         cur.execute(
-            "UPDATE users SET username=username || '_deleted_' || id, role='deleted' WHERE id=?",
+            "UPDATE users SET username=username || '_deleted_' || id, status='deleted' WHERE id=?",
             (user_id,)
         )
     return {"success": True, "message": f"用户 {u['username']} 已删除"}
@@ -455,14 +469,15 @@ async def get_all_items(
     return {"total": total, "page": page, "size": size, "items": items}
 
 
-@router.put("/items/{item_id}/status")
+@router.put("/items/{item_id:int}/status")
 async def update_item_status(
     item_id: int,
-    payload: dict,
+    payload: ItemStatusUpdate,
+    background_tasks: BackgroundTasks,
     current_admin: dict = Depends(get_current_admin),
 ):
     """管理员直接修改物品状态（pending→active 会强制走审核）"""
-    new_status = payload.get("status")
+    new_status = payload.status
     if new_status not in ("active", "closed", "claimed"):
         raise HTTPException(400, "status 必须为 active/closed/claimed")
 
@@ -484,12 +499,8 @@ async def update_item_status(
             )
             if cur.rowcount == 0:
                 raise HTTPException(409, "状态已被修改，请刷新")
-            from ..services.match_service import auto_match_and_notify
-            import asyncio
-            try:
-                asyncio.create_task(asyncio.to_thread(auto_match_and_notify, item_id, item["type"]))
-            except:
-                pass
+            # 异步匹配：交由框架在响应后统一调度（异常可观测，不再被静默吞掉）
+            background_tasks.add_task(auto_match_and_notify, item_id, item["type"])
         else:
             # 其他状态转换：直接改
             cur.execute(
@@ -509,15 +520,18 @@ async def update_item_status(
 
 @router.post("/items/batch")
 async def batch_items(
-    payload: dict,
+    payload: BatchItemsRequest,
+    background_tasks: BackgroundTasks,
     current_admin: dict = Depends(get_current_admin),
 ):
     """批量操作物品"""
-    ids = payload.get("ids", [])
-    action = payload.get("action")
+    ids = payload.ids
+    action = payload.action
     if not ids or action not in ("approve", "close", "delete"):
         raise HTTPException(400, "参数错误")
 
+    count = 0
+    image_paths_to_remove = []
     with get_db_connection() as conn:
         cur = conn.cursor()
         placeholders = ",".join("?" * len(ids))
@@ -527,36 +541,36 @@ async def batch_items(
                 f"UPDATE items SET status='active', review_status='approved', reviewer_id=?, review_time=CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND review_status='pending'",
                 [current_admin["user_id"]] + ids
             )
-            # 异步匹配
+            # count 取本分支 UPDATE 的真实受影响行数
+            count = cur.rowcount
+            # 异步匹配：交由框架在响应后统一调度
             for iid in ids:
-                try:
-                    cur.execute("SELECT type FROM items WHERE id=?", (iid,))
-                    r = cur.fetchone()
-                    if r:
-                        from ..services.match_service import auto_match_and_notify
-                        import asyncio
-                        asyncio.create_task(asyncio.to_thread(auto_match_and_notify, iid, r["type"]))
-                except:
-                    pass
+                cur.execute("SELECT type FROM items WHERE id=?", (iid,))
+                r = cur.fetchone()
+                if r:
+                    background_tasks.add_task(auto_match_and_notify, iid, r["type"])
 
         elif action == "close":
             cur.execute(
                 f"UPDATE items SET status='closed' WHERE id IN ({placeholders}) AND status IN ('active','pending')",
                 ids
             )
+            # count 取本分支 UPDATE 的真实受影响行数
+            count = cur.rowcount
 
         elif action == "delete":
-            # 先取图片路径
+            # 先取图片路径（事务提交后再删磁盘文件）
             cur.execute(f"SELECT image_path FROM items WHERE id IN ({placeholders})", ids)
-            for r in cur.fetchall():
-                if r["image_path"]:
-                    import os
-                    try:
-                        os.remove(r["image_path"])
-                    except:
-                        pass
+            image_paths_to_remove = [r["image_path"] for r in cur.fetchall() if r["image_path"]]
             cur.execute(f"DELETE FROM items WHERE id IN ({placeholders})", ids)
+            # count 取本分支 DELETE 的真实受影响行数
+            count = cur.rowcount
 
-        count = cur.rowcount
+    # 事务已提交，删除磁盘图片（单条失败记录日志，不静默吞掉）
+    for p in image_paths_to_remove:
+        try:
+            os.remove(p)
+        except OSError as e:
+            logger.warning(f"删除图片失败: {p}, 错误: {e}")
 
     return {"success": True, "count": count}

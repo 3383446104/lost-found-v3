@@ -1,0 +1,4 @@
+# 仅测试用依赖（不要合并进 requirements.txt）
+# 安装：backend\venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+pytest>=8.0
+httpx>=0.27

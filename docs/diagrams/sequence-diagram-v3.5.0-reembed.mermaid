@@ -1,0 +1,30 @@
+%% v3.5.0 增量：全量重嵌入迁移 时序图
+%% 对应设计文档 docs/review/v3.5.0-incremental-design.md §4.2
+sequenceDiagram
+    autonumber
+    participant OPS as 运维/发布
+    participant SCR as reembed_all_vectors.py
+    participant DB as SQLite 库文件
+    participant BE as ClipBackend(cn_clip)
+
+    OPS->>OPS: 置 AUTO_MATCH_ENABLED=false（灰度停自动推送）
+    OPS->>SCR: python reembed_all_vectors.py --backup-only
+    SCR->>DB: sqlite3 online backup → lost_found.db.bak-<ts>（冷备）
+    SCR-->>OPS: 备份路径 + sha256
+    OPS->>SCR: python reembed_all_vectors.py --dry-run
+    SCR->>DB: SELECT id,image_path,title,description（只读）
+    SCR->>BE: encode_image / encode_text（不写库）
+    SCR-->>OPS: 预统计（待处理 N / ETA 预计耗时 / 缺图缺文 M）
+    OPS->>OPS: 进入停服窗口（停写且停读；窗口长度据 ETA 决定，C6/T-5）
+    OPS->>SCR: python reembed_all_vectors.py --resume
+    SCR->>DB: 读取断点(.reembed_state.json: last_id + backend 指纹)
+    loop 分批（batch_size=100，断点续跑）
+        SCR->>BE: encode_image(image_path) → 新 image_vector
+        SCR->>BE: encode_text(title+' '+description) → 新 text_vector
+        SCR->>DB: UPDATE items SET image_vector=?, text_vector=? WHERE id=?
+        SCR->>SCR: 落盘断点
+    end
+    SCR-->>OPS: 统计（total/ok/failed/no_image/no_text/elapsed）
+    OPS->>OPS: 幂等校验：再跑一次 --dry-run，diff 应为 0
+    OPS->>OPS: 标定阈值 → 置 CLIP_BACKEND=cn_clip + 新阈值 + AUTO_MATCH_ENABLED=true
+    Note over OPS: 回滚 = CLIP_BACKEND=open_clip + 恢复 lost_found.db.bak-<ts>

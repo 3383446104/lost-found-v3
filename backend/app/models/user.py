@@ -30,7 +30,13 @@ class UserLogin(BaseModel):
     password: str
 
 
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    role: str = "user"
+class ProfileUpdate(BaseModel):
+    """个人资料更新请求（宽松模型：字段全可选，校验逻辑保留在 handler 内）。
+
+    仅做结构声明，不加约束，确保与改动前的手写 ``payload`` 分支行为等价
+    （空字典 → 400「没有需要更新的字段」；长度/格式校验仍由 handler 抛出 400）。
+    """
+    username: Optional[str] = None
+    password: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
