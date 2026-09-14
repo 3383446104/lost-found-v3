@@ -30,12 +30,22 @@
     - ⚠️ **耦合**：`clip_backend.py` 的 `_CN_TEXT_MODEL_NAME` 硬编码 `RoBERTa-wwm-ext-large-chinese`，**仅对 ViT-H-14 成立**（ViT-B-16 / ViT-L-14 的 struct 是 base）。换视觉塔必须同步改文本塔。
 11. **【已修 R2】向量维度错配是「静默失败」**：`cn_clip ViT-H-14` 输出 **1024 维**（联合投影维度，不是 vision_width 1280），错配会被 `except→continue` 吞掉，返回 HTTP 200 + `matches:[]` 像正常未找到。**修复**：`config.py` 增 `CLIP_CN_EMBED_DIM=1024` / `CLIP_OPEN_EMBED_DIM=512`；`clip_backend.py:_assert_embed_dim` 编码后断言维度；`items.py:567` 加打分前预检 → `HTTPException(500)`；`match_service.py` 同预检。**教训保留**：任何「声明式契约常量」都必须有运行期断言。
 12. **测试「镜像实现」反模式已出现两次**：`tests/test_config_rollback.py:24/:33` 直接断言 `backend.embed_dim == 512`；`tests/test_cross_modal_scoring.py:74/:92` 期望值同样照抄实现公式。**部分修复（T2）**：cross-modal 两个用例 de-mirror 为字面常量 + 公式注释（`expected = 10/17` / `0.7`），改 `MATCH_W_*` 会不一致地报错；config-rollback 仍待改。
-13. **【T1 未修】`tests/conftest.py:47-53` 的桩函数没有区分度（假绿根源）**：`_fake_image_feature` 与 `_fake_text_feature` 都返回 `np.ones(512)/norm` → 所有 cosine sim = 1.0 → /match 契约测试 false-green。要真验跨模态须让**目标只有图片、无 text_vector** 把可用通道锁死为 `t2i`。
+13. **【已修 T1】`conftest.py` 桩函数原无区分度（假绿根源）**：旧 `_fake_image_feature`/`_fake_text_feature` 都返回 `np.ones(512)/norm` → 所有 cosine = 1.0 → /match 契约测试 false-green。现改为 `_derive_vector(seed, dim)`（sha256→`default_rng`→标准正态→L2），图/文**命名空间隔离**（`b"image:"` / `b"text:"`），维度由 `_active_embed_dim()` 从 config 取。实测同文本 cos=1.0、异文本 0.0047、文↔图 −0.0135。要真验跨模态仍须让**目标只有图片、无 text_vector** 把可用通道锁死为 `t2i`。
 14. **【已修】`test_real_clip_smoke.py` 原硬编码 `shape==(512,)`**：真实 ViT-H-14 是 1024 维 → 跑 `RUN_REAL_CLIP=1` 必挂，而默认被门控 skip → **失败被 skip 藏住**，还制造「真实路径已覆盖」的错觉。现改用 `_active_embed_dim()` 从 config 取维度（已核实 :51/:65 不再硬编码）。**教训保留：门控 skip 的测试要单独审计断言是否仍成立**。
 15. **【已修 T4】`items.py:25` `MATCH_THRESHOLD` 是 import 期快照**（旧），与 `resolve_legend()` 的实时读 `settings` 语义不一致 → 改 config 后 legend 与过滤阈值背离。**修复**：改为 `_match_threshold_default()` 函数调用时读 `settings.MATCH_THRESHOLD_MANUAL`，与 `resolve_legend()` 共享同一来源。
 16. **【已修 T5】`scripts/reembed_all_vectors.py:200-213` 冷备在 `dry_run` 之前** → `--dry-run` 仍产 `<db>.bak-*`，与「只读干跑」语义不符。**修复**：冷备包裹在 `if not dry_run:` 内，仅 `backup_only=True` 仍走冷备。同步更新 `tests/test_qa_v350_reembed_safety.py::test_E_dry_run_still_creates_backup_side_effect` 与 `tests/test_reembed_script.py::test_dry_run_does_not_write_db_and_has_eta` 的契约断言（前者 docstring 明确写了「若未来改不备份则本用例同步更新」——是工程师/QA 自留的「现状记录」）。
-17. **「已用真实模型验证」档的状态**：截至 2026-09-14，真实权重已**开始下载**（见 #10）。**下载完成前该档仍为空** —— 任何宣称「R4 / T3 通过」的报告均默认为「已打桩验证」。完成后按 runbook：`RUN_REAL_CLIP=1` 跑 `tests/test_real_clip_smoke.py`（**该 2 条正是全套件恒为 `skipped=2` 的来源**，届时应由 skip 变 passed）→ 再跑 `scripts/calibrate_thresholds.py`（**不加** `--fake-encoder`，:787 才走真 `clip_service`）出真实标定 → 报告升 v1.0、解禁门禁 3/4/5/8。
+17. **【2026-09-14 已达成】「已用真实模型验证」档**：真实权重已下载并端到端验证（见 #19）。`RUN_REAL_CLIP=1` 跑 `tests/test_real_clip_smoke.py` → 2 例**由 skip 转 passed**（即恒 `skipped=2` 的来源）。标定脚本已可用（**不加** `--fake-encoder` 才走真 `clip_service`）→ 产出真实 Recall@K。⚠️ 但**分层阈值仍不可标定**（见 #19）。
 18. **测试所有权规则（v3.5.0 期间明确）**：作者维护自己的测试，**实现者不得越界编辑 QA 的断言**。曾有 `test_qa_v350_dimension.py` 中 2 条断言被实现者直接改动 → 待严过关 429 重置（2026-09-14 19:20）后**重新推导**。
+
+19. **【2026-09-14 真实权重落地】真实模型验证结果 · 标定脚本两个真实缺陷 · 阈值仍不可标定**
+    - **已达成「已用真实模型验证」**：`scripts/verify_real_clip.py` 四段全 PASS —— 真实加载 16.2s、图/文均 **1024 维 + L2 归一**、`cos(查询文,正样本图)=+0.2713 > cos(查询文,跨类别图)=+0.2016`。
+    - ⚠️ **真实跨模态余弦绝对值很低**（正确 ≈0.27 / 错配 ≈0.20）→ 设计初值 `AUTO=0.55` / `EMAIL=0.70` **对本模型偏高**；灰度期必须 `AUTO_MATCH_ENABLED=false`。
+    - **真实 Recall@K**：@1 **0.7917** / @3 **1.0** / @5 1.0（有效集 24 正 / 30 负）。5 个 rank-2 **全部**是同类别近重复混淆（item **64 vs 68** 白色蓝牙耳机、item **77 vs 67** 卡片类）→ **跨类别零错误**。
+    - **阶段5 惩罚**：开启更优（@1 0.7917 vs 0.75）→ 维持 `CROSS_PENALTY_ENABLED=true`。
+    - ❗**`AUTO`/`EMAIL` 仍标不出来**：评测集负样本**全为跨类别错配** → 真实 PR 曲线 Precision 上限仅 **0.7692**（< 0.90）→ 两值均为 `None`。**网格 Top-5 全是 `W_COLOR` 0.7~0.9 / `W_CROSS` 0.0** —— 那是「**颜色=类别代理**」的**捷径**（负样本全跨类别才可利用），**严禁据此回填 config**。唯一解除路径：补**同类别硬负样本**（素材 64⟷68、64/68⟷73、67⟷77）。
+    - **两个真实缺陷（同属「假路径掩盖真实路径」）**：① **编码器接口漂移** —— 脚本调 `encode_text/encode_image`，真实 `clip_service` 只有 `get_text_feature/get_image_feature`；**假编码器定义了接口、真实编码器从未被接上** → 加 `_ServiceEncoderAdapter`（**适配服务的冻结接口，不改服务**）。② **候选集重复计数** —— `_candidates` 按 `item_ref or text` 去重致**同一物品被拆成两个候选**（实测 **10 = 6 物品 + 4 幻影**），正确目标被自己的幻影副本挤出 Top-3 → Recall@1/@3 被算成 **0.0** 并**误报「🚨 阻塞性发现」** → 改按 `item_id` 去重 + **合并字段**。
+    - ★ **两条通用教训**：**(a)** 门控/桩化的路径**必须被真实实现执行过一次**才可信，否则「管线已跑通」只是假路径结论；**(b)** Recall@K 异常低时，**先查候选池去重**，再怀疑模型。
+    - **基线**：全套件 **192 用例 / 0 failed / 0 errors / 2 skipped**；新增 `tests/test_calibrate_candidates.py`（7 例）锁候选集契约；报告 `docs/review/threshold-calibration-v3.5.0.md` 升 **v1.0**。
 
 ## 测试约定
 
