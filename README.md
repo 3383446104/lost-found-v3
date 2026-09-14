@@ -109,7 +109,7 @@ with get_db_connection() as conn:
 
 ### 运行测试
 
-项目自带自动化测试套件（pytest，**185 用例：183 通过 / 2 门控跳过**〔数值随套件演进，以 `--junitxml` 为准〕），无需下载 CLIP 模型即可运行（测试内以确定性假向量桩替换特征提取，并使用临时数据库；2 个 skip 是 `test_real_clip_smoke.py` 的真实权重门控用例）：
+项目自带自动化测试套件（pytest，**192 用例：190 通过 / 2 门控跳过**〔数值随套件演进，以 `--junitxml` 为准〕），无需下载 CLIP 模型即可运行（测试内以确定性假向量桩替换特征提取，并使用临时数据库；2 个 skip 是 `test_real_clip_smoke.py` 的真实权重门控用例）：
 
 ```bash
 cd backend
@@ -180,7 +180,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | V3.3.3 | 自动化测试（45 用例）/ P0 修复（禁用鉴权·今日时区·依赖声明）/ 文档与代码对齐 | ✅ |
 | V3.4.0 | 账户状态语义拆分（role×status）/ 颜色特征持久化 / 匹配性能·异步 / 路由·契约加固 / 测试扩至 70 用例 | ✅ |
 | V3.4.1 | 补齐 `POST /api/items/match` 鉴权（需登录；缺 token 403 / 非法 401）/ 测试扩至 72 用例 | ✅ |
-| **V3.5.0** | **中文化模型替换（Chinese-CLIP ViT-H-14，可回滚 open_clip）/ 图文跨模态四通道检索 + 阶段5 重构 / 阈值·权重 config 化并重标定 / `match_source`+`legend` 契约 / 全量重嵌入·标定·颜色回填三脚本 / 评测集 60 对 / 测试扩至 185 用例（183 通过 / 2 门控跳过）** | ✅ |
+| **V3.5.0** | **中文化模型替换（Chinese-CLIP ViT-H-14，可回滚 open_clip）/ 图文跨模态四通道检索 + 阶段5 重构 / 阈值·权重 config 化并重标定 / `match_source`+`legend` 契约 / 全量重嵌入·标定·颜色回填三脚本 / 评测集 60 对 / 测试扩至 192 用例（190 通过 / 2 门控跳过）** | ✅ |
 
 详见 [CHANGELOG.md](CHANGELOG.md)
 

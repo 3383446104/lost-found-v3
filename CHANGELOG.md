@@ -734,7 +734,7 @@ git checkout HEAD~1
 
 ### 8. 文档与测试 ✅
 - 文档同步至 v3.5.0：`PROJECT.md` / `SRS.md` / `README.md` / `docs/README.md` / 增量 PRD（含 ViT-H-14 维度 512 → **1024 联合投影**修正）。
-- 自动化测试扩至 **185 用例（183 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` 等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例。
+- 自动化测试扩至 **192 用例（190 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` 等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例。
 
 ### ⚠️ 如实声明（重要）
 - **阈值与权重均为初值、尚未用真实模型标定**；须经 `calibrate_thresholds.py`（`--grid` + `Recall@3 不下降` 断言）回填后，方可视为收敛，**不得表述为「已定稿 / 已可靠标定」**；

@@ -74,6 +74,46 @@ class _FakeEncoder:
         return v / np.linalg.norm(v)
 
 
+class _ServiceEncoderAdapter:
+    """把线上 ``clip_service`` 适配成本脚本的 ``encode_*`` 接口。
+
+    为什么需要这一层（v3.5.0 真实权重实测才暴露的 bug）
+    --------------------------------------------------
+    本脚本原先在 :class:`_EncoderCache` 里直接调用 ``encoder.encode_text`` /
+    ``encoder.encode_image`` —— 而这两个名字**只有** :class:`_FakeEncoder` 才有；
+    真实 ``clip_service``（``CLIPService``）暴露的是 ``get_text_feature`` /
+    ``get_image_feature``。
+
+    也就是说**假编码器定义了接口，真实编码器从未被接上**：``--fake-encoder``
+    一路绿灯，真机一跑就是 ``AttributeError: 'CLIPService' object has no attribute
+    'encode_text'``。因为真实权重长期不可得，这条路径从未被执行过，
+    连 ``--fake-encoder`` 冒烟也照不出问题。
+
+    修法：**适配脚本去迁就服务的冻结接口**（``clip_service`` 的公开方法名与签名
+    是冻结契约，见 ``app/clip_service.py``；改名会让 conftest 的打桩全面失效），
+    而不是反过来改服务。
+    """
+
+    def __init__(self, service: Any):
+        self.service = service
+
+    @property
+    def name(self) -> str:
+        return str(settings.CLIP_BACKEND)
+
+    @property
+    def model_name(self) -> str:
+        if settings.CLIP_BACKEND == "cn_clip":
+            return str(settings.CLIP_CN_MODEL_NAME)
+        return str(settings.CLIP_OPEN_MODEL_NAME)
+
+    def encode_text(self, text: str):
+        return self.service.get_text_feature(text)
+
+    def encode_image(self, path: str):
+        return self.service.get_image_feature(path)
+
+
 # --------------------------------------------------------------------------- #
 # 评测集
 # --------------------------------------------------------------------------- #
@@ -404,21 +444,45 @@ def _target_key(target: Dict[str, Any]) -> str:
     return target.get("item_ref") or target.get("text") or "?"
 
 
+def _candidate_key(target: Dict[str, Any]) -> Any:
+    """候选集的**身份**键：优先 ``item_id``。
+
+    为什么不能直接用 :func:`_target_key` 去重（原实现即如此，**是 bug**）
+    -----------------------------------------------------------------
+    评测集里**同一条物品**在不同 pair 中的表达方式不同：
+      - P01~P04 给的是 ``target.item_ref``（图片）；
+      - P21~P24 给的是 ``target.text``（且 ``item_ref=null``）。
+    按 ``item_ref or text`` 去重会把**同一条物品拆成两个候选**
+    （实测 10 个候选 = 6 条物品 + 4 条幻影重复），而且两者可用通道不同
+    （一个有图、一个只有文字）→ 打分不同 → 「正确目标」被自己的幻影副本挤出
+    Top-3 → Recall@1/@3 被严重低估（实测 0.0 vs 真实 1.0）。
+    """
+    key = target.get("item_id")
+    return key if key is not None else _target_key(target)
+
+
 # --------------------------------------------------------------------------- #
 # 评估
 # --------------------------------------------------------------------------- #
 def _candidates(eval_set: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """候选目标集合（按 item_ref/text 去重）。"""
-    seen = set()
-    cands = []
+    """候选目标集合：按**物品身份**（``item_id``）去重，并把同一条物品在不同
+    pair 中出现的字段**合并**（只有图的补文字、只有文字的补图），以还原生产里
+    「一条真实物品同时带有图片与文字」的形态 —— 这也是 ``/match`` 的真实打分对象。
+    """
+    merged: Dict[Any, Dict[str, Any]] = {}
+    order: List[Any] = []
     for p in eval_set["pairs"]:
         t = p.get("target", {})
-        key = _target_key(t)
-        if key in seen:
+        key = _candidate_key(t)
+        cur = merged.get(key)
+        if cur is None:
+            merged[key] = dict(t)
+            order.append(key)
             continue
-        seen.add(key)
-        cands.append(t)
-    return cands
+        for field in ("item_ref", "text", "item_id"):
+            if not cur.get(field) and t.get(field):
+                cur[field] = t[field]
+    return [merged[k] for k in order]
 
 
 def _recall_ranks(
@@ -435,10 +499,10 @@ def _recall_ranks(
         if is_degenerate(p):
             continue  # 同图自比退化正样本不计入 Recall（否则必 rank=1，虚高）
         query = p.get("query", {})
-        own = _target_key(p.get("target", {}))
+        own = _candidate_key(p.get("target", {}))
         scored = sorted(
             (
-                (score_pair_vs_target(cache, query, c, weights), _target_key(c))
+                (score_pair_vs_target(cache, query, c, weights), _candidate_key(c))
                 for c in candidates
             ),
             key=lambda x: x[0],
@@ -784,7 +848,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     csv_path = args.csv or (os.path.splitext(args.out)[0] + ".csv")
 
-    encoder = _FakeEncoder() if args.fake_encoder else clip_service
+    # 真实路径必须经适配器：clip_service 暴露 get_*_feature，而本脚本内部用 encode_*
+    encoder = _FakeEncoder() if args.fake_encoder else _ServiceEncoderAdapter(clip_service)
 
     # 主评估 + with/without-penalty 对照
     with penalty_enabled(args.with_penalty):
