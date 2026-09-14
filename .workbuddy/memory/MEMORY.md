@@ -49,7 +49,13 @@
     - ★ **三条通用教训**：**(a)** 门控/桩化的路径**必须被真实实现执行过一次**才可信，否则「管线已跑通」只是假路径结论（本项目已因此踩 3 次）；**(b)** Recall@K 异常低时，**先查候选池去重**，再怀疑模型；**(c)** 网格/Top-N 结论必须附**合格集合分布**——`summarize_grid` 显示合格组合 **103** 个、其中 **102** 个并列 `Recall@3=1.0`，故 Top-N **顺序无意义**。
     - **基线**：全套件 **201 用例 / 0 failed / 0 errors / 2 skipped**（`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；新增 `test_calibrate_candidates.py`(7) / `test_calibrate_color_channel.py`(5) / `test_calibrate_grid_summary.py`(4)；报告 `docs/review/threshold-calibration-v3.5.0.md` 已重生成（含 §5 合格集合分布）。
 
-20. **⚠️【2026-09-14 实测】v3.5.0 处于「代码已切模型、数据未迁移」的悬挂态（回答"能否开新迭代"的关键事实）**
+20. **【2026-09-14 状态更新：悬挂态已解除】重嵌入已完成（用户授权执行）→ cn_clip 已在生产 DB 真正生效**
+    - 12:18 执行 `scripts/reembed_all_vectors.py`：6 条全部 1024 维重算（`ok=6/failed_encode=0`，EXIT=0，34s），冷备 `lost_found.db.bak-20260914121815`（sha256=d8d5dae1…0575，color_vector 逐字节未动）。端到端验证 `POST /api/items/match` **HTTP 200**（此前 500），"蓝牙耳机"查询命中同类 item68（0.3872 > 0.35）。
+    - **JWT 签发契约**（脚本验证用）：claims 用 `user_id`/`username`/`role`（**不是 `sub`**），`dependencies/auth.py:46` 按 `payload['user_id']` 查库。**MatchRequest 字段**：`text`/`image_path`/`target_type`/`threshold`/`category`/`location`。
+    - **剩余**：门禁步骤 8（回填 AUTO/EMAIL）仍禁止——须扩评测集复标；灰度稳定后再开 `AUTO_MATCH_ENABLED=true`（已在 .env 置 false 生效）。
+    - ⚠️ 环境坑：bash `cd` 损坏 → Settings 读 `.env` 依赖 cwd，**脚本内 `os.chdir('backend')` 后再 import app**。
+
+20b. **⚠️【2026-09-14 实测】v3.5.0 处于「代码已切模型、数据未迁移」的悬挂态（回答"能否开新迭代"的关键事实）**
     - **`.env` 未覆盖任何 `CLIP_*` / `MATCH_*` / `AUTO_MATCH_ENABLED`**（实测仅含 `SECRET_KEY` 等）→ 全部走 `config.py` 默认。
     - **默认 `CLIP_BACKEND="cn_clip"`（1024 维），但 `lost_found.db` 实测 `image_vector`/`text_vector` 全为 512 维**（6 条 item，即旧 open_clip 遗留）→ R2 维度防线触发 → `POST /api/items/match` → **HTTP 500**；`match_service` 记 `ERROR` 并 `return`（自动匹配不推送）。**结论：cn_clip 尚未在生产生效，必须重嵌入（门禁步骤 3）后才算落地。**
     - **`AUTO_MATCH_ENABLED` 默认 `True`**（注释写明"灰度期置 false"，但未置）→ 一旦重嵌入完成，自动推送会**立刻开启**，而 `AUTO` 阈值尚未标定（config 初值 0.55）→ **重嵌入前必须先置 false**。
