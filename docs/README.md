@@ -27,8 +27,8 @@
 | 本轮变更总结 | [`review/v3.4.0-change-summary-2026-09-12.md`](review/v3.4.0-change-summary-2026-09-12.md) | v3.4.0 代码 + 文档落地总结 | ⑦ |
 | 文档资源盘点与整合映射 | [`review/doc-consolidation-map-2026-09-12.md`](review/doc-consolidation-map-2026-09-12.md) | 全仓文档盘点、整合决策与目标目录结构 | — |
 | **v3.5.0 增量架构设计** | [`review/v3.5.0-incremental-design.md`](review/v3.5.0-incremental-design.md) | v3.5.0 中文化模型替换 + 图文跨模态检索的架构设计与任务分解（T01–T05） | ⑨ |
-| **v3.5.0 QA 回归报告** | [`review/qa-v3.5.0-regression-2026-09-13.md`](review/qa-v3.5.0-regression-2026-09-13.md) | v3.5.0 回归 + 跨模态新功能测试：维度错配（D1）等发现与修复验证；V1–V3 / V5 已转「已用真实模型验证」（**生产库重嵌入已完成，`/match` 实测恢复 HTTP 200**），V4（50 字截断）仍待专门实验 | ⑩ |
-| **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | **已用真实模型标定**：真实评测集结构校验（**70 对 / 有效 24 正 40 负 / 6 退化对已排除**）+ 真实 `Recall@3=1.0` / `Recall@1=0.7917` + 权重网格合格集合分布；⚠️ **`AUTO`/`EMAIL` 仍无解**（默认配置 Precision 上界 0.6129 ＜ 0.90），发布门禁步骤 8 仍阻塞（须扩充评测集复标） | — |
+| **v3.5.0 QA 回归报告** | [`review/qa-v3.5.0-regression-2026-09-13.md`](review/qa-v3.5.0-regression-2026-09-13.md) | v3.5.0 回归 + 跨模态新功能测试：维度错配（D1）等发现与修复验证；V1–V5 **全部已转「已用真实模型验证」**（重嵌入完成、`/match` 三模式实测恢复；V4 截断实验已闭环：关键信息被截掉 → 相对损失 ~22.5%） | ⑩ |
+| **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | **已用真实模型标定**（2026-09-14 扩充轮后）：**84 对 / 有效 36 正 42 负 / 6 退化对已排除** + 真实 `Recall@3=1.0` / `Recall@1=0.75` + 权重网格合格集合分布；⚠️ **`AUTO`/`EMAIL` 仍无解**（Precision 上界 0.6889 ＜ 0.90，**结构性瓶颈**），发布门禁步骤 8 仍阻塞（须待真实物品类别多样性增长复标） | — |
 | **v3.5.0 增量 PRD（现行）** | [`product/PRD-v3.5.0-incremental.md`](product/PRD-v3.5.0-incremental.md) | v3.5.0 增量需求（中文化模型 + 图文跨模态检索）：产品目标 / 用户故事 / 需求池 / 验收标准（**现行**，非 C 组历史快照） | — |
 
 ## C. 产品设计（历史快照，v3.3 阶段）
