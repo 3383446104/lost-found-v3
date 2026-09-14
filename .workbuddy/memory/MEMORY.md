@@ -12,7 +12,7 @@
 ## 必须知道的坑位（踩过）
 
 1. **`database.py:13` 的 `DB_PATH` 是 import 期绑定的模块级全局量**。要让代码连别的库，必须 monkeypatch `app.database.DB_PATH`；改 `settings.DATABASE` **无效**。
-2. **`clip_service` 是单例 + 懒加载**，任何真实调用都会加载约 600MB 模型。测试/脚本里必须打桩 `get_image_feature` / `get_text_feature` / `get_color_histogram`。导入 torch/open_clip 本身约需 13s。
+2. **`clip_service` 是单例 + 懒加载**，任何真实调用都会加载模型（cn_clip `ViT-H-14` ≈3.8GB / open_clip `ViT-B-32` ≈600MB）。测试/脚本里必须打桩 `get_image_feature` / `get_text_feature` / `get_color_histogram`。导入 torch/open_clip 本身约需 13s。
 3. **`config.py` 的 `SECRET_KEY` 无默认值**，`.env` 必须存在，否则应用直接启动失败。测试里应在 import 应用前 `os.environ.setdefault("SECRET_KEY", ...)` 兜底。
 4. **`items.py` 的路由顺序是隐性契约**：静态路径（`/categories`、`/uploads/{filename:path}`）与 `/{item_id}/mark-claimed` 必须排在 `/{item_id}` 之前，否则被参数化路由吞掉。历史上已复发两次（CHANGELOG Bug #4 / #7）。
 5. **`users.role` 字段语义重载**：既表示授权角色（user/admin），又表示账号状态（disabled/deleted）。导致 `admin.py` 的 `toggle_status` 直接覆写 role，**管理员被禁用后再启用会降级为普通用户**。未修。
@@ -24,14 +24,17 @@
    - 改善幅度：**37 → 50（约 +13 汉字）**，方向不变但数字务必用这两个实测值。
    - 连带影响生产：`items.py:126`（新建）与 `:392`（编辑）把 `f"{title} {description}".strip()` 整串喂给文本塔、`:508` 查询侧同理 → **描述超出上限的尾段对文本向量零贡献且不报错**。前端 `MatchView.vue:44` 的 `maxlength="300"` + `show-word-limit` 计数器与真实上限矛盾（已派修）。
 9. **`pip install cn_clip` 必须加 `--no-deps`**：其 `requirements.txt` 硬钉 `lmdb==1.3.0`，Windows 无 wheel 会编译失败。PyPI 版 **1.6.0**（非 git 仓库 setup.py 的 1.5.1）实测 `--no-deps` 可装，且**包内资产齐全**（`cn_clip/clip/vocab.txt`、`model_configs/ViT-H-14.json`、`model_configs/RoBERTa-wwm-ext-large-chinese.json` 均在）——早先担心的 `data_files` 资产丢失（C4）**未发生**，无需 git 兜底。`tokenize` 只依赖包内 `vocab.txt`，**无需权重**即可自检。
-10. **真实权重下载在本机不可行**：`ViT-H-14` 权重 ≈ 3.83GB；实测 HF `huggingface.co` 不可达（代理 502），`hf-mirror.com` ≈28KB/s，ModelScope ≈472KB/s → 约 2.2 小时。另 ModelScope 直连需先 `pip install modelscope`（当前 venv 无）。**v3.5.0 至今未跑过真实中文模型，全部结论均为「已打桩验证」**。
+10. **真实权重获取（2026-09-14 已打通，此前「不可行」结论作废）**：`ViT-H-14` 权重 3830.7MB。**ModelScope 仓库 ID 与 HF 不同** —— ModelScope 是 `AI-ModelScope/chinese-clip-vit-huge-patch14`（API 0.3s 可达），HF 是 `OFA-Sys/...`（本机不可达）。该仓库直接提供 `clip_cn_vit-h-14.pt`，**标准库 urllib + HTTP Range 即可下，不需要 `modelscope` 包**；实测 **~1.4MB/s → ETA ~40min，支持断点续传**。脚本 `backend/scripts/download_cn_clip_weights.py`，落 `backend/models/`（已 gitignore）。
+    - **加载**：设 `CLIP_CN_CKPT_PATH=<abs .pt>` 即零网络加载；`CLIP_CN_MODEL_NAME` 必须是**架构串** `ViT-H-14`（不是 HF repo id）—— 它有**双重语义**：ckpt 路径当架构串、下载路径当 `load_from_name` 的 name（cn_clip 也吃架构串）。
+    - **已核实**（定义在 `cn_clip/clip/utils.py:106`，**不在** `clip/__init__.py`）：`_MODELS["ViT-H-14"]=("chinese-clip-vit-huge-patch14","clip_cn_vit-h-14.pt")` ⇒ 下载文件与 cn_clip 自身目标一致；`_MODEL_INFO["ViT-H-14"]["struct"]=="ViT-H-14@RoBERTa-wwm-ext-large-chinese"` ⇒ 与 `clip_backend.py:278-283` 构造串精确匹配；`create_model` 用 `load_state_dict(strict=True)` + 两份 `model_configs/*.json` 的 `assert os.path.exists` ⇒ **配错是「响亮失败」，非静默降级**。
+    - ⚠️ **耦合**：`clip_backend.py` 的 `_CN_TEXT_MODEL_NAME` 硬编码 `RoBERTa-wwm-ext-large-chinese`，**仅对 ViT-H-14 成立**（ViT-B-16 / ViT-L-14 的 struct 是 base）。换视觉塔必须同步改文本塔。
 11. **【已修 R2】向量维度错配是「静默失败」**：`cn_clip ViT-H-14` 输出 **1024 维**（联合投影维度，不是 vision_width 1280），错配会被 `except→continue` 吞掉，返回 HTTP 200 + `matches:[]` 像正常未找到。**修复**：`config.py` 增 `CLIP_CN_EMBED_DIM=1024` / `CLIP_OPEN_EMBED_DIM=512`；`clip_backend.py:_assert_embed_dim` 编码后断言维度；`items.py:567` 加打分前预检 → `HTTPException(500)`；`match_service.py` 同预检。**教训保留**：任何「声明式契约常量」都必须有运行期断言。
 12. **测试「镜像实现」反模式已出现两次**：`tests/test_config_rollback.py:24/:33` 直接断言 `backend.embed_dim == 512`；`tests/test_cross_modal_scoring.py:74/:92` 期望值同样照抄实现公式。**部分修复（T2）**：cross-modal 两个用例 de-mirror 为字面常量 + 公式注释（`expected = 10/17` / `0.7`），改 `MATCH_W_*` 会不一致地报错；config-rollback 仍待改。
 13. **【T1 未修】`tests/conftest.py:47-53` 的桩函数没有区分度（假绿根源）**：`_fake_image_feature` 与 `_fake_text_feature` 都返回 `np.ones(512)/norm` → 所有 cosine sim = 1.0 → /match 契约测试 false-green。要真验跨模态须让**目标只有图片、无 text_vector** 把可用通道锁死为 `t2i`。
-14. **`test_real_clip_smoke.py:43/:57` 断言 `shape==(512,)` 是「注定失败」**：真实 ViT-H-14 输出 1024 维，跑 `RUN_REAL_CLIP=1` 必挂；而默认被门控 skip → **失败被 skip 藏住**，还制造「真实路径已覆盖」的错觉。**教训：门控 skip 的测试要单独审计断言是否仍成立**。
+14. **【已修】`test_real_clip_smoke.py` 原硬编码 `shape==(512,)`**：真实 ViT-H-14 是 1024 维 → 跑 `RUN_REAL_CLIP=1` 必挂，而默认被门控 skip → **失败被 skip 藏住**，还制造「真实路径已覆盖」的错觉。现改用 `_active_embed_dim()` 从 config 取维度（已核实 :51/:65 不再硬编码）。**教训保留：门控 skip 的测试要单独审计断言是否仍成立**。
 15. **【已修 T4】`items.py:25` `MATCH_THRESHOLD` 是 import 期快照**（旧），与 `resolve_legend()` 的实时读 `settings` 语义不一致 → 改 config 后 legend 与过滤阈值背离。**修复**：改为 `_match_threshold_default()` 函数调用时读 `settings.MATCH_THRESHOLD_MANUAL`，与 `resolve_legend()` 共享同一来源。
 16. **【已修 T5】`scripts/reembed_all_vectors.py:200-213` 冷备在 `dry_run` 之前** → `--dry-run` 仍产 `<db>.bak-*`，与「只读干跑」语义不符。**修复**：冷备包裹在 `if not dry_run:` 内，仅 `backup_only=True` 仍走冷备。同步更新 `tests/test_qa_v350_reembed_safety.py::test_E_dry_run_still_creates_backup_side_effect` 与 `tests/test_reembed_script.py::test_dry_run_does_not_write_db_and_has_eta` 的契约断言（前者 docstring 明确写了「若未来改不备份则本用例同步更新」——是工程师/QA 自留的「现状记录」）。
-17. **v3.5.0 真实 Chinese-CLIP 权重从未在本机下载验证**（见 #10），「已用真实模型验证」这一档**始终为空**——任何宣称「R4 / T3 通过」的报告均默认为「已打桩验证」。
+17. **「已用真实模型验证」档的状态**：截至 2026-09-14，真实权重已**开始下载**（见 #10）。**下载完成前该档仍为空** —— 任何宣称「R4 / T3 通过」的报告均默认为「已打桩验证」。完成后按 runbook：`RUN_REAL_CLIP=1` 跑 `tests/test_real_clip_smoke.py`（**该 2 条正是全套件恒为 `skipped=2` 的来源**，届时应由 skip 变 passed）→ 再跑 `scripts/calibrate_thresholds.py`（**不加** `--fake-encoder`，:787 才走真 `clip_service`）出真实标定 → 报告升 v1.0、解禁门禁 3/4/5/8。
 18. **测试所有权规则（v3.5.0 期间明确）**：作者维护自己的测试，**实现者不得越界编辑 QA 的断言**。曾有 `test_qa_v350_dimension.py` 中 2 条断言被实现者直接改动 → 待严过关 429 重置（2026-09-14 19:20）后**重新推导**。
 
 ## 测试约定
