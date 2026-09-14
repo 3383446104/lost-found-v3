@@ -36,6 +36,7 @@ backend/.junitxml/
 backend/_junit*.xml
 backend/_lead_run*.txt
 backend/_r4_*
+backend/scripts/.reembed_state.json
 _uploads.txt
 lost-found-frontend/_build.txt
 lost-found-frontend/_nm.txt
