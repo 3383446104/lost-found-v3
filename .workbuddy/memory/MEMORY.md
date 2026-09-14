@@ -42,14 +42,17 @@
     - ⚠️ **真实跨模态余弦绝对值很低**（正确 ≈0.27 / 错配 ≈0.20）→ 设计初值 `AUTO=0.55` / `EMAIL=0.70` **对本模型偏高**；灰度期必须 `AUTO_MATCH_ENABLED=false`。
     - **真实 Recall@K**：@1 **0.7917** / @3 **1.0** / @5 1.0（有效集 24 正 / 30 负）。5 个 rank-2 **全部**是同类别近重复混淆（item **64 vs 68** 白色蓝牙耳机、item **77 vs 67** 卡片类）→ **跨类别零错误**。
     - **阶段5 惩罚**：开启更优（@1 0.7917 vs 0.75）→ 维持 `CROSS_PENALTY_ENABLED=true`。
-    - ❗**`AUTO`/`EMAIL` 仍标不出来**：评测集负样本**全为跨类别错配** → 真实 PR 曲线 Precision 上限仅 **0.7692**（< 0.90）→ 两值均为 `None`。**网格 Top-5 全是 `W_COLOR` 0.7~0.9 / `W_CROSS` 0.0** —— 那是「**颜色=类别代理**」的**捷径**（负样本全跨类别才可利用），**严禁据此回填 config**。唯一解除路径：补**同类别硬负样本**（素材 64⟷68、64/68⟷73、67⟷77）。
-    - **两个真实缺陷（同属「假路径掩盖真实路径」）**：① **编码器接口漂移** —— 脚本调 `encode_text/encode_image`，真实 `clip_service` 只有 `get_text_feature/get_image_feature`；**假编码器定义了接口、真实编码器从未被接上** → 加 `_ServiceEncoderAdapter`（**适配服务的冻结接口，不改服务**）。② **候选集重复计数** —— `_candidates` 按 `item_ref or text` 去重致**同一物品被拆成两个候选**（实测 **10 = 6 物品 + 4 幻影**），正确目标被自己的幻影副本挤出 Top-3 → Recall@1/@3 被算成 **0.0** 并**误报「🚨 阻塞性发现」** → 改按 `item_id` 去重 + **合并字段**。
-    - ★ **两条通用教训**：**(a)** 门控/桩化的路径**必须被真实实现执行过一次**才可信，否则「管线已跑通」只是假路径结论；**(b)** Recall@K 异常低时，**先查候选池去重**，再怀疑模型。
-    - **基线**：全套件 **192 用例 / 0 failed / 0 errors / 2 skipped**；新增 `tests/test_calibrate_candidates.py`（7 例）锁候选集契约；报告 `docs/review/threshold-calibration-v3.5.0.md` 升 **v1.0**。
+    - ❗**`AUTO`/`EMAIL` 仍标不出来**：默认配置下真实 PR 曲线 Precision 上限仅 **0.6129**（< 0.90）→ 两值均为 `None`。
+      - ⚠️ **【2026-09-14 更正，先前的「颜色=类别代理捷径」结论是错的】**：当时看到「网格 Top-5 全是 `W_COLOR` 0.7~0.9 / `W_CROSS` 0.0」，我推断那是捷径 → **被证伪**：真实原因是**标定脚本根本没接颜色通道**（见下 ③），`W_COLOR` **数学上完全惰性**，那列数字是**并列时的任意代表**。补同类硬负样本后该「偏好」依旧出现，才促使查清真相。**教训：排序结果的「值」先怀疑是否被并列/惰性维度污染，再解释成因。**
+      - 解除路径（已执行其一半）：补**同类别硬负样本**（素材 64⟷68、64/68⟷73、67⟷77）→ 已补 10 对（N31–N40）；结果 `Recall@K` **不变**（0.7917/1.0），Precision 上限**进一步降到 0.6129**（预期且正确）。
+    - **三个真实缺陷（全属「桩路径掩盖真实路径」，真实权重下才暴露）**：① **编码器接口漂移** —— 脚本调 `encode_text/encode_image`，真实 `clip_service` 只有 `get_text_feature/get_image_feature`；**假编码器定义了接口、真实编码器从未被接上** → 加 `_ServiceEncoderAdapter`（**适配服务的冻结接口，不改服务**）。② **候选集重复计数** —— `_candidates` 按 `item_ref or text` 去重致**同一物品被拆成两个候选**（实测 **10 = 6 物品 + 4 幻影**），正确目标被自己的幻影副本挤出 Top-3 → Recall@1/@3 被算成 **0.0** 并**误报「🚨 阻塞性发现」** → 改按 `item_id` 去重 + **合并字段**。③ **标定未接颜色通道（2026-09-14）** —— `score_pair`/`score_pair_vs_target` 只传 `(q_img,q_text,t_img,t_text)`，**不传 `color1/color2`**；而线上两处都传（`match_service.py:104` / `items.py:614`）→ `has_col` 恒 False → **`W_COLOR` 惰性**（实测 `color_weight` 取 0.0/0.15/0.5/0.9 得分**完全相同**）→ **修法：与线上一致传入颜色直方图**（`_ServiceEncoderAdapter.encode_color` + `_EncoderCache.color`）。**接上后网格真实结论：`W_COLOR` 取值分布单调递减（`{0.0:56,0.05:22,0.1:12,0.15:8,0.2:4}`）⇒ **`W_COLOR≈0`**、文本主导。**
+    - ★ **三条通用教训**：**(a)** 门控/桩化的路径**必须被真实实现执行过一次**才可信，否则「管线已跑通」只是假路径结论（本项目已因此踩 3 次）；**(b)** Recall@K 异常低时，**先查候选池去重**，再怀疑模型；**(c)** 网格/Top-N 结论必须附**合格集合分布**——`summarize_grid` 显示合格组合 **103** 个、其中 **102** 个并列 `Recall@3=1.0`，故 Top-N **顺序无意义**。
+    - **基线**：全套件 **201 用例 / 0 failed / 0 errors / 2 skipped**（`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；新增 `test_calibrate_candidates.py`(7) / `test_calibrate_color_channel.py`(5) / `test_calibrate_grid_summary.py`(4)；报告 `docs/review/threshold-calibration-v3.5.0.md` 已重生成（含 §5 合格集合分布）。
 
 ## 测试约定
 
-- 套件在 `backend/tests/`（`conftest.py` + **18 个测试文件**），**185 用例 / 183 passed / 2 门控 skip**（2026-09-13 R-T4/R-T5/T2 收尾后基线）；用 FastAPI `TestClient`。
+- 套件在 `backend/tests/`（`conftest.py` + **21 个测试文件**），**201 用例 / 199 passed / 2 门控 skip**（2026-09-14 颜色通道修复后基线；`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；用 FastAPI `TestClient`。
+- **本机 shell 坑位**：bash `ls/find/tail/head/mkdir/sleep` 全 `command not found`（shim 坏）→ **改用 PowerShell 工具**，但它**不回传 stdout** → 必须 `... 2>&1 | Out-File -Encoding utf8 <log>` 再用 Read 读；**不要**用 here-string 传多行脚本给 `python -c`（引号会被剥掉），改写成临时 `.py` 文件再跑。venv 解释器：`backend\venv\Scripts\python.exe`（Glob 搜不到 .exe，用 `Test-Path` 确认）。
 - 夹具已实现三重隔离：临时库（monkeypatch `DB_PATH`）、临时上传目录、CLIP 打桩、阻断真实 SMTP。
 - 运行（在 `backend` 目录）：`venv\Scripts\python.exe -m pytest tests/ --junitxml=.junitxml/<name>.xml`
 - **退出码不可信**（本机沙箱恒返回 1）→ **必须读 `--junitxml` 的 failures/errors 计数**下结论。
@@ -69,7 +72,7 @@
 - `app/clip_service.py`：单例由「持有模型」改为「兼容壳委托 backend」；**公开方法名与签名冻结**（`_initialize` / `get_image_feature` / `get_text_feature` / `get_color_histogram` / `compute_color_similarity` / `compute_weighted_similarity`）——`conftest.py` 靠 monkeypatch 这些名字阻断真实模型，**改名即测试全红**。
 - `scripts/reembed_all_vectors.py`（新）：换模型后重算全库向量；`sqlite3` online backup 冷备 + `.reembed_state.json` 断点（带模型指纹，指纹不符拒绝续跑）。
 - `scripts/calibrate_thresholds.py`（新）：标定/PR 曲线/Recall@K/权重网格；`--fake-encoder` 为**仅 CLI 的**冒烟开关（`encoder = _FakeEncoder() if args.fake_encoder else clip_service`），其输出为确定性噪声，**不得用于任何阈值决策**。
-- `eval/eval_set_v3.5.0.json`（新）：**60 对（30 正 / 30 负）**，基于库里 6 条真实物品（id64/67/68/73/77/80）；P21–P30 含 img→text 8 对 + img→img 12 对，其中 P25–P30 标记 `degenerate_self:true`（同图自比 → sim_ii≡1.0），`calibrate_thresholds.py` 在标定时排除退化对 → **有效标定 24-30 对**。**n 仍小样本，阈值不可称「已可靠标定」**。
+- `eval/eval_set_v3.5.0.json`（新）：**70 对（30 正 / 40 负）**，基于库里 6 条真实物品（id64/67/68/73/77/80）；P21–P30 含 img→text 8 对 + img→img 12 对，其中 P25–P30 标记 `degenerate_self:true`（同图自比 → sim_ii≡1.0），**N31–N40 为 10 对同类硬负样本**（`hard_negative:true`，复用既有正样本查询文本、只换目标）；`calibrate_thresholds.py` 标定时排除退化对 → **有效标定 24 正 / 40 负（n=64）**。**n 仍小样本，阈值不可称「已可靠标定」**。
 
 ## 文档现状
 

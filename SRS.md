@@ -558,10 +558,11 @@ CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '�
 | JSON 向量存储 | 全表扫描计算相似度 | 引入 pgvector ANN 索引 |
 | 无 WebSocket | 通知非实时 | 引入 WebSocket 推送 |
 | 无草稿箱 UI | 驳回物品无独立管理入口 | 在发布页增加草稿列表 |
-| **真实 Chinese-CLIP 权重未下载验证** | 权重约 3.83GB，本机从未加载；v3.5.0 结论均为**打桩验证** | 上线前用真实权重跑 `RUN_REAL_CLIP=1` 冒烟与标定脚本 |
-| **阈值 / 权重为初值待标定** | 手动 0.35 / 自动 0.55 / 邮件 0.70 及四通道权重未经真实模型收敛 | `calibrate_thresholds.py --with-penalty --grid` 回填 `.env` |
+| ~~真实 Chinese-CLIP 权重未下载验证~~ ✅ 已下载并端到端验证 | 权重 3.83GB 已在**本机**下载（ModelScope 源，`CLIP_CN_CKPT_PATH` 零网络加载）并验证：1024 维 + L2 归一 + 语义合理 + 真实 Recall@K | 已闭环（`scripts/verify_real_clip.py`；`RUN_REAL_CLIP=1` 冒烟 2 用例由 skip 转通过） |
+| **分层阈值 AUTO/EMAIL 仍不可用** | 真实模型下标定：`Recall@3=1.0`、`Recall@1=0.7917`，但默认配置下 PR 曲线 Precision 上界仅 **0.6129** → `Precision≥0.90/0.98` **无解**，`AUTO`/`EMAIL` 返回 `None` | 有效样本仍小（n=64）；须扩充真实数据复标；**不得为凑出 0.90 而放宽口径** |
+| **权重的「最优值」证据不足** | 权重网格合格组合达 **103** 个、其中 **102** 个并列 `Recall@3=1.0` → 无唯一最优，只能给出**方向性**结论（`W_COLOR≈0`、文本主导） | 扩充评测集后重跑 `--grid`；见 `docs/review/threshold-calibration-v3.5.0.md` §5 |
 | **两代向量空间不兼容** | 切模型未重嵌入则新旧向量不可比（已加维度防线 → HTTP 500） | 切换后先 `reembed_all_vectors.py` 全量重嵌入 |
-| **评测集规模小** | `eval_set_v3.5.0.json` 60 对（有效 24 正 / 30 负），置信区间宽 | 随数据增长扩充复标 |
+| **评测集规模小** | `eval_set_v3.5.0.json` **70 对**（有效 **24 正 / 40 负**，n=64），置信区间宽 | 随数据增长扩充复标；不得表述为「已可靠标定」 |
 
 ---
 
@@ -571,4 +572,4 @@ CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '�
 >
 > **v3.4.1 补齐**：`POST /api/items/match` 鉴权（缺 token → 403 / 非法 token → 401）| 自动化测试扩至 **72 用例**全通过
 >
-> **v3.5.0 中文化模型 + 跨模态检索**：新增 `app/clip_backend.py` 双后端抽象（默认 `cn_clip` Chinese-CLIP ViT-H-14 **1024 维** / 回滚 `open_clip` ViT-B-32 **512 维**，未知值抛 `RuntimeError`）| 启用 img·text **跨模态四通道**打分（图-图 0.35 / 跨模态 0.35 / 文-文 0.15 / 色 0.15）| 阶段5 升级为**真跨模态一致性惩罚**（`cc=min(可用跨模态方向)`，≥0.55 触发，只降权 ≤×0.5，可开关）| 阈值重设（手动 0.35 / 自动 0.55 / 邮件 0.70，初值）| `/match` 新增 `match_source` + `legend`（**403/401 契约冻结不变，不新增端点**）| 新增三脚本（`reembed_all_vectors.py` / `calibrate_thresholds.py` / `backfill_color_vectors.py`）| 评测集 60 对 | 维度错配运行期防线（编码断言 + 打分前预检 → HTTP 500）| 自动化测试扩至 **192 用例（190 通过 / 2 门控跳过）**。⚠️ **真实权重已下载并完成端到端验证（真实 Recall@3 = 1.0）；但分层阈值仍不可用** —— 评测集缺「同类别硬负样本」，`AUTO`/`EMAIL` 无法标定（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）
+> **v3.5.0 中文化模型 + 跨模态检索**：新增 `app/clip_backend.py` 双后端抽象（默认 `cn_clip` Chinese-CLIP ViT-H-14 **1024 维** / 回滚 `open_clip` ViT-B-32 **512 维**，未知值抛 `RuntimeError`）| 启用 img·text **跨模态四通道**打分（图-图 0.35 / 跨模态 0.35 / 文-文 0.15 / 色 0.15）| 阶段5 升级为**真跨模态一致性惩罚**（`cc=min(可用跨模态方向)`，≥0.55 触发，只降权 ≤×0.5，可开关）| 阈值重设（手动 0.35 / 自动 0.55 / 邮件 0.70，初值）| `/match` 新增 `match_source` + `legend`（**403/401 契约冻结不变，不新增端点**）| 新增三脚本（`reembed_all_vectors.py` / `calibrate_thresholds.py` / `backfill_color_vectors.py`）| 评测集 **70 对**（30 正 / 40 负）| 维度错配运行期防线（编码断言 + 打分前预检 → HTTP 500）| 自动化测试扩至 **201 用例（199 通过 / 2 门控跳过）**。⚠️ **真实权重已下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；且已补 10 对同类硬负样本，但分层阈值仍不可用** —— 默认配置下 Precision 上界仅 0.6129，`AUTO`/`EMAIL` 仍无解（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）

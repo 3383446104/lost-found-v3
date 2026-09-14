@@ -724,7 +724,7 @@ git checkout HEAD~1
 - ➕ `backend/scripts/backfill_color_vectors.py`：回填历史 `items.color_vector`（27 维）。
 
 ### 6. 评测集 ✅
-- ➕ `backend/eval/eval_set_v3.5.0.json`：**60 对 = 30 正 / 30 负**（40 对纯文查询 + 20 对图片查询）；其中 **6 对「同图自比」退化对**（`sim_ii ≡ 1.0`）已在标定计算中**剔除** → **有效样本 24 正 / 30 负**。
+- ➕ `backend/eval/eval_set_v3.5.0.json`：**70 对 = 30 正 / 40 负**（50 对纯文查询 + 20 对图片查询）；其中 **6 对「同图自比」退化对**（`sim_ii ≡ 1.0`）已在标定计算中**剔除** → **有效样本 24 正 / 40 负（n=64）**。负样本含 **10 对同类硬负样本（N31–N40）**，见 §9。
 - 小样本免责继续有效：`n` 小、置信区间宽，阈值须随真实数据增长**持续复标**。
 
 ### 7. 维度错配的运行期防线（R4 / R2）✅
@@ -734,12 +734,28 @@ git checkout HEAD~1
 
 ### 8. 文档与测试 ✅
 - 文档同步至 v3.5.0：`PROJECT.md` / `SRS.md` / `README.md` / `docs/README.md` / 增量 PRD（含 ViT-H-14 维度 512 → **1024 联合投影**修正）。
-- 自动化测试扩至 **192 用例（190 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` 等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例。
+- 自动化测试扩至 **201 用例（199 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` / `test_calibrate_*`（见 §9）等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例（设 `RUN_REAL_CLIP=1` 时转通过）。
+
+### 9. 真实权重验证轮（v3.5.0 收尾，2026-09-14）✅
+解决了本版长期悬置的「**本机从未加载真实权重**」问题，并把标定从「打桩验证」推进到「**已用真实模型验证**」。
+
+- ➕ `backend/scripts/download_cn_clip_weights.py`：**断点续传**下载器（urllib + HTTP Range；服务器忽略 Range 返回 200 时**从零重下**，杜绝半截坏文件）。经 ModelScope 源 `AI-ModelScope/chinese-clip-vit-huge-patch14` 取得 `clip_cn_vit-h-14.pt`（**3,830,716,726 字节**，字节级校验通过），**无需 `pip install modelscope`**（纯 urllib）；配合 `CLIP_CN_CKPT_PATH` 实现**零网络加载**（16.2s）。
+- ➕ `backend/scripts/verify_real_clip.py`：端到端真机验证 —— 结构契约比对（对 `_MODEL_INFO`）、真实加载、编码 **1024 维 + L2 归一**、语义合理性（`cos(查询,正例) > cos(查询,跨类别负例)`）。**全部 PASS**；`test_real_clip_smoke.py` 2 例由 **skip 转通过**。
+- **真实标定结果**：`Recall@3 = 1.0` / `Recall@1 = 0.7917` / `Recall@5 = Recall@10 = 1.0`；**跨类别检索已解**，5 个 rank-2 误排**全是同类近重复**（item64↔68 白色蓝牙耳机、item77↔67 卡片）。
+- 🐞 **修复 3 处「桩路径掩盖真实路径」的缺陷**（真实权重下才暴露，均已补守卫测试）：
+  1. **编码器接口漂移**：`calibrate_thresholds.py` 内部调用 `encode_text/encode_image`，而真实 `clip_service` 只暴露 `get_*_feature` —— 假编码器定义了接口、真实编码器从未接上。修法：加 `_ServiceEncoderAdapter` 适配（**改脚本去迁就冻结的服务接口**，不改服务）。
+  2. **候选集重复计数**：候选按 `item_ref or text` 去重，导致**同一条物品被拆成两个候选**（实测 10 个候选 = 6 物品 + 4 幻影），真目标被自己的幻影挤出 Top-3 → `Recall@1/@3` 被算成 **0.0**（真实 0.7917/1.0），并触发一次**错误的**「阻塞性发现」。修法：按 `item_id` 去重 + 字段合并。
+  3. **标定未接颜色通道**：`score_pair` 不传 `color1/color2`，而线上两个调用点（`match_service.py:104` / `items.py:614`）都传 → `has_col` 恒为 False → **`W_COLOR` 数学上完全惰性**（实测 `color_weight` 取 0.0/0.15/0.5/0.9 得分完全相同），网格里那列 `W_COLOR 0.7~0.9` 是**假象**。修法：与线上一致传入颜色直方图。
+- ➕ 3 个守卫测试：`test_calibrate_candidates.py`（7）/ `test_calibrate_color_channel.py`（5）/ `test_calibrate_grid_summary.py`（4）。
+- **网格「并列退化」方法论修正**：`grid_search` 现同时输出**合格集合分布**（`summarize_grid`）——实测合格组合 **103** 个、其中 **102** 个并列 `Recall@3=1.0`，故 Top-N 顺序**无意义**；有信息量的是集合结构（`W_COLOR` 取值直方图单调递减 ⇒ `W_COLOR≈0`、文本主导）。
+- **评测集补充 10 对同类硬负样本（N31–N40）**：复用既有正样本查询文本、只换目标，构造「高相似但不同物」的假阳性场景（原负样本全为易分跨类别错配）。结果：`Recall@K` **完全不变**（印证跨类别已解、同类近重复才是残差），而 Precision 上界进一步下降 —— 这是**预期且正确**的。
+- ⚠️ **`AUTO`/`EMAIL` 仍不可标定**：默认配置下 PR 曲线 Precision 上界仅 **0.6129**（补硬负样本前约 0.77），`Precision≥0.90/0.98` **无解** → 返回 `None`。**不得为凑出 0.90 而放宽口径**。
 
 ### ⚠️ 如实声明（重要）
-- **阈值与权重均为初值、尚未用真实模型标定**；须经 `calibrate_thresholds.py`（`--grid` + `Recall@3 不下降` 断言）回填后，方可视为收敛，**不得表述为「已定稿 / 已可靠标定」**；
-- **真实 Chinese-CLIP 权重（3.83GB）从未在本机下载验证**（本机带宽约 2.2 小时）；本版**全部结论均为「已打桩验证」**，「已用真实模型验证」这一档**为空**；
-- 换模型后**必须重嵌入全库向量**（`image_vector` / `text_vector`）；**两代向量空间不兼容、不可混用**（`color_vector` 27 维不受影响、不重算）；
+- **`MATCH_THRESHOLD_AUTO` / `EMAIL` 仍不可用**（默认配置 Precision 上界 0.6129 ＜ 0.90）：线上**自动匹配 / 邮件通知**的阈值**尚未收敛**，禁止表述为「已可靠标定」；须**扩充真实评测集后复标**。
+- **权重只能给方向性结论**（`W_COLOR≈0`、文本主导）：合格集合 102 个并列，**不存在唯一最优权重**。
+- ✅ **「已用真实模型验证」这一档已非空**：真实权重已在本机下载并端到端验证（真实 `Recall@3=1.0` / `Recall@1=0.7917`）——与上一轮「本机从未加载真实权重」的声明已不同。
+- 换模型后**必须重嵌入全库向量**（`image_vector` / `text_vector`）；**两代向量空间不兼容、不可混用**（`color_vector` 27 维不受影响、不重算）。
 - 历史 `matches.similarity_score` 存的是**旧口径**分数，展示时不得与新的「相似度 XX%」并列比较。
 
 ### 回归基线

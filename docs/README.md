@@ -28,7 +28,7 @@
 | 文档资源盘点与整合映射 | [`review/doc-consolidation-map-2026-09-12.md`](review/doc-consolidation-map-2026-09-12.md) | 全仓文档盘点、整合决策与目标目录结构 | — |
 | **v3.5.0 增量架构设计** | [`review/v3.5.0-incremental-design.md`](review/v3.5.0-incremental-design.md) | v3.5.0 中文化模型替换 + 图文跨模态检索的架构设计与任务分解（T01–T05） | ⑨ |
 | **v3.5.0 QA 回归报告** | [`review/qa-v3.5.0-regression-2026-09-13.md`](review/qa-v3.5.0-regression-2026-09-13.md) | v3.5.0 回归 + 跨模态新功能测试：维度错配（D1）等发现与修复验证 | ⑩ |
-| **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | 已产出 **v0.1 管线验证版**：含真实评测集结构校验（60 对 / 有效 24 正 30 负 / 6 退化对已排除）与标定管线冒烟验证；⚠️ **阈值仍为设计初值、未真实标定**，发布门禁步骤 8 阻塞（真实权重 3.83GB 本机不可得） | — |
+| **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | **已用真实模型标定**：真实评测集结构校验（**70 对 / 有效 24 正 40 负 / 6 退化对已排除**）+ 真实 `Recall@3=1.0` / `Recall@1=0.7917` + 权重网格合格集合分布；⚠️ **`AUTO`/`EMAIL` 仍无解**（默认配置 Precision 上界 0.6129 ＜ 0.90），发布门禁步骤 8 仍阻塞（须扩充评测集复标） | — |
 | **v3.5.0 增量 PRD（现行）** | [`product/PRD-v3.5.0-incremental.md`](product/PRD-v3.5.0-incremental.md) | v3.5.0 增量需求（中文化模型 + 图文跨模态检索）：产品目标 / 用户故事 / 需求池 / 验收标准（**现行**，非 C 组历史快照） | — |
 
 ## C. 产品设计（历史快照，v3.3 阶段）

@@ -17,193 +17,1046 @@
     "【退化正例剔除·R1】P25~P30（img→img 正样本）的 query.image 与 target.item_ref 为【同一文件】：sim_ii ≡ v·v = 1.0。此类『同图自比』会虚高 Recall 并【向下拖低 auto 阈值】（lowest_with_precision 更早满足 0.90）→ 生产风险。已打标 degenerate_self=true；calibrate_thresholds.py 在 evaluate()/suggest_thresholds()/_recall_ranks()/grid_search() 的【计算层面排除】这 6 对，仅保留作 sim_ii 通道接线自检（见 --degenerate-check 打印）。有效标定集 = 24 正 / 30 负。",
     "【正负不平衡为有意保守】剔除 6 个退化正例后有效集为 24 正 / 30 负；负样本更多只会让 Precision≥0.90 更难达到 → auto 阈值更高 → 线上更安全。",
     "扩充方式：选择【扩充】而非【替换】——保留全部 20 条纯文搜正样本（核心修复『描述搜图』场景不流失），总数 40→60（原始），有效标定集 24 正 / 30 负。",
-    "小样本免责：原始 n=60（有效 54 = 24 正 + 30 负），置信区间宽，仅作保守起点，不得表述为『已可靠标定』；阈值须随数据增长持续复标。"
+    "小样本免责：原始 n=60（有效 54 = 24 正 + 30 负），置信区间宽，仅作保守起点，不得表述为『已可靠标定』；阈值须随数据增长持续复标。",
+    "【同类别硬负样本补充】新增 10 对（N31~N40），label=0。query.text 复用已有正样本的改写描述（reused_query_from 字段标记来源），target 换成**同类别但不同实物**的物品。标签客观性：涉及物品经 DB 核验为「不同 id / 不同 user_id / 不同 created_at / 不同图片」的多条独立记录，确为不同实物，故 label=0 非人工主观判定。目的：使 Precision≥0.90 的可行性可被真实检验，并证伪/证实权重网格中「W_COLOR 高权重」是否仅为跨类别负样本带来的类别捷径。",
+    "⚠️ 补入硬负样本后，正负比由 30/30 变为 30 正 / 40 负（未剔除退化正例前）；结构变化会改变 Precision 口径，故本版标定结果**不可与补入前直接比较绝对值**，只能比较「同一权重在不同负样本构成下是否仍然成立」。"
   ],
   "pairs": [
-    {"id": "P01", "label": 1, "category": "电子产品",
-     "query":  {"text": "白色的小型无线听音设备，配一个方形充电仓，是我在图书馆三楼靠窗座位捡到的", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "P02", "label": 1, "category": "电子产品",
-     "query":  {"text": "图书馆里捡到的白色小电子件，能戴在耳朵上放音乐，收纳盒也是白的，看着挺新", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "P03", "label": 1, "category": "电子产品",
-     "query":  {"text": "一副用来听歌的白色小物件，左右两只，附带充电盒，是在三楼大厅被发现的", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "P04", "label": 1, "category": "电子产品",
-     "query":  {"text": "能塞进耳朵放音乐的白色设备，配套一个方形盒，三楼失物招领处收到的那件", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "P05", "label": 1, "category": "电子产品",
-     "query":  {"text": "一套白色的便携听音小物件，左右两只，充电仓是纯白色的，成对包装在一起", "image": null},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": "蓝牙耳机 白色的"}},
-    {"id": "P06", "label": 1, "category": "电子产品",
-     "query":  {"text": "白色的真无线耳塞，用来听歌，装在白色小盒里，是我在图书馆自习时弄丢的", "image": null},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": "蓝牙耳机 白色的"}},
-    {"id": "P07", "label": 1, "category": "电子产品",
-     "query":  {"text": "图书馆丢的白色小型听音设备，一左一右两只，带收纳盒，外观看起来比较新", "image": null},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": "蓝牙耳机 白色的"}},
-    {"id": "P08", "label": 1, "category": "钥匙门禁",
-     "query":  {"text": "宿舍用的门禁磁卡，浅色的塑料卡，能刷开门锁，是丢在实验楼附近一带的", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "P09", "label": 1, "category": "钥匙门禁",
-     "query":  {"text": "一张进出宿舍楼都要刷的感应卡片，是前两天丢在实验楼那一带、不小心弄丢的", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "P10", "label": 1, "category": "钥匙门禁",
-     "query":  {"text": "门禁用的那种小卡片，用来刷卡进寝室，是前几天下午在实验楼那层楼道丢的", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "P11", "label": 1, "category": "电子产品",
-     "query":  {"text": "一套白色的快速充电套装，包含充电头和线，丢在图书馆四楼", "image": null},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"}},
-    {"id": "P12", "label": 1, "category": "电子产品",
-     "query":  {"text": "白色的电源适配器加数据线，支持快充，图书馆四楼丢的", "image": null},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"}},
-    {"id": "P13", "label": 1, "category": "电子产品",
-     "query":  {"text": "给设备供电用的白色小方块和连接线，在图书馆四楼不慎遗失", "image": null},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"}},
-    {"id": "P14", "label": 1, "category": "电子产品",
-     "query":  {"text": "一套白色快充头和数据线，图书馆四楼遗失，充电速度很快", "image": null},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"}},
-    {"id": "P15", "label": 1, "category": "证件卡片",
-     "query":  {"text": "校园里证明在读身份的证件，封面有校徽，在图书馆丢的", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "P16", "label": 1, "category": "证件卡片",
-     "query":  {"text": "一本小册子样式的证明件，里面有我的照片和学号", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "P17", "label": 1, "category": "证件卡片",
-     "query":  {"text": "用来证明在读身份的本子，图书馆遗失", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "P18", "label": 1, "category": "书籍文具",
-     "query":  {"text": "一支黑色的书写用笔，帽子上带笔夹，图书馆二楼捡到的", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "P19", "label": 1, "category": "书籍文具",
-     "query":  {"text": "黑色的圆珠笔样式的文具，能按动出芯", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "P20", "label": 1, "category": "书籍文具",
-     "query":  {"text": "一根黑色的按动笔，笔身有磨砂感，图书馆二楼发现", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-
-    {"id": "N01", "label": 0, "category": "钥匙门禁",
-     "query":  {"text": "白色的小型无线听音设备，配一个方形充电仓，是我在图书馆三楼靠窗座位捡到的", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "N02", "label": 0, "category": "证件卡片",
-     "query":  {"text": "图书馆里捡到的白色小电子件，能戴在耳朵上放音乐，收纳盒也是白的，看着挺新", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "N03", "label": 0, "category": "书籍文具",
-     "query":  {"text": "一副用来听歌的白色小物件，左右两只，附带充电盒，是在三楼大厅被发现的", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "N04", "label": 0, "category": "钥匙门禁",
-     "query":  {"text": "一套白色的便携听音小物件，左右两只，充电仓是纯白色的，成对包装在一起", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "N05", "label": 0, "category": "证件卡片",
-     "query":  {"text": "白色的真无线耳塞，用来听歌，装在白色小盒里，是我在图书馆自习时弄丢的", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "N06", "label": 0, "category": "书籍文具",
-     "query":  {"text": "图书馆丢的白色小型听音设备，一左一右两只，带收纳盒，外观看起来比较新", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "N07", "label": 0, "category": "电子产品",
-     "query":  {"text": "宿舍用的门禁磁卡，浅色的塑料卡，能刷开门锁，是丢在实验楼附近一带的", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "N08", "label": 0, "category": "电子产品",
-     "query":  {"text": "门禁用的那种小卡片，用来刷卡进寝室，是前几天下午在实验楼那层楼道丢的", "image": null},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"}},
-    {"id": "N09", "label": 0, "category": "书籍文具",
-     "query":  {"text": "一张进出宿舍楼都要刷的感应卡片，是前两天丢在实验楼那一带、不小心弄丢的", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "N10", "label": 0, "category": "钥匙门禁",
-     "query":  {"text": "一套白色的快速充电套装，包含充电头和线，丢在图书馆四楼", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "N11", "label": 0, "category": "证件卡片",
-     "query":  {"text": "白色的电源适配器加数据线，支持快充", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "N12", "label": 0, "category": "书籍文具",
-     "query":  {"text": "一套白色快充头和数据线，充电速度很快", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "N13", "label": 0, "category": "电子产品",
-     "query":  {"text": "校园里证明在读身份的证件，封面有校徽", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "N14", "label": 0, "category": "电子产品",
-     "query":  {"text": "一本小册子样式的证明件，里面有我的照片和学号", "image": null},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": "蓝牙耳机 白色的"}},
-    {"id": "N15", "label": 0, "category": "书籍文具",
-     "query":  {"text": "用来证明在读身份的本子", "image": null},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "N16", "label": 0, "category": "电子产品",
-     "query":  {"text": "一支黑色的书写用笔，帽子上带笔夹", "image": null},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "N17", "label": 0, "category": "钥匙门禁",
-     "query":  {"text": "黑色的圆珠笔样式的文具，能按动出芯", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "N18", "label": 0, "category": "证件卡片",
-     "query":  {"text": "一根黑色的按动笔，笔身有磨砂感", "image": null},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": "学生证 学生证"}},
-    {"id": "N19", "label": 0, "category": "钥匙门禁",
-     "query":  {"text": "白色的小型无线听音设备，配充电仓", "image": null},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "N20", "label": 0, "category": "电子产品",
-     "query":  {"text": "一根黑色的笔，能按动出芯，图书馆二楼发现", "image": null},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": "蓝牙耳机 白色的"}},
-
-    {"id": "P21", "label": 1, "category": "电子产品", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"},
-     "target": {"item_id": 64, "item_ref": null, "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "P22", "label": 1, "category": "钥匙门禁", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"},
-     "target": {"item_id": 67, "item_ref": null, "text": "房卡 丢失一个宿舍钥匙"}},
-    {"id": "P23", "label": 1, "category": "证件卡片", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"},
-     "target": {"item_id": 77, "item_ref": null, "text": "学生证 学生证"}},
-    {"id": "P24", "label": 1, "category": "书籍文具", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"},
-     "target": {"item_id": 80, "item_ref": null, "text": "黑色中性笔 黑色中性笔"}},
-
-    {"id": "N21", "label": 0, "category": "证件卡片", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"},
-     "target": {"item_id": 77, "item_ref": null, "text": "学生证 学生证"}},
-    {"id": "N22", "label": 0, "category": "电子产品", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"},
-     "target": {"item_id": 64, "item_ref": null, "text": "蓝牙耳机 白色蓝牙耳机"}},
-    {"id": "N23", "label": 0, "category": "书籍文具", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"},
-     "target": {"item_id": 80, "item_ref": null, "text": "黑色中性笔 黑色中性笔"}},
-    {"id": "N24", "label": 0, "category": "钥匙门禁", "kind": "img2text",
-     "query":  {"text": null, "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"},
-     "target": {"item_id": 67, "item_ref": null, "text": "房卡 丢失一个宿舍钥匙"}},
-
-    {"id": "P25", "label": 1, "category": "电子产品", "kind": "img2img", "degenerate_self": true,
-     "query":  {"text": null, "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": null}},
-    {"id": "P26", "label": 1, "category": "钥匙门禁", "kind": "img2img", "degenerate_self": true,
-     "query":  {"text": null, "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": null}},
-    {"id": "P27", "label": 1, "category": "电子产品", "kind": "img2img", "degenerate_self": true,
-     "query":  {"text": null, "image": "uploads/e83544a70a19409d8c37620db22013cf.jpg"},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": null}},
-    {"id": "P28", "label": 1, "category": "电子产品", "kind": "img2img", "degenerate_self": true,
-     "query":  {"text": null, "image": "uploads/69473b446540433c99ad1d448085e5dd.jpg"},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": null}},
-    {"id": "P29", "label": 1, "category": "证件卡片", "kind": "img2img", "degenerate_self": true,
-     "query":  {"text": null, "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": null}},
-    {"id": "P30", "label": 1, "category": "书籍文具", "kind": "img2img", "degenerate_self": true,
-     "query":  {"text": null, "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": null}},
-
-    {"id": "N25", "label": 0, "category": "钥匙门禁", "kind": "img2img",
-     "query":  {"text": null, "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"},
-     "target": {"item_id": 67, "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg", "text": null}},
-    {"id": "N26", "label": 0, "category": "电子产品", "kind": "img2img",
-     "query":  {"text": null, "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"},
-     "target": {"item_id": 64, "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg", "text": null}},
-    {"id": "N27", "label": 0, "category": "证件卡片", "kind": "img2img",
-     "query":  {"text": null, "image": "uploads/e83544a70a19409d8c37620db22013cf.jpg"},
-     "target": {"item_id": 77, "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg", "text": null}},
-    {"id": "N28", "label": 0, "category": "书籍文具", "kind": "img2img",
-     "query":  {"text": null, "image": "uploads/69473b446540433c99ad1d448085e5dd.jpg"},
-     "target": {"item_id": 80, "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg", "text": null}},
-    {"id": "N29", "label": 0, "category": "电子产品", "kind": "img2img",
-     "query":  {"text": null, "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"},
-     "target": {"item_id": 73, "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg", "text": null}},
-    {"id": "N30", "label": 0, "category": "电子产品", "kind": "img2img",
-     "query":  {"text": null, "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"},
-     "target": {"item_id": 68, "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg", "text": null}}
+    {
+      "id": "P01",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "白色的小型无线听音设备，配一个方形充电仓，是我在图书馆三楼靠窗座位捡到的",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "P02",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "图书馆里捡到的白色小电子件，能戴在耳朵上放音乐，收纳盒也是白的，看着挺新",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "P03",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "一副用来听歌的白色小物件，左右两只，附带充电盒，是在三楼大厅被发现的",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "P04",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "能塞进耳朵放音乐的白色设备，配套一个方形盒，三楼失物招领处收到的那件",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "P05",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "一套白色的便携听音小物件，左右两只，充电仓是纯白色的，成对包装在一起",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      }
+    },
+    {
+      "id": "P06",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "白色的真无线耳塞，用来听歌，装在白色小盒里，是我在图书馆自习时弄丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      }
+    },
+    {
+      "id": "P07",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "图书馆丢的白色小型听音设备，一左一右两只，带收纳盒，外观看起来比较新",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      }
+    },
+    {
+      "id": "P08",
+      "label": 1,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "宿舍用的门禁磁卡，浅色的塑料卡，能刷开门锁，是丢在实验楼附近一带的",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "P09",
+      "label": 1,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "一张进出宿舍楼都要刷的感应卡片，是前两天丢在实验楼那一带、不小心弄丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "P10",
+      "label": 1,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "门禁用的那种小卡片，用来刷卡进寝室，是前几天下午在实验楼那层楼道丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "P11",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "一套白色的快速充电套装，包含充电头和线，丢在图书馆四楼",
+        "image": null
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"
+      }
+    },
+    {
+      "id": "P12",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "白色的电源适配器加数据线，支持快充，图书馆四楼丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"
+      }
+    },
+    {
+      "id": "P13",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "给设备供电用的白色小方块和连接线，在图书馆四楼不慎遗失",
+        "image": null
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"
+      }
+    },
+    {
+      "id": "P14",
+      "label": 1,
+      "category": "电子产品",
+      "query": {
+        "text": "一套白色快充头和数据线，图书馆四楼遗失，充电速度很快",
+        "image": null
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"
+      }
+    },
+    {
+      "id": "P15",
+      "label": 1,
+      "category": "证件卡片",
+      "query": {
+        "text": "校园里证明在读身份的证件，封面有校徽，在图书馆丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "P16",
+      "label": 1,
+      "category": "证件卡片",
+      "query": {
+        "text": "一本小册子样式的证明件，里面有我的照片和学号",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "P17",
+      "label": 1,
+      "category": "证件卡片",
+      "query": {
+        "text": "用来证明在读身份的本子，图书馆遗失",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "P18",
+      "label": 1,
+      "category": "书籍文具",
+      "query": {
+        "text": "一支黑色的书写用笔，帽子上带笔夹，图书馆二楼捡到的",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "P19",
+      "label": 1,
+      "category": "书籍文具",
+      "query": {
+        "text": "黑色的圆珠笔样式的文具，能按动出芯",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "P20",
+      "label": 1,
+      "category": "书籍文具",
+      "query": {
+        "text": "一根黑色的按动笔，笔身有磨砂感，图书馆二楼发现",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N01",
+      "label": 0,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "白色的小型无线听音设备，配一个方形充电仓，是我在图书馆三楼靠窗座位捡到的",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "N02",
+      "label": 0,
+      "category": "证件卡片",
+      "query": {
+        "text": "图书馆里捡到的白色小电子件，能戴在耳朵上放音乐，收纳盒也是白的，看着挺新",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "N03",
+      "label": 0,
+      "category": "书籍文具",
+      "query": {
+        "text": "一副用来听歌的白色小物件，左右两只，附带充电盒，是在三楼大厅被发现的",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N04",
+      "label": 0,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "一套白色的便携听音小物件，左右两只，充电仓是纯白色的，成对包装在一起",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "N05",
+      "label": 0,
+      "category": "证件卡片",
+      "query": {
+        "text": "白色的真无线耳塞，用来听歌，装在白色小盒里，是我在图书馆自习时弄丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "N06",
+      "label": 0,
+      "category": "书籍文具",
+      "query": {
+        "text": "图书馆丢的白色小型听音设备，一左一右两只，带收纳盒，外观看起来比较新",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N07",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "宿舍用的门禁磁卡，浅色的塑料卡，能刷开门锁，是丢在实验楼附近一带的",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "N08",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "门禁用的那种小卡片，用来刷卡进寝室，是前几天下午在实验楼那层楼道丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"
+      }
+    },
+    {
+      "id": "N09",
+      "label": 0,
+      "category": "书籍文具",
+      "query": {
+        "text": "一张进出宿舍楼都要刷的感应卡片，是前两天丢在实验楼那一带、不小心弄丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N10",
+      "label": 0,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "一套白色的快速充电套装，包含充电头和线，丢在图书馆四楼",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "N11",
+      "label": 0,
+      "category": "证件卡片",
+      "query": {
+        "text": "白色的电源适配器加数据线，支持快充",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "N12",
+      "label": 0,
+      "category": "书籍文具",
+      "query": {
+        "text": "一套白色快充头和数据线，充电速度很快",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N13",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "校园里证明在读身份的证件，封面有校徽",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "N14",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "一本小册子样式的证明件，里面有我的照片和学号",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      }
+    },
+    {
+      "id": "N15",
+      "label": 0,
+      "category": "书籍文具",
+      "query": {
+        "text": "用来证明在读身份的本子",
+        "image": null
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N16",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "一支黑色的书写用笔，帽子上带笔夹",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "N17",
+      "label": 0,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "黑色的圆珠笔样式的文具，能按动出芯",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "N18",
+      "label": 0,
+      "category": "证件卡片",
+      "query": {
+        "text": "一根黑色的按动笔，笔身有磨砂感",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "N19",
+      "label": 0,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "白色的小型无线听音设备，配充电仓",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "N20",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "一根黑色的笔，能按动出芯，图书馆二楼发现",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      }
+    },
+    {
+      "id": "P21",
+      "label": 1,
+      "category": "电子产品",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": null,
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "P22",
+      "label": 1,
+      "category": "钥匙门禁",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": null,
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "P23",
+      "label": 1,
+      "category": "证件卡片",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": null,
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "P24",
+      "label": 1,
+      "category": "书籍文具",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": null,
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N21",
+      "label": 0,
+      "category": "证件卡片",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": null,
+        "text": "学生证 学生证"
+      }
+    },
+    {
+      "id": "N22",
+      "label": 0,
+      "category": "电子产品",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": null,
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      }
+    },
+    {
+      "id": "N23",
+      "label": 0,
+      "category": "书籍文具",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": null,
+        "text": "黑色中性笔 黑色中性笔"
+      }
+    },
+    {
+      "id": "N24",
+      "label": 0,
+      "category": "钥匙门禁",
+      "kind": "img2text",
+      "query": {
+        "text": null,
+        "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": null,
+        "text": "房卡 丢失一个宿舍钥匙"
+      }
+    },
+    {
+      "id": "P25",
+      "label": 1,
+      "category": "电子产品",
+      "kind": "img2img",
+      "degenerate_self": true,
+      "query": {
+        "text": null,
+        "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "P26",
+      "label": 1,
+      "category": "钥匙门禁",
+      "kind": "img2img",
+      "degenerate_self": true,
+      "query": {
+        "text": null,
+        "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "P27",
+      "label": 1,
+      "category": "电子产品",
+      "kind": "img2img",
+      "degenerate_self": true,
+      "query": {
+        "text": null,
+        "image": "uploads/e83544a70a19409d8c37620db22013cf.jpg"
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "P28",
+      "label": 1,
+      "category": "电子产品",
+      "kind": "img2img",
+      "degenerate_self": true,
+      "query": {
+        "text": null,
+        "image": "uploads/69473b446540433c99ad1d448085e5dd.jpg"
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "P29",
+      "label": 1,
+      "category": "证件卡片",
+      "kind": "img2img",
+      "degenerate_self": true,
+      "query": {
+        "text": null,
+        "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "P30",
+      "label": 1,
+      "category": "书籍文具",
+      "kind": "img2img",
+      "degenerate_self": true,
+      "query": {
+        "text": null,
+        "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N25",
+      "label": 0,
+      "category": "钥匙门禁",
+      "kind": "img2img",
+      "query": {
+        "text": null,
+        "image": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg"
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N26",
+      "label": 0,
+      "category": "电子产品",
+      "kind": "img2img",
+      "query": {
+        "text": null,
+        "image": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg"
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N27",
+      "label": 0,
+      "category": "证件卡片",
+      "kind": "img2img",
+      "query": {
+        "text": null,
+        "image": "uploads/e83544a70a19409d8c37620db22013cf.jpg"
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N28",
+      "label": 0,
+      "category": "书籍文具",
+      "kind": "img2img",
+      "query": {
+        "text": null,
+        "image": "uploads/69473b446540433c99ad1d448085e5dd.jpg"
+      },
+      "target": {
+        "item_id": 80,
+        "item_ref": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N29",
+      "label": 0,
+      "category": "电子产品",
+      "kind": "img2img",
+      "query": {
+        "text": null,
+        "image": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg"
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N30",
+      "label": 0,
+      "category": "电子产品",
+      "kind": "img2img",
+      "query": {
+        "text": null,
+        "image": "uploads/17748f0f4d7e4ad0b8847b4f2ea6311a.jpg"
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": null
+      }
+    },
+    {
+      "id": "N31",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "白色的小型无线听音设备，配一个方形充电仓，是我在图书馆三楼靠窗座位捡到的",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P01",
+      "note": "同类别近重复：描述 item64 → 目标 item68（均为白色蓝牙耳机）"
+    },
+    {
+      "id": "N32",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "图书馆里捡到的白色小电子件，能戴在耳朵上放音乐，收纳盒也是白的，看着挺新",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P02",
+      "note": "同类别近重复：描述 item64 → 目标 item68"
+    },
+    {
+      "id": "N33",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "一副用来听歌的白色小物件，左右两只，附带充电盒，是在三楼大厅被发现的",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P03",
+      "note": "同类别近重复：描述 item64 → 目标 item68"
+    },
+    {
+      "id": "N34",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "能塞进耳朵放音乐的白色设备，配套一个方形盒，三楼失物招领处收到的那件",
+        "image": null
+      },
+      "target": {
+        "item_id": 68,
+        "item_ref": "uploads/e83544a70a19409d8c37620db22013cf.jpg",
+        "text": "蓝牙耳机 白色的"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P04",
+      "note": "同类别近重复：描述 item64 → 目标 item68"
+    },
+    {
+      "id": "N35",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "一套白色的便携听音小物件，左右两只，充电仓是纯白色的，成对包装在一起",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P05",
+      "note": "同类别近重复反向：描述 item68 → 目标 item64"
+    },
+    {
+      "id": "N36",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "白色的真无线耳塞，用来听歌，装在白色小盒里，是我在图书馆自习时弄丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P06",
+      "note": "同类别近重复反向：描述 item68 → 目标 item64"
+    },
+    {
+      "id": "N37",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "图书馆丢的白色小型听音设备，一左一右两只，带收纳盒，外观看起来比较新",
+        "image": null
+      },
+      "target": {
+        "item_id": 64,
+        "item_ref": "uploads/079e84f2be8e4ace8df4f663300d0200.jpg",
+        "text": "蓝牙耳机 白色蓝牙耳机"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P07",
+      "note": "同类别近重复反向：描述 item68 → 目标 item64"
+    },
+    {
+      "id": "N38",
+      "label": 0,
+      "category": "钥匙门禁",
+      "query": {
+        "text": "宿舍用的门禁磁卡，浅色的塑料卡，能刷开门锁，是丢在实验楼附近一带的",
+        "image": null
+      },
+      "target": {
+        "item_id": 77,
+        "item_ref": "uploads/d75c22bca84843b3b04e2131f7679c62.jpg",
+        "text": "学生证 学生证"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P08",
+      "note": "卡片类混淆：描述 item67(房卡) → 目标 item77(学生证)"
+    },
+    {
+      "id": "N39",
+      "label": 0,
+      "category": "证件卡片",
+      "query": {
+        "text": "校园里证明在读身份的证件，封面有校徽，在图书馆丢的",
+        "image": null
+      },
+      "target": {
+        "item_id": 67,
+        "item_ref": "uploads/e388ddd1157b4e4d893a50de72f0fa4e.jpg",
+        "text": "房卡 丢失一个宿舍钥匙"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P15",
+      "note": "卡片类混淆反向：描述 item77(学生证) → 目标 item67(房卡)"
+    },
+    {
+      "id": "N40",
+      "label": 0,
+      "category": "电子产品",
+      "query": {
+        "text": "白色的小型无线听音设备，配一个方形充电仓，是我在图书馆三楼靠窗座位捡到的",
+        "image": null
+      },
+      "target": {
+        "item_id": 73,
+        "item_ref": "uploads/69473b446540433c99ad1d448085e5dd.jpg",
+        "text": "手机充电器 在图书馆四楼遗失一套白色手机快充套装"
+      },
+      "hard_negative": true,
+      "reused_query_from": "P01",
+      "note": "同类别不同物：描述 item64(耳机) → 目标 item73(手机充电器)"
+    }
   ]
 }

@@ -11,7 +11,9 @@
 设计要点
 --------
 - **同一口径**：复用线上同一个 ``clip_service.compute_weighted_similarity``，
-  保证「标定口径 = 线上口径」。
+  保证「标定口径 = 线上口径」。调用点与线上一致（``img1/text1/img2/text2`` +
+  ``color1/color2``，见 :func:`score_pair`）；**颜色通道必须显式传入**，否则
+  ``W_COLOR`` 会因 ``has_col=False`` 被动态归一化剔除而**完全惰性**（v3.5.0 已修）。
 - **阈值口径（Q1）**：
     * ``AUTO``   = Precision ≥ 0.90 的**最低**分位；
     * ``EMAIL``  = Precision ≥ 0.98 的**最低**分位；
@@ -73,6 +75,14 @@ class _FakeEncoder:
         v = np.full(512, (abs(hash(text)) % 97) + 1, dtype=np.float32)
         return v / np.linalg.norm(v)
 
+    def encode_color(self, path):
+        """确定性 27 维颜色直方图（**仅**冒烟；形状对齐 ``get_color_histogram``）。"""
+        import numpy as np
+
+        h = np.zeros(27, dtype=np.float32)
+        h[abs(hash(path)) % 27] = 1.0
+        return h
+
 
 class _ServiceEncoderAdapter:
     """把线上 ``clip_service`` 适配成本脚本的 ``encode_*`` 接口。
@@ -112,6 +122,14 @@ class _ServiceEncoderAdapter:
 
     def encode_image(self, path: str):
         return self.service.get_image_feature(path)
+
+    def encode_color(self, path: str):
+        """颜色直方图（27 维）——与线上 ``color1``/``color2`` 同源。
+
+        见 :func:`score_pair` 的『颜色通道缺失』注记：加上本方法后，标定脚本才
+        真正复现线上「图+文+色」的完整打表面。
+        """
+        return self.service.get_color_histogram(path)
 
 
 # --------------------------------------------------------------------------- #
@@ -376,6 +394,13 @@ class _EncoderCache:
             self._cache[key] = self.encoder.encode_image(path)
         return self._cache[key]
 
+    def color(self, path: str):
+        """颜色直方图缓存（27 维）。与 :meth:`image` 分开缓存：同一路径下两者不同物。"""
+        key = ("color", path)
+        if key not in self._cache:
+            self._cache[key] = self.encoder.encode_color(path)
+        return self._cache[key]
+
 
 @contextlib.contextmanager
 def penalty_enabled(enabled: bool):
@@ -407,18 +432,39 @@ def score_pair(
 ) -> float:
     """对单个「查询-目标」对打分（复用线上 ``compute_weighted_similarity``）。
 
-    说明：默认**不传类别/位置**（标定纯内容相似度，避免统一加分造成阈值漂移）。
+    说明：默认**不传类别/位置/时间**（标定纯内容相似度，避免统一加分造成阈值漂移）。
+
+    颜色通道缺失缺陷（v3.5.0 真实权重实测第二处才暴露）
+    -----------------------------------------------------
+    本函数原先只传 ``(q_img, q_text, t_img, t_text)``，**不传** ``color1``/``color2``。
+    而线上两个真实调用点都传：
+
+      - ``services/match_service.py:104`` → ``color1=new_color_vec, color2=target_color_vec``
+      - ``api/items.py:614``              → ``color1=query_color_vec, color2=target_color_vec``
+
+    后果：``clip_service.compute_weighted_similarity`` 里 ``has_col = color1 is not None
+    and color2 is not None`` **恒为 False** → 颜色通道被动态归一化剔除 → ``W_COLOR``
+    在标定里**数学上完全惰性**（实测 color_weight 取 0.0 / 0.15 / 0.5 / 0.9 得分**完全
+    相同**）。于是权重网格里那列 ``W_COLOR 0.7~0.9`` 是**假象**：网格实际选中的是
+    ``W_CROSS=0``（等价于纯 ``sim_tt``），只是把剩余权重随便塞进了惰性的 color 列。
+
+    这违反了本模块「标定口径 = 线上口径」的设计前提（见模块 docstring）。修法：与线上
+    一致，查询色取自 ``query.image``、目标色取自 ``target.item_ref``；无图则对应色为
+    ``None`` → ``has_col=False``（与线上「无查询图则无查询色」的行为一致）。
     """
     query = pair.get("query", {})
     target = pair.get("target", {})
 
     q_img = cache.image(query["image"]) if query.get("image") else None
     q_text = cache.text(query["text"]) if query.get("text") else None
+    q_color = cache.color(query["image"]) if query.get("image") else None
     t_img = cache.image(target["item_ref"]) if target.get("item_ref") else None
     t_text = cache.text(target["text"]) if target.get("text") else None
+    t_color = cache.color(target["item_ref"]) if target.get("item_ref") else None
 
     return clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
+        color1=q_color, color2=t_color,
         **_weights_kwargs(weights),
     )
 
@@ -429,13 +475,19 @@ def score_pair_vs_target(
     target: Dict[str, Any],
     weights: Optional[Dict[str, float]] = None,
 ) -> float:
-    """对一个查询与任意候选目标打分（Recall@K 排序用）。"""
+    """对一个查询与任意候选目标打分（Recall@K 排序用）。
+
+    颜色通道同 :func:`score_pair`：必须传入，否则 ``W_COLOR`` 惰性、候选排序与线上不符。
+    """
     q_img = cache.image(query["image"]) if query.get("image") else None
     q_text = cache.text(query["text"]) if query.get("text") else None
+    q_color = cache.color(query["image"]) if query.get("image") else None
     t_img = cache.image(target["item_ref"]) if target.get("item_ref") else None
     t_text = cache.text(target["text"]) if target.get("text") else None
+    t_color = cache.color(target["item_ref"]) if target.get("item_ref") else None
     return clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
+        color1=q_color, color2=t_color,
         **_weights_kwargs(weights),
     )
 
@@ -653,14 +705,57 @@ def iter_weight_grid(step: float = 0.05) -> Iterable[Dict[str, float]]:
                 }
 
 
+def summarize_grid(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """对**全部合格组合**（``auto`` 可达，即 Precision≥0.90 有解）做分布摘要。
+
+    为什么需要它（v3.5.0 真实权重实测第三处暴露的方法论缺陷）
+    -----------------------------------------------------------
+    ``grid_search`` 的目标是「在 Precision≥0.90 的最低阈值处最大化 Recall@3」。
+    但真实评测集上，**大量权重组合并列 Recall@3 = 1.0**（实测 103 个合格组合里 102 个
+    并列）。此时 Top-N 的**顺序纯属并列类的任意代表**（Python 稳定排序 → 实际等于
+    网格枚举顺序），把它当成「最优权重」会得出**不可复现的伪结论** —— 我们此前正是
+    被它误导，把惰性的 ``W_COLOR`` 读成了「0.7~0.9 最优」。
+
+    有信息量的不是单个 Top-1，而是**合格集合的结构**：各权重维度允许取值、以及
+    ``W_COLOR`` 在「满分召回」子集中的取值直方图（单调递减即说明该维度越小越好）。
+
+    Args:
+        results: ``grid_search`` 收集的**全部**合格组合（每个含 ``weights`` / ``recall@K``）。
+
+    Returns:
+        含 ``n_qualified`` / ``n_full_recall`` / 各维度取值集合 / 颜色直方图的摘要字典。
+    """
+    full = [r for r in results if r.get("recall@3") == 1.0]
+    color_hist: Dict[float, int] = {}
+    for r in full:
+        c = float(r["weights"]["color"])
+        color_hist[c] = color_hist.get(c, 0) + 1
+    per_dim = {
+        name: sorted({float(r["weights"][name]) for r in results}) for name in _WEIGHT_KEYS
+    }
+    return {
+        "n_qualified": len(results),
+        "n_full_recall": len(full),
+        "per_dim_values": per_dim,
+        "color_hist_full_recall": dict(sorted(color_hist.items())),
+        "recall1_values": sorted({float(r["recall@1"]) for r in results}),
+        "max_color_full_recall": (max(color_hist) if color_hist else None),
+    }
+
+
 def grid_search(
     eval_set: Dict[str, Any],
     encoder: Any,
     *,
     step: float = 0.05,
     top_n: int = 5,
-) -> List[Dict[str, Any]]:
-    """权重网格搜索：在 Precision ≥ 0.90 的最低阈值处最大化 Recall@3，返回 Top-N。"""
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """权重网格搜索：在 Precision ≥ 0.90 的最低阈值处最大化 Recall@3。
+
+    Returns:
+        ``(top_n 列表, 合格集合摘要)``。``top_n`` 内的**顺序在并列时无意义**，
+        请连同 :func:`summarize_grid` 的摘要一起解读（见其 docstring）。
+    """
     results: List[Dict[str, Any]] = []
     cache = _EncoderCache(encoder)
     candidates = _candidates(eval_set)
@@ -687,8 +782,9 @@ def grid_search(
                 "recall@10": round(recall_at_k(ranks, 10), 4),
             }
         )
+    summary = summarize_grid(results)
     results.sort(key=lambda r: (r["recall@3"], r["recall@1"]), reverse=True)
-    return results[:top_n]
+    return results[:top_n], summary
 
 
 # --------------------------------------------------------------------------- #
@@ -705,6 +801,7 @@ def write_markdown_report(
     *,
     compare: Optional[Dict[str, Any]] = None,
     grid_top: Optional[List[Dict[str, Any]]] = None,
+    grid_summary: Optional[Dict[str, Any]] = None,
     fake_encoder: bool = False,
 ) -> None:
     """把标定结果写为 Markdown 报告。"""
@@ -775,7 +872,17 @@ def write_markdown_report(
         )
 
     if grid_top:
-        lines.append("\n## 5. 权重网格 Top-N（目标：Precision≥0.90 处最大化 Recall@3）\n")
+        lines.append("\n## 5. 权重网格（目标：Precision≥0.90 处最大化 Recall@3）\n")
+        if grid_summary:
+            n_q = grid_summary.get("n_qualified", 0)
+            n_f = grid_summary.get("n_full_recall", 0)
+            lines.append(
+                f"> **并列退化提示**：合格组合（`Precision≥0.90` 有解）共 **{n_q}** 个，"
+                f"其中 **{n_f}** 个并列 `Recall@3 = 1.0`。"
+                "**下表顺序只是并列类的任意代表（= 网格枚举顺序），不是「最优权重排名」**；"
+                "请以下方的**合格集合分布**为准。\n"
+            )
+        lines.append("### 5.1 Top-N（并列代表，顺序无意义）\n")
         lines.append("| # | W_IMG_IMG | W_CROSS | W_TEXT_TEXT | W_COLOR | auto 阈值 | Recall@1 | Recall@3 | Recall@5 | Recall@10 |")
         lines.append("|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|")
         for i, g in enumerate(grid_top, start=1):
@@ -783,6 +890,22 @@ def write_markdown_report(
             lines.append(
                 f"| {i} | {w['img_img']} | {w['cross']} | {w['text_text']} | {w['color']} | "
                 f"{g['auto_threshold']} | {g['recall@1']} | {g['recall@3']} | {g['recall@5']} | {g['recall@10']} |"
+            )
+        if grid_summary:
+            lines.append("\n### 5.2 合格集合分布（**有信息量**）\n")
+            hist = grid_summary.get("color_hist_full_recall", {})
+            lines.append(
+                "- `W_COLOR` 在「满分召回」子集中的取值分布（单调递减 ⇒ 该维度越小越好）："
+                f"`{hist}`"
+            )
+            lines.append(
+                f"- 合格集合内 `W_COLOR` 最大取值：`{grid_summary.get('max_color_full_recall')}`"
+            )
+            per_dim = grid_summary.get("per_dim_values", {})
+            for name, vals in per_dim.items():
+                lines.append(f"- 合格集合内 `{name}` 允许取值：`{vals}`")
+            lines.append(
+                f"- 合格集合内 `Recall@1` 取值：`{grid_summary.get('recall1_values')}`\n"
             )
 
     with open(out_path, "w", encoding="utf-8") as f:
@@ -873,15 +996,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
 
     grid_top = None
+    grid_summary = None
     if args.grid:
         print("正在执行权重网格搜索（步长 %.2f）..." % args.grid_step)
-        grid_top = grid_search(eval_set, encoder, step=args.grid_step)
-        print(f"网格搜索完成，Top-{len(grid_top)} 组合：")
+        grid_top, grid_summary = grid_search(eval_set, encoder, step=args.grid_step)
+        print(f"网格搜索完成，Top-{len(grid_top)} 组合（顺序在并列时无意义）：")
         for i, g in enumerate(grid_top, start=1):
             print(f"  #{i} weights={g['weights']} auto={g['auto_threshold']} Recall@3={g['recall@3']}")
+        if grid_summary:
+            print(
+                f"  合格组合 {grid_summary['n_qualified']} 个，"
+                f"其中 {grid_summary['n_full_recall']} 个并列 Recall@3=1.0"
+            )
+            print(f"  W_COLOR 在满分召回子集的分布: {grid_summary['color_hist_full_recall']}")
 
     write_markdown_report(args.out, result, compare=compare, grid_top=grid_top,
-                          fake_encoder=args.fake_encoder)
+                          grid_summary=grid_summary, fake_encoder=args.fake_encoder)
     write_csv(csv_path, result["curve"])
 
     if args.fake_encoder:
