@@ -40,3 +40,6 @@ backend/scripts/.reembed_state.json
 _uploads.txt
 lost-found-frontend/_build.txt
 lost-found-frontend/_nm.txt
+# 运行日志
+logs/
+
