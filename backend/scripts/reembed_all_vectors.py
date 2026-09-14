@@ -17,7 +17,8 @@ v3.5.0 把图像/文本编码器从 ``open_clip ViT-B-32`` 换成 ``Chinese-CLIP
 设计要点
 --------
 - **编码器解耦**：核心 :func:`run` 通过参数注入 ``encoder``（需提供 ``encode_image(path)`` /
-  ``encode_text(text)``）。生产传 ``clip_service``（同一单例，故 conftest 打桩自动生效）；
+  ``encode_text(text)``）。生产**必须**传 :class:`_ServiceEncoderAdapter`（真实
+  ``clip_service`` 只有 ``get_*_feature``，没有 ``encode_*`` —— 见该类 docstring）；
   测试传 ``FakeEncoder`` → **不加载真实模型**。
 - **冷备**：``sqlite3`` online backup → ``<DB_PATH>.bak-YYYYmmddHHMMSS``（一致性快照，避免
   半写），输出备份路径 + ``sha256``。
@@ -54,6 +55,76 @@ from app.logger import logger  # noqa: E402
 
 STATE_FILENAME = ".reembed_state.json"
 DEFAULT_STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), STATE_FILENAME)
+
+
+# --------------------------------------------------------------------------- #
+# 编码器适配（生产路径接线）
+# --------------------------------------------------------------------------- #
+class _ServiceEncoderAdapter:
+    """把线上 ``clip_service`` 适配成本脚本的 ``encode_image`` / ``encode_text`` 接口。
+
+    为什么需要这一层（v3.5.0 真实权重实测暴露的**同型缺陷第 4 例**）
+    ---------------------------------------------------------------
+    :func:`run` 按 ``encoder.encode_image(path)`` / ``encoder.encode_text(text)`` 调用，
+    而真实 ``clip_service``（``CLIPService``）暴露的是 ``get_image_feature`` /
+    ``get_text_feature`` —— 这两个 ``encode_*`` 名字**只有测试里的 ``FakeEncoder`` 才有**。
+
+    ⇒ **假编码器定义了接口，真实编码器从未被接上**：注入 ``FakeEncoder`` 的单测全绿，
+    真机一跑就是 ``AttributeError: 'CLIPService' object has no attribute 'encode_image'``。
+    实测 6 条物品 × 2 = 12 次编码全部失败（``ok=0`` / ``failed_encode=12``）。
+    这是本项目第 4 次踩同一个坑（前 3 次在 ``calibrate_thresholds.py``）。
+
+    修法：**适配脚本去迁就服务的冻结接口**（``clip_service`` 的公开方法名是 conftest
+    打桩依赖的契约，**改名即测试全红**），并配合 :func:`_exit_code` 让失败不再静默成功。
+
+    Note:
+        ``name`` / ``model_name`` 故意**委托给真实后端**（而非写死 "clip_service"），
+        因为 :func:`model_fingerprint` 依赖它们做断点指纹；写死会让「换模型后续跑」
+        的防护失效。
+    """
+
+    def __init__(self, service: Any):
+        self.service = service
+
+    def get_backend(self):
+        return self.service.get_backend()
+
+    @property
+    def name(self) -> str:
+        return str(getattr(self.service.get_backend(), "name", "unknown"))
+
+    @property
+    def model_name(self) -> str:
+        return str(getattr(self.service.get_backend(), "model_name", "unknown"))
+
+    def encode_image(self, path: str):
+        return self.service.get_image_feature(path)
+
+    def encode_text(self, text: str):
+        return self.service.get_text_feature(text)
+
+
+def _exit_code(stats: "ReembedStats", dry_run: bool) -> int:
+    """真跑时的退出码：**失败不得静默成功**（原实现恒返回 0 ⇒ 假绿迁移）。
+
+    为什么这是必须的
+    ----------------
+    原 ``main()`` 无论 ``ok`` 是几都 ``return 0``。实测在真实权重下 12 次编码全部
+    ``AttributeError`` ⇒ ``ok=0`` 却「成功退出」—— 运维会误以为已迁移，而库中向量
+    其实**分毫未动**（仍是旧模型维度），匹配继续不可用。
+
+    规则（仅约束**真跑**；``--dry-run`` 是只读预览，失败只提示不判失败）：
+      - ``failed_encode > 0``：任何编码失败都视为致命 —— 部分迁移会造成
+        **新旧维度混杂**的库，比统一旧维度更危险（打分时部分 500、部分正常）。
+      - ``ok == 0 and total > 0``：一条都没成功，等于没迁移。
+    """
+    if dry_run:
+        return 0
+    if stats.failed_encode > 0:
+        return 2
+    if stats.total > 0 and stats.ok == 0:
+        return 3
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -383,9 +454,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     from app.clip_service import clip_service
 
     db_path = args.db or DB_PATH
+    # 生产路径必须经适配器：真实 clip_service 暴露 get_*_feature，本脚本内部用 encode_*
     stats = run(
         db_path,
-        clip_service,
+        _ServiceEncoderAdapter(clip_service),
         dry_run=args.dry_run,
         backup_only=args.backup_only,
         resume=args.resume,
@@ -394,7 +466,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         state_path=args.state_path,
     )
     _print_stats(stats)
-    return 0
+    code = _exit_code(stats, args.dry_run)
+    if code != 0:
+        print("!" * 56)
+        print(
+            f"[FAIL] 重嵌入未成功：ok={stats.ok} / failed_encode={stats.failed_encode}"
+            f" / total={stats.total}（退出码 {code}）"
+        )
+        print("       库中向量很可能未变化（或部分变化）→ 请勿视为已迁移。")
+        print("!" * 56)
+    return code
 
 
 if __name__ == "__main__":

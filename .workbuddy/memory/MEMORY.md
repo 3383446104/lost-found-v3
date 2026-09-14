@@ -49,9 +49,26 @@
     - ★ **三条通用教训**：**(a)** 门控/桩化的路径**必须被真实实现执行过一次**才可信，否则「管线已跑通」只是假路径结论（本项目已因此踩 3 次）；**(b)** Recall@K 异常低时，**先查候选池去重**，再怀疑模型；**(c)** 网格/Top-N 结论必须附**合格集合分布**——`summarize_grid` 显示合格组合 **103** 个、其中 **102** 个并列 `Recall@3=1.0`，故 Top-N **顺序无意义**。
     - **基线**：全套件 **201 用例 / 0 failed / 0 errors / 2 skipped**（`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；新增 `test_calibrate_candidates.py`(7) / `test_calibrate_color_channel.py`(5) / `test_calibrate_grid_summary.py`(4)；报告 `docs/review/threshold-calibration-v3.5.0.md` 已重生成（含 §5 合格集合分布）。
 
+20. **⚠️【2026-09-14 实测】v3.5.0 处于「代码已切模型、数据未迁移」的悬挂态（回答"能否开新迭代"的关键事实）**
+    - **`.env` 未覆盖任何 `CLIP_*` / `MATCH_*` / `AUTO_MATCH_ENABLED`**（实测仅含 `SECRET_KEY` 等）→ 全部走 `config.py` 默认。
+    - **默认 `CLIP_BACKEND="cn_clip"`（1024 维），但 `lost_found.db` 实测 `image_vector`/`text_vector` 全为 512 维**（6 条 item，即旧 open_clip 遗留）→ R2 维度防线触发 → `POST /api/items/match` → **HTTP 500**；`match_service` 记 `ERROR` 并 `return`（自动匹配不推送）。**结论：cn_clip 尚未在生产生效，必须重嵌入（门禁步骤 3）后才算落地。**
+    - **`AUTO_MATCH_ENABLED` 默认 `True`**（注释写明"灰度期置 false"，但未置）→ 一旦重嵌入完成，自动推送会**立刻开启**，而 `AUTO` 阈值尚未标定（config 初值 0.55）→ **重嵌入前必须先置 false**。
+    - **权重加载不需要 `CLIP_CN_CKPT_PATH`**：不设时走 `load_from_name("ViT-H-14", download_root="models", use_modelscope=True)`；`download_root` 是**相对路径（依赖 cwd=backend）**，命中 `backend/models/clip_cn_vit-h-14.pt` 本地文件**不重新下载**（实测 16.2s 加载，日志 `source=ViT-H-14` 即证）。设 `CLIP_CN_CKPT_PATH` 更明确但非必需。
+    - **库现状**：items 6 / matches 85 / users 54 / notifications 198 / announcements 1；`color_vector` 27 维 6 条全有（不受模型切换影响，无需重算）。
+    - ★ **推论**：重嵌入是**昂贵且需授权**的一次性操作 → **应"先定模型、再做迁移"**，避免迁一次、换模型再迁一次。
+
+21. **【2026-09-14 干跑暴露】**`reembed_all_vectors.py` 同样踩了「假编码器定义接口、真实编码器从未接上」的坑（**同型缺陷第 4 例**）
+    - **症状**：用真实 `clip_service` 跑 `--dry-run` → 6 条物品 × 2 = 12 次全部 `AttributeError: 'CLIPService' object has no attribute 'encode_image'`，`ok=0` / `failed_encode=12`；更糟的是 `main()` 恒返回 0 ⇒ 真跑会**假绿迁移**：成功退出、库中向量**分毫未动**，运维以为已迁移。
+    - **根因**：脚本按 `encoder.encode_image/encode_text` 调用；真实 `clip_service` 只有 `get_image_feature/get_text_feature`。测试注入的 `FakeEncoder` 定义了 `encode_*`，所以单测全绿。
+    - **修法**（与 `calibrate_thresholds._ServiceEncoderAdapter` 同型）：脚本内加 `_ServiceEncoderAdapter` 适配冻结的服务接口；`main()` 用它包 `clip_service`。**关键**：`name`/`model_name` 委托给真实后端（写死会破坏 `model_fingerprint` 的断点指纹，导致换模型后续跑防护失效）。
+    - **配套**：`main()` 原本恒返回 0 → 抽 `_exit_code(stats, dry_run)` 纯函数：真跑时 `failed_encode>0` → 2、 `ok==0 且 total>0` → 3、其他 → 0。`--dry-run` 失败仍返回 0（只读预览不判失败，避免吓到人）。
+    - **守卫**：`tests/test_reembed_encoder_wiring.py`（8 例，纯测试不加载模型）：适配器 `encode_image/encode_text/get_backend/name/model_name` 接线 + `_exit_code` 四分支。
+    - **修后真实干跑**：`ok=6 / failed_encode=0`，模型加载 ~17s + 6 条编码 ~13s（CPU），`DB_HASH` 前后一致（确证只读），**真正可执行步骤 3**。
+    - ★ **第 4 次同型教训**（方法论升级）：**(a)** 凡是「脚本/函数」按「接口名」调用外部服务，**接口名必须与服务公开 API 完全一致**，否则只测得到 fake 路径；**(b)** **任何「成功退出」的可执行脚本都必须校验实际效果**（用 `failed==0 && ok>0`），否则静默退化时无法告警 —— 这是**「假绿迁移」**的根因。两条合起来：**「fail-loud」+ 「fake 必须与真实同型」**。
+
 ## 测试约定
 
-- 套件在 `backend/tests/`（`conftest.py` + **21 个测试文件**），**201 用例 / 199 passed / 2 门控 skip**（2026-09-14 颜色通道修复后基线；`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；用 FastAPI `TestClient`。
+- 套件在 `backend/tests/`（`conftest.py` + **22 个测试文件**），**209 用例 / 207 passed / 2 门控 skip**（2026-09-14 重嵌入缺陷修复后基线；`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；用 FastAPI `TestClient`。
 - **本机 shell 坑位**：bash `ls/find/tail/head/mkdir/sleep` 全 `command not found`（shim 坏）→ **改用 PowerShell 工具**，但它**不回传 stdout** → 必须 `... 2>&1 | Out-File -Encoding utf8 <log>` 再用 Read 读；**不要**用 here-string 传多行脚本给 `python -c`（引号会被剥掉），改写成临时 `.py` 文件再跑。venv 解释器：`backend\venv\Scripts\python.exe`（Glob 搜不到 .exe，用 `Test-Path` 确认）。
 - 夹具已实现三重隔离：临时库（monkeypatch `DB_PATH`）、临时上传目录、CLIP 打桩、阻断真实 SMTP。
 - 运行（在 `backend` 目录）：`venv\Scripts\python.exe -m pytest tests/ --junitxml=.junitxml/<name>.xml`

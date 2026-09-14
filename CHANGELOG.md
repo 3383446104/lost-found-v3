@@ -734,7 +734,8 @@ git checkout HEAD~1
 
 ### 8. 文档与测试 ✅
 - 文档同步至 v3.5.0：`PROJECT.md` / `SRS.md` / `README.md` / `docs/README.md` / 增量 PRD（含 ViT-H-14 维度 512 → **1024 联合投影**修正）。
-- 自动化测试扩至 **201 用例（199 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` / `test_calibrate_*`（见 §9）等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例（设 `RUN_REAL_CLIP=1` 时转通过）。
+- 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕；新增 `test_match_contract_v350.py` / `test_cross_modal_scoring.py` / `test_cross_consistency_penalty.py` / `test_embed_dim_runtime_contract.py` / `test_config_rollback.py` / `test_reembed_script.py` / `test_qa_v350_*` / `test_calibrate_*` / `test_reembed_encoder_wiring.py`（见 §9）等；2 个 skip 为 `test_real_clip_smoke.py` 的**真实权重门控**用例（设 `RUN_REAL_CLIP=1` 时转通过）。
+- 重嵌入脚本补强：`reembed_all_vectors.py` 修复「假绿迁移」缺陷——`main()` 曾恒返回 0，会让真实写库失败时仍以成功退出；现新增 `_ServiceEncoderAdapter`（对齐冻结的 `clip_service` 接口）与 `_exit_code` 守卫（`failed_encode>0` → 2、`ok==0 且 total>0` → 3、`--dry-run` 仍 0），并补 `test_reembed_encoder_wiring.py` 8 例锁定回归。
 
 ### 9. 真实权重验证轮（v3.5.0 收尾，2026-09-14）✅
 解决了本版长期悬置的「**本机从未加载真实权重**」问题，并把标定从「打桩验证」推进到「**已用真实模型验证**」。

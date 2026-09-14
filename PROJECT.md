@@ -7,7 +7,7 @@
 > **v3.3.3 工程加固**：新增自动化测试套件 | P0 修复（禁用用户鉴权 / 今日统计时区 / 依赖声明）| 文档与代码对齐（详见 [CHANGELOG](CHANGELOG.md) 与本轮评审报告）
 > **v3.4.0 语义与性能加固**：账户状态拆分（`role` × `status`）| 颜色特征持久化（`items.color_vector`）| 公开接口账号状态校验 | 邮件异步化 | 路由 `:int` 健壮化 | 请求体 Pydantic 化 | 死代码清理 | 自动化测试扩至 **70 用例**
 > **v3.4.1 契约补齐**：补齐 `POST /api/items/match` 鉴权（需登录；缺 token → 403 / 非法 token → 401）| 自动化测试扩至 **72 用例**
-> **v3.5.0 中文化模型 + 跨模态检索**：默认模型换为 **Chinese-CLIP ViT-H-14**（`cn_clip`，`open_clip ViT-B-32` 可回滚）| 启用 **img·text 跨模态**四通道打分 | 阶段5 升级为**真跨模态一致性惩罚** | 阈值/权重 config 化并重标定 | `/match` 结果新增 `match_source`、响应新增 `legend` | 全量重嵌入 / 标定 / 颜色回填三个脚本 | 自动化测试扩至 **201 用例（199 通过 / 2 门控跳过）**。⚠️ **真实权重已在本机下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 已补 10 对同类硬负样本后，默认配置下 Precision 上界仍仅 **0.6129**，`AUTO`/`EMAIL` 无解（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）
+> **v3.5.0 中文化模型 + 跨模态检索**：默认模型换为 **Chinese-CLIP ViT-H-14**（`cn_clip`，`open_clip ViT-B-32` 可回滚）| 启用 **img·text 跨模态**四通道打分 | 阶段5 升级为**真跨模态一致性惩罚** | 阈值/权重 config 化并重标定 | `/match` 结果新增 `match_source`、响应新增 `legend` | 全量重嵌入 / 标定 / 颜色回填三个脚本 | 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**；另修复重嵌入脚本的「假绿迁移」缺陷（`_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫）。⚠️ **真实权重已在本机下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 已补 10 对同类硬负样本后，默认配置下 Precision 上界仍仅 **0.6129**，`AUTO`/`EMAIL` 无解（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）
 
 ---
 
@@ -100,7 +100,7 @@ lost-found-v3/
 │   ├── pytest.ini          ← pytest 配置
 │   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定 / backfill_color_vectors.py 颜色向量回填）
 │   ├── eval/               ← 评测集（eval_set_v3.5.0.json，70 对构造样本）
-│   ├── tests/              ← 自动化测试套件（201 用例）
+│   ├── tests/              ← 自动化测试套件（209 用例）
 │   │   ├── conftest.py
 │   │   ├── test_auth.py / test_items.py / test_admin.py / test_stats.py
 │   │   ├── test_match_contract_v350.py / test_cross_modal_scoring.py / test_cross_consistency_penalty.py
@@ -767,7 +767,7 @@ with get_db_connection() as conn:
 
 ### 10.2 自动化测试（v3.3.3 新增，v3.5.0 扩容）
 
-仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 201 用例（199 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
+仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 209 用例（207 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
 
 **A. v3.4.1 基线（72 用例）**
 
@@ -783,7 +783,7 @@ with get_db_connection() as conn:
 | `tests/test_adversarial_admin_toggle.py` | 对抗性：禁用管理员再启用保留 role（C2 回归守护） | 1 |
 | `tests/test_adversarial_batch_fixes.py` | 对抗性：C2 / R4–R9 修复的边界固化 | 24 |
 
-**B. v3.5.0 新增/扩展（合计较基线 +129，总收集 201）**
+**B. v3.5.0 新增/扩展（合计较基线 +137，总收集 209）**
 
 | 文件 | 覆盖重点 |
 |------|----------|
@@ -833,6 +833,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | **权重的「最优值」证据不足** | 权重网格合格组合达 **103** 个、其中 **102** 个并列 `Recall@3=1.0` → 无唯一最优，只能给出**方向性**结论（`W_COLOR≈0`、文本主导） | 扩充评测集后重跑 `--grid`；见 `docs/review/threshold-calibration-v3.5.0.md` §5 |
 | **两代向量空间不兼容** | 切模型后若未重嵌入，新旧向量比对无物理意义（已加维度防线 → HTTP 500，不再静默空集） | 切换后**必须**先 `scripts/reembed_all_vectors.py` 全量重嵌入（冷备 + 幂等 + 断点续跑） |
 | **评测集规模小** | `eval_set_v3.5.0.json` 仅 **70 对**（去除 6 对同图自比退化对后**有效 24 正 / 40 负**，n=64），置信区间宽 | 随真实物品增长持续扩充复标；不得表述为「已可靠标定」 |
+| ~~重嵌入脚本「假绿迁移」缺陷~~ ✅ 已修 | 真实 `--dry-run` 暴露 12 次 `AttributeError`、`ok=0`，但 `main()` 恒返回 0 → 真跑会「成功退出」但库中分毫未动（运维误以为已迁移） | `_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫（`failed_encode>0` → 2、`ok==0 且 total>0` → 3、`--dry-run` 仍 0）；守卫 `tests/test_reembed_encoder_wiring.py` 8 例 |
 
 ### 11.2 版本演进
 
@@ -922,7 +923,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 - [x] **三个运维脚本**：`reembed_all_vectors.py`（冷备 / `--dry-run` ETA / 断点续跑 / 幂等）、`calibrate_thresholds.py`（PR 曲线 + Recall@1/3/5/10 + `--grid` 权重网格）、`backfill_color_vectors.py`
 - [x] **评测集**：`backend/eval/eval_set_v3.5.0.json`（**70 对 = 30 正 / 40 负**；剔除 6 对同图自比退化对后**有效 24 正 / 40 负**，n=64）
 - [x] **维度错配运行期防线**：编码后 `_assert_embed_dim` 断言 + `/match` 打分前维度预检 → **HTTP 500**（不再静默空集）
-- [x] 自动化测试扩至 **201 用例（199 通过 / 2 门控跳过）**
+- [x] 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**
 - ✅ **已用真实模型验证**：真实 Chinese-CLIP 权重（3.83GB）已在本机下载并端到端验证（真实 `Recall@3=1.0` / `Recall@1=0.7917`）；⚠️ 但**分层阈值 `AUTO`/`EMAIL` 仍不可用**（默认配置 Precision 上界 0.6129 ＜ 0.90），权重只能给方向性结论 —— 详见 `docs/review/threshold-calibration-v3.5.0.md`
 
 #### V3.5 — 体验飞升（计划中）
