@@ -7,7 +7,7 @@
 > **v3.3.3 工程加固**：新增自动化测试套件 | P0 修复（禁用用户鉴权 / 今日统计时区 / 依赖声明）| 文档与代码对齐（详见 [CHANGELOG](CHANGELOG.md) 与本轮评审报告）
 > **v3.4.0 语义与性能加固**：账户状态拆分（`role` × `status`）| 颜色特征持久化（`items.color_vector`）| 公开接口账号状态校验 | 邮件异步化 | 路由 `:int` 健壮化 | 请求体 Pydantic 化 | 死代码清理 | 自动化测试扩至 **70 用例**
 > **v3.4.1 契约补齐**：补齐 `POST /api/items/match` 鉴权（需登录；缺 token → 403 / 非法 token → 401）| 自动化测试扩至 **72 用例**
-> **v3.5.0 中文化模型 + 跨模态检索**：默认模型换为 **Chinese-CLIP ViT-H-14**（`cn_clip`，`open_clip ViT-B-32` 可回滚）| 启用 **img·text 跨模态**四通道打分 | 阶段5 升级为**真跨模态一致性惩罚** | 阈值/权重 config 化并重标定 | `/match` 结果新增 `match_source`、响应新增 `legend` | 全量重嵌入 / 标定 / 颜色回填三个脚本 | 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**；另修复重嵌入脚本的「假绿迁移」缺陷（`_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫）。⚠️ **真实权重已在本机下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 已补 10 对同类硬负样本后，默认配置下 Precision 上界仍仅 **0.6129**，`AUTO`/`EMAIL` 无解（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）
+> **v3.5.0 中文化模型 + 跨模态检索**：默认模型换为 **Chinese-CLIP ViT-H-14**（`cn_clip`，`open_clip ViT-B-32` 可回滚）| 启用 **img·text 跨模态**四通道打分 | 阶段5 升级为**真跨模态一致性惩罚** | 阈值/权重 config 化并重标定 | `/match` 结果新增 `match_source`、响应新增 `legend` | 全量重嵌入 / 标定 / 颜色回填三个脚本 | 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**；另修复重嵌入脚本的「假绿迁移」缺陷（`_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫）。⚠️ **真实权重已在本机下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 已补 10 对同类硬负样本后，默认配置下 Precision 上界仍仅 **0.6129**，`AUTO`/`EMAIL` 无解（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）。✅ **生产库已完成全量重嵌入（2026-09-14，冷备 + `_exit_code` 守卫，6 条全部 1024 维）**，`/match` 已端到端实测恢复（HTTP 200）；`AUTO_MATCH_ENABLED=false` 灰度保持，待评测集扩充复标后再启用自动推送
 
 ---
 
@@ -831,7 +831,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | ~~真实 Chinese-CLIP 权重未在本机下载验证~~ ✅ 已下载并端到端验证 | 权重 3.83GB 已在本机下载（ModelScope 源，`CLIP_CN_CKPT_PATH` 零网络加载）并验证：1024 维 + L2 归一 + 语义合理 + 真实 Recall@K | 已闭环（`scripts/verify_real_clip.py`；`RUN_REAL_CLIP=1` 冒烟 2 用例由 skip 转通过） |
 | **分层阈值 AUTO/EMAIL 仍不可用** | 真实模型下标定：`Recall@3=1.0` / `Recall@1=0.7917`，但默认配置下 PR 曲线 Precision 上界仅 **0.6129** → `Precision≥0.90/0.98` **无解**，`AUTO`/`EMAIL` 返回 `None` | 有效样本仍小（n=64）；须扩充真实数据复标；**不得为凑出 0.90 而放宽口径** |
 | **权重的「最优值」证据不足** | 权重网格合格组合达 **103** 个、其中 **102** 个并列 `Recall@3=1.0` → 无唯一最优，只能给出**方向性**结论（`W_COLOR≈0`、文本主导） | 扩充评测集后重跑 `--grid`；见 `docs/review/threshold-calibration-v3.5.0.md` §5 |
-| **两代向量空间不兼容** | 切模型后若未重嵌入，新旧向量比对无物理意义（已加维度防线 → HTTP 500，不再静默空集） | 切换后**必须**先 `scripts/reembed_all_vectors.py` 全量重嵌入（冷备 + 幂等 + 断点续跑） |
+| ~~两代向量空间不兼容~~ ✅ 本库已完成重嵌入（2026-09-14） | 切模型后若未重嵌入，新旧向量比对无物理意义（已加维度防线 → HTTP 500，不再静默空集） | 已执行 `scripts/reembed_all_vectors.py` 全量重嵌入（冷备 `lost_found.db.bak-20260914121815` + `_exit_code` 守卫，6 条全部 1024 维 + L2 归一）；`/match` 端到端实测恢复 HTTP 200 |
 | **评测集规模小** | `eval_set_v3.5.0.json` 仅 **70 对**（去除 6 对同图自比退化对后**有效 24 正 / 40 负**，n=64），置信区间宽 | 随真实物品增长持续扩充复标；不得表述为「已可靠标定」 |
 | ~~重嵌入脚本「假绿迁移」缺陷~~ ✅ 已修 | 真实 `--dry-run` 暴露 12 次 `AttributeError`、`ok=0`，但 `main()` 恒返回 0 → 真跑会「成功退出」但库中分毫未动（运维误以为已迁移） | `_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫（`failed_encode>0` → 2、`ok==0 且 total>0` → 3、`--dry-run` 仍 0）；守卫 `tests/test_reembed_encoder_wiring.py` 8 例 |
 
@@ -925,6 +925,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 - [x] **维度错配运行期防线**：编码后 `_assert_embed_dim` 断言 + `/match` 打分前维度预检 → **HTTP 500**（不再静默空集）
 - [x] 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**
 - ✅ **已用真实模型验证**：真实 Chinese-CLIP 权重（3.83GB）已在本机下载并端到端验证（真实 `Recall@3=1.0` / `Recall@1=0.7917`）；⚠️ 但**分层阈值 `AUTO`/`EMAIL` 仍不可用**（默认配置 Precision 上界 0.6129 ＜ 0.90），权重只能给方向性结论 —— 详见 `docs/review/threshold-calibration-v3.5.0.md`
+- ✅ **生产库全量重嵌入已执行**（2026-09-14，用户授权）：冷备 `lost_found.db.bak-20260914121815` → 6 条全部重算为 1024 维（`ok=6/failed_encode=0`，EXIT=0，34s，`color_vector` 逐字节未动）→ 端到端实测 `POST /api/items/match` **HTTP 200**（查询「蓝牙耳机」命中同类 item68，score=0.3872 过手动阈值 0.35）；`AUTO_MATCH_ENABLED=false` 灰度保持，`AUTO`/`EMAIL` 阈值回填（门禁步骤 8）仍待评测集扩充后复标
 
 #### V3.5 — 体验飞升（计划中）
 - [ ] 微信小程序端

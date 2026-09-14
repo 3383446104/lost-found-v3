@@ -752,6 +752,17 @@ git checkout HEAD~1
 - **评测集补充 10 对同类硬负样本（N31–N40）**：复用既有正样本查询文本、只换目标，构造「高相似但不同物」的假阳性场景（原负样本全为易分跨类别错配）。结果：`Recall@K` **完全不变**（印证跨类别已解、同类近重复才是残差），而 Precision 上界进一步下降 —— 这是**预期且正确**的。
 - ⚠️ **`AUTO`/`EMAIL` 仍不可标定**：默认配置下 PR 曲线 Precision 上界仅 **0.6129**（补硬负样本前约 0.77），`Precision≥0.90/0.98` **无解** → 返回 `None`。**不得为凑出 0.90 而放宽口径**。
 
+### 10. 生产库重嵌入执行轮（2026-09-14，用户授权）✅
+解决了「代码已切 cn_clip、库中向量仍为 512 维旧数据」的**悬挂态**（此前 `/match` 因维度防线触发 HTTP 500，cn_clip 尚未真正生效）。
+
+- **执行前预检（只读）**：确认权重在位（3.83GB）、`AUTO_MATCH_ENABLED=false` 已在 `.env` 生效（防止重嵌入后自动推送按未标定初值 0.55 开启）、DB MD5 留档。
+- **冷备**：`lost_found.db.bak-20260914121815`（与原库字节一致，回滚可用）。
+- **全量重嵌入**：`scripts/reembed_all_vectors.py` 正式跑 —— 模型加载 16s + 编码写库 28.9s，统计 `total=6 / processed=6 / ok=6 / failed_encode=0`，`_exit_code` 守卫 → **EXIT=0**。
+- **写库后验证**：6 条 `image_vector`/`text_vector` 全部 **1024 维 + L2 归一**（JSON 长度翻倍）；`color_vector`（27 维）**逐字节未动**。
+- **端到端验证**：`POST /api/items/match {"text":"蓝牙耳机","target_type":"lost"}` → **HTTP 200**（此前 500）——4 条 lost 候选全部完成跨模态打分，item68「蓝牙耳机」score=0.3872 过手动阈值 0.35 排第一（`source=text`），found 类被正确排除，`legend={high:0.55, mid:0.35}` 派生正确。
+- **灰度保持**：`AUTO_MATCH_ENABLED=false` 不变；门禁步骤 8（回填 `MATCH_THRESHOLD_AUTO/EMAIL`）**仍禁止**——须扩充真实评测集复标（默认配置 Precision 上界 0.6129 ＜ 0.90）。
+- 配套：`.gitignore` 补 `backend/scripts/.reembed_state.json`（断点状态文件，含本机模型指纹，不入库）。
+
 ### ⚠️ 如实声明（重要）
 - **`MATCH_THRESHOLD_AUTO` / `EMAIL` 仍不可用**（默认配置 Precision 上界 0.6129 ＜ 0.90）：线上**自动匹配 / 邮件通知**的阈值**尚未收敛**，禁止表述为「已可靠标定」；须**扩充真实评测集后复标**。
 - **权重只能给方向性结论**（`W_COLOR≈0`、文本主导）：合格集合 102 个并列，**不存在唯一最优权重**。
