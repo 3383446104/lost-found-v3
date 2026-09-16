@@ -153,7 +153,7 @@ import { getUnreadList } from '@/api/notifications'
 import { getImageUrl, ITEM_TYPE_MAP, ITEM_STATUS_MAP, REVIEW_STATUS_MAP } from '@/utils/helpers'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { ArrowLeft, PictureFilled, WarningFilled, Edit, Delete, Promotion, Bell } from '@element-plus/icons-vue'
+import { ArrowLeft, PictureFilled, WarningFilled, Edit, Delete, Promotion, Bell, Checked } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()

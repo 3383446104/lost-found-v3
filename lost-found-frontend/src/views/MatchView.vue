@@ -130,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { matchItems, tempUpload, getCategories } from '@/api/items'
 import { getImageUrl } from '@/utils/helpers'
