@@ -72,7 +72,7 @@
     - **修后真实干跑**：`ok=6 / failed_encode=0`，模型加载 ~17s + 6 条编码 ~13s（CPU），`DB_HASH` 前后一致（确证只读），**真正可执行步骤 3**。
     - ★ **第 4 次同型教训**（方法论升级）：**(a)** 凡是「脚本/函数」按「接口名」调用外部服务，**接口名必须与服务公开 API 完全一致**，否则只测得到 fake 路径；**(b)** **任何「成功退出」的可执行脚本都必须校验实际效果**（用 `failed==0 && ok>0`），否则静默退化时无法告警 —— 这是**「假绿迁移」**的根因。两条合起来：**「fail-loud」+ 「fake 必须与真实同型」**。
 
-## 测试约定
+## 经验沉淀（v3.5.0 期间，条目 19–24）
 
 22. **【2026-09-14 扩充轮结论：AUTO/EMAIL 结构性无解】评测集 70→84 对复标后仍无解，且已证明继续堆样本收益边际化**
     - 扩充：+12 查询变体正样本（P41–P52）+2 img→img 同类硬负（N53–N54）→ 有效 **36 正 / 42 负（n=78）**。
@@ -87,8 +87,13 @@
     - 长行文档编辑用 **Python 批量替换脚本**（每处校验 `count==1`），比 Edit 工具对超长中文行更可靠。
     - 「机制描述」（HTTP 500 防线等）≠「状态悬置」，前者不随状态改；只改「待执行/尚未/悬挂」类。历史轮次记录保留原数字。
 
-## 测试约定
+24. **【2026-09-16 血泪教训】「构建通过」≠「前端运行时可用」——前端改动必须做真实浏览器渲染验证**
+    - 事故：`MatchView.vue:163` 用 `computed()` 但未 import（`97d4fad` 引入）→ `<script setup>` 执行抛 `ReferenceError` → **`/match` 整页空白**（导航/页脚属 layout 层正常显示，极易误判为"路由问题"）。同类：`ItemDetailView.vue` 用 `<Checked />` 未导入 → 图标静默不渲染。
+    - **rolldown/vite build 不会报错**：未定义标识符在 ESM 下是合法全局读取，只有浏览器执行到那一行才抛。本次 `vite build` 一直 ✓ 绿。
+    - **纪律**：前端改动完成后，除 build 外必须 ①跑 `lost-found-frontend/scripts/check_sfc_integrity.py`（SFC 导入完整性检查，退出码 0/1）②至少一次真实浏览器打开该路由确认渲染。
+    - 定位捷径：**用户截图给症状 → 直接读组件源码比对「模板引用 vs script 定义」**，比盲目跑测试/构建快得多。
 
+## 测试约定
 - 套件在 `backend/tests/`（`conftest.py` + **22 个测试文件**），**209 用例 / 207 passed / 2 门控 skip**（2026-09-14 重嵌入缺陷修复后基线；`RUN_REAL_CLIP=1` 时 2 skip 转 pass）；用 FastAPI `TestClient`。
 - **本机 shell 坑位**：bash `ls/find/tail/head/mkdir/sleep` 全 `command not found`（shim 坏）→ **改用 PowerShell 工具**，但它**不回传 stdout** → 必须 `... 2>&1 | Out-File -Encoding utf8 <log>` 再用 Read 读；**不要**用 here-string 传多行脚本给 `python -c`（引号会被剥掉），改写成临时 `.py` 文件再跑。venv 解释器：`backend\venv\Scripts\python.exe`（Glob 搜不到 .exe，用 `Test-Path` 确认）。
 - 夹具已实现三重隔离：临时库（monkeypatch `DB_PATH`）、临时上传目录、CLIP 打桩、阻断真实 SMTP。
