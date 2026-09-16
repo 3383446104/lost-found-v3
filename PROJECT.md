@@ -187,7 +187,7 @@ lost-found-v3/
 |------|------|:----:|:----:|:----:|
 | FR-MATCH-01 | 以图搜图 | ✅ POST /api/items/match | ✅ MatchView | ✅ |
 | FR-MATCH-02 | 以文搜图（**真跨模态**：查询文字 × 目标图片） | ✅ POST /api/items/match | ✅ MatchView | ✅ |
-| FR-MATCH-03 | 图文混合匹配 | ✅ 四通道加权融合 | ✅ MatchView | ✅ |
+| FR-MATCH-03 | 图文混合匹配 | ✅ 三通道加权融合（文-文 / 图文跨模态 / 图-图，等权） | ✅ MatchView | ✅ |
 | FR-MATCH-04 | 加权相似度（图-图 0.35 + **跨模态 0.35** + 文-文 0.15 + 色 0.15，缺维度动态归一化） | ✅ compute_weighted_similarity | — | ✅ |
 | FR-MATCH-05 | 结果排序（Top 20） | ✅ sorted[:20] | ✅ 卡片列表 | ✅ |
 | FR-MATCH-06 | 匹配范围限定（已审核+活跃） | ✅ WHERE status='active' | — | ✅ |
@@ -631,7 +631,7 @@ CLIP_CN_CKPT_PATH            非空则直接加载本地 .pt（运行期零网�
 MATCH_W_IMG_IMG              图像自相似权重，默认 0.35
 MATCH_W_CROSS                跨模态权重，默认 0.35
 MATCH_W_TEXT_TEXT            文本自相似权重，默认 0.15
-MATCH_W_COLOR                颜色权重，默认 0.15
+MATCH_W_COLOR                颜色权重，**已废弃恒 0**（2026-09-16 起不参与打分）
 CROSS_PENALTY_ENABLED        阶段5 跨模态一致性惩罚开关，默认 True
 MATCH_THRESHOLD_MANUAL       手动匹配阈值，默认 0.35（v3.5.0 初值，原 0.20）
 MATCH_THRESHOLD_AUTO         自动匹配通知阈值，默认 0.55（v3.5.0 初值，原 0.65）
@@ -683,9 +683,9 @@ with get_db_connection() as conn:
 >
 > **v3.5.0（双后端）**：`CLIPService` 为兼容壳，特征提取委托给 `app/clip_backend.py` 的后端（`open_clip` / `cn_clip`）。Chinese-CLIP ViT-H-14 的 `embed_dim=1024` 是**联合投影维度**（`encode_image`/`encode_text` 的真实输出维度），**不是**视觉塔宽度 `vision_width=1280`，亦**不是** 512 维。每个 `encode_*` 在 L2 归一化后、返回前经 `_assert_embed_dim` 断言维度 == 声明值，不符即抛 `RuntimeError`。
 
-### 9.2 加权相似度融合（四通道跨模态 + 五阶段）
+### 9.2 加权相似度融合（三通道等权跨模态 + 五阶段）
 
-基础融合为**四通道加权**（图像自相似 `sim_img_img` 0.35 + **跨模态 `sim_cross` 0.35** + 文本自相似 `sim_text_text` 0.15 + 颜色 `sim_color` 0.15），并对缺失维度做
+基础融合为**三通道等权**（文本自相似 `sim_text_text` + **图文跨模态 `sim_cross`**（双向合并）+ 图像自相似 `sim_img_img`，权重均为 1.0），缺通道按可用集合动态归一化（等价于可用通道算术平均）；**颜色通道 2026-09-16 起废弃**。原四通道加权，并对缺失维度做
 **动态权重归一化**——按比例把缺失维度的权重重分配给可用维度，保证权重和恒为 1.0，
 使「纯文本/纯图像匹配」不被整体降权（否则可能永远够不到阈值）：
 
@@ -721,7 +721,7 @@ with get_db_connection() as conn:
   → BackgroundTasks 异步启动 auto_match_and_notify()
   → 查询所有异类活跃物品 (type=相反, status=active, review_status=approved)
   → 维度预检：库中向量维度 ≠ 当前模型维度 → 记 ERROR 并跳过（提示先重嵌入）
-  → 逐对计算四通道跨模态 + 五阶段加权相似度
+  → 逐对计算三通道（文-文 / 图文跨模态 / 图-图）等权 + 五阶段加权相似度
   → 筛选 ≥ 0.55（MATCH_THRESHOLD_AUTO，初值）的匹配
   → 按相似度降序，仅保留 Top-3（MAX_AUTO_MATCH_NOTIFICATIONS）
   → 批量插入 matches 表
@@ -788,14 +788,14 @@ with get_db_connection() as conn:
 | 文件 | 覆盖重点 |
 |------|----------|
 | `tests/test_match_contract_v350.py` | `/match` 响应 `match_source` + `legend` 契约；**403/401 契约冻结不变** |
-| `tests/test_cross_modal_scoring.py` | 四通道跨模态打分与缺维度动态归一化 |
+| `tests/test_cross_modal_scoring.py` | 三通道等权打分与缺维度动态归一化 |
 | `tests/test_cross_consistency_penalty.py` | 阶段5 跨模态一致性惩罚（只降权 / ≤×0.5 / 单调 / 可开关） |
 | `tests/test_embed_dim_runtime_contract.py` | `_assert_embed_dim` 运行期维度断言 |
 | `tests/test_config_rollback.py` | 模型后端 config 驱动 + 回滚切换 |
 | `tests/test_reembed_script.py` | 重嵌入脚本：干跑 ETA / 冷备 / 断点续跑 / 幂等 |
 | `tests/test_qa_v350_math.py` / `_contract.py` / `_dimension.py` / `_precheck.py` / `_reembed_safety.py` | QA 回归：打分数学 / 接口契约 / 维度错配防线 / 打分前预检 / 重嵌入安全 |
 | `tests/test_calibrate_candidates.py` | 标定候选集契约（按 `item_id` 去重 + 字段合并；锁住一次「候选重复 → Recall@K 被低估」的回归） |
-| `tests/test_calibrate_color_channel.py` | 标定颜色通道契约（`score_pair` 必须传 `color1/color2`，否则 `W_COLOR` 数学上惰性） |
+| `tests/test_calibrate_color_channel.py` | 三通道口径 + **颜色废弃守卫**（颜色向量/权重不得影响任何得分） |
 | `tests/test_calibrate_grid_summary.py` | 权重网格「并列退化」摘要（`summarize_grid` 契约） |
 | `tests/test_real_clip_smoke.py` | **真实权重门控**用例（`RUN_REAL_CLIP` 未设时 skip）；本机权重已下载，设 `RUN_REAL_CLIP=1` 时 **2 例通过** |
 
@@ -830,7 +830,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | ~~匹配接口未鉴权~~ ✅ v3.4.1 已修复 | `POST /api/items/match` 在后端无鉴权依赖，仅靠前端路由守卫 | 已补 `Depends(get_current_user)`（缺 token → 403 / 非法 token → 401） |
 | ~~真实 Chinese-CLIP 权重未在本机下载验证~~ ✅ 已下载并端到端验证 | 权重 3.83GB 已在本机下载（ModelScope 源，`CLIP_CN_CKPT_PATH` 零网络加载）并验证：1024 维 + L2 归一 + 语义合理 + 真实 Recall@K | 已闭环（`scripts/verify_real_clip.py`；`RUN_REAL_CLIP=1` 冒烟 2 用例由 skip 转通过） |
 | **分层阈值 AUTO/EMAIL 仍不可用** | 真实模型下标定：`Recall@3=1.0` / `Recall@1=0.75`，扩充评测集（n=64→78）后 Precision 上界仅由 0.6129 升至 **0.6889** → `Precision≥0.90/0.98` **仍无解**，`AUTO`/`EMAIL` 返回 `None` | **结构性瓶颈**：同类近重复（3/6 物品为电子产品）与正样本分数不可分；须待真实物品类别多样性增长复标；**不得为凑出 0.90 而放宽口径** |
-| **权重的「最优值」证据不足** | 权重网格合格组合达 **103** 个、其中 **102** 个并列 `Recall@3=1.0` → 无唯一最优，只能给出**方向性**结论（`W_COLOR≈0`、文本主导） | 扩充评测集后重跑 `--grid`；见 `docs/review/threshold-calibration-v3.5.0.md` §5 |
+| **权重的「最优值」证据不足** | 2026-09-16 改为三通道**等权**（权重不再是自由参数）；此前四通道网格下合格组合 103 个、102 个并列 `Recall@3=1.0`，无唯一最优 | `--grid` 保留三通道网格供探索；见 `docs/review/threshold-calibration-v3.5.0.md` §5 |
 | ~~两代向量空间不兼容~~ ✅ 本库已完成重嵌入（2026-09-14） | 切模型后若未重嵌入，新旧向量比对无物理意义（已加维度防线 → HTTP 500，不再静默空集） | 已执行 `scripts/reembed_all_vectors.py` 全量重嵌入（冷备 `lost_found.db.bak-20260914121815` + `_exit_code` 守卫，6 条全部 1024 维 + L2 归一）；`/match` 端到端实测恢复 HTTP 200 |
 | **评测集规模小** | `eval_set_v3.5.0.json` **84 对**（去除 6 对同图自比退化对后**有效 36 正 / 42 负**，n=78），置信区间仍宽 | 随真实物品增长持续扩充复标；不得表述为「已可靠标定」 |
 | ~~重嵌入脚本「假绿迁移」缺陷~~ ✅ 已修 | 真实 `--dry-run` 暴露 12 次 `AttributeError`、`ok=0`，但 `main()` 恒返回 0 → 真跑会「成功退出」但库中分毫未动（运维误以为已迁移） | `_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫（`failed_encode>0` → 2、`ok==0 且 total>0` → 3、`--dry-run` 仍 0）；守卫 `tests/test_reembed_encoder_wiring.py` 8 例 |
@@ -916,7 +916,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 
 #### V3.5.0 — 中文化模型 + 图文跨模态检索 ✅ 已完成 (2026-09-14)
 - [x] **模型双后端抽象**：新增 `app/clip_backend.py`（`ClipBackend` 协议 + `OpenClipBackend` + `ChineseClipBackend` + `get_backend()` 工厂）；默认 `cn_clip` → **Chinese-CLIP ViT-H-14**（**1024 维**联合投影），`open_clip` → **ViT-B-32**（**512 维**）可回滚；未知取值抛 `RuntimeError` 禁止静默降级
-- [x] **跨模态四通道打分**：图像自相似 0.35 / 跨模态 0.35 / 文本自相似 0.15 / 颜色 0.15；跨模态内 `q_text·t_img` 与 `q_img·t_text`（0.5/0.5）；缺维度动态归一化
+- [x] **三通道等权打分**（2026-09-16 修订，取代原四通道）：①文-文 ②图文跨模态（`q_text·t_img` 与 `q_img·t_text` 各 0.5 双向合并）③图-图；三通道权重均为 1.0、缺通道动态归一化（= 可用通道算术平均）；**颜色通道废弃**
 - [x] **阶段5 重构**：由「两自相似比大小」升级为**真跨模态一致性惩罚**（`cc = min(可用跨模态方向)`，仅当 `max(sim_ii,sim_tt) ≥ 0.55` 触发，只降权、≤×0.5、可 `CROSS_PENALTY_ENABLED` 关闭）
 - [x] **阈值/权重 config 化**：手动 0.35 / 自动 0.55 / 邮件 0.70（**初值待标定**）
 - [x] **接口契约（不新增端点）**：`/match` 结果项新增 `match_source`（text/image/mixed），响应新增 `legend: {high, mid}`（由阈值派生）；**403/401 契约冻结不变**

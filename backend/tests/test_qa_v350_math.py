@@ -46,16 +46,14 @@ def no_penalty(monkeypatch):
 def test_A_text_query_vs_text_and_image_target(no_penalty):
     """纯文查询 × (有图有文) 目标：只走 has_tt + has_t2i（不含 ii/i2t）。
 
-    手算：q_text=e0, t_img=e0(→t2i=1), t_text=e1(→tt=0)。
-    w_cross=0.35, w_tt=0.15 → (0.35*1 + 0.15*0)/(0.5) = 0.7。
+    手算（**三通道等权**，2026-09-16 修订）：q_text=e0, t_img=e0(→t2i=1), t_text=e1(→tt=0)
+    仅 文-文 与 图文跨模态 两通道可用且等权 → (1*1 + 1*0)/2 = 0.5。
     """
     q_text, t_img, t_text = _e(0), _e(0), _e(1)
     score = clip_service.compute_weighted_similarity(None, q_text, t_img, t_text)
-    w_cross, w_tt = settings.MATCH_W_CROSS, settings.MATCH_W_TEXT_TEXT
-    assert score == pytest.approx((w_cross * 1.0 + w_tt * 0.0) / (w_cross + w_tt), abs=1e-6)
-    assert score == pytest.approx(0.7, abs=1e-6)
+    assert score == pytest.approx(0.5, abs=1e-6)
     # 若实现误把跨模态挂在 img1 上（要求 has_ii），此处会退化为 0.0
-    assert score > 0.69
+    assert score > 0.49
 
 
 def test_A_image_query_vs_text_and_image_target(no_penalty):
@@ -100,22 +98,26 @@ def test_A_single_channel_equals_its_own_similarity(no_penalty):
 
 
 def test_A_single_channel_only_color(no_penalty):
-    """只通颜色通道 → 恰为颜色余弦（0.5）。"""
+    """只通颜色通道 → **0.0**（2026-09-16：颜色通道已废弃，不产生任何得分）。
+
+    原断言为「恰为颜色余弦（0.5）」；废弃后方向反转，守卫颜色不得参与打分。
+    """
     score = clip_service.compute_weighted_similarity(color1=_e(0, CDIM), color2=_mix(0, 1, 0.5, CDIM))
-    assert score == pytest.approx(0.5, abs=1e-6)
+    assert score == pytest.approx(0.0, abs=1e-6)
 
 
-def test_A_cross_diluted_by_available_color(no_penalty):
-    """纯文 × 仅图目标且颜色可用：base = (w_cross*t2i + w_col*col)/(w_cross+w_col)。
+def test_A_cross_not_diluted_after_color_deprecation(no_penalty):
+    """纯文 × 仅图目标且**颜色向量传入**：颜色已废弃 → 不得稀释跨模态得分。
 
-    t2i=1.0、col=0.0 → (0.35)/(0.5) = 0.7。
+    2026-09-16 修订：原用例断言颜色把 t2i 稀释到 (0.35/0.5)=0.7；颜色通道废弃后
+    只剩 cross 一个可用通道 → 得分恰为 t2i = 1.0。
     """
     q_text, t_img = _e(0), _e(0)
-    col_a, col_b = _e(0, CDIM), _e(1, CDIM)  # col = 0
+    col_a, col_b = _e(0, CDIM), _e(1, CDIM)  # 颜色向量传入但应被完全忽略
     score = clip_service.compute_weighted_similarity(
         None, q_text, t_img, None, color1=col_a, color2=col_b
     )
-    assert score == pytest.approx(0.7, abs=1e-6)
+    assert score == pytest.approx(1.0, abs=1e-6)
 
 
 # --------------------------------------------------------------------------- #
@@ -263,7 +265,7 @@ def test_B_penalty_never_inflates_score_on_nonneg_base(monkeypatch):
 def test_B_integration_halves_inconsistent_pair(monkeypatch):
     """图文各向同性一致（ii=tt=1）但跨模态全 0 → cc=0 → 恰好腰斩。
 
-    base_off = (0.35*1 + 0.35*0 + 0.15*1)/0.85 = 0.5/0.85。
+    base_off = (1*1 + 1*0 + 1*1)/3 = 2/3（三通道等权，2026-09-16 修订）。
     """
     q_img, q_text = _e(0), _e(1)
     t_img, t_text = _e(0), _e(1)
@@ -271,7 +273,7 @@ def test_B_integration_halves_inconsistent_pair(monkeypatch):
     base_off = clip_service.compute_weighted_similarity(q_img, q_text, t_img, t_text)
     monkeypatch.setattr(settings, "CROSS_PENALTY_ENABLED", True)
     base_on = clip_service.compute_weighted_similarity(q_img, q_text, t_img, t_text)
-    assert base_off == pytest.approx(0.5 / 0.85, abs=1e-6)
+    assert base_off == pytest.approx(2 / 3, abs=1e-6)
     assert base_on == pytest.approx(base_off * settings.CROSS_PENALTY_FLOOR, abs=1e-6)
 
 

@@ -1,31 +1,34 @@
-"""标定脚本「颜色通道」契约回归测试。
+"""三通道打分口径回归测试（2026-09-16 修订：颜色通道**已废弃**）。
 
-背景（v3.5.0 真实权重下暴露的第二处缺陷）
-------------------------------------------
-``calibrate_thresholds.score_pair`` / ``score_pair_vs_target`` 原先只传
-``(q_img, q_text, t_img, t_text)``，**不传** ``color1``/``color2``；而线上两个真实
-调用点（``services/match_service.py:104``、``api/items.py:614``）都传。
-
-后果链：
-  1. ``compute_weighted_similarity`` 内 ``has_col = color1 is not None and color2 is not None``
-     **恒为 False**；
-  2. 颜色通道 ``sim_col=None`` → 被外层「缺维度动态归一化」从分母剔除；
-  3. ``W_COLOR`` 因此**数学上完全惰性**（改它以任何值，得分都不变）；
-  4. 权重网格里那列 ``W_COLOR 0.7~0.9`` 是**假象**（网格实际选中的是 ``W_CROSS=0``）。
+背景
+----
+用户决策（2026-09-16）：打分通道收敛为三个 —— ①文-文 ②图文跨模态（双向合并）
+③图-图；**各自独立、等权**（``MATCH_W_* = 1.0``，缺通道按可用集合动态归一化 →
+数学上等价于「可用通道的算术平均」）。**颜色通道彻底废弃**：
+``compute_weighted_similarity`` 仍保留 ``color1/color2/color_weight`` 形参以兼容
+冻结接口与既有调用点，但**内部一律忽略**。
 
 本文件锁死两点：
-  A. **服务层语义**：不传颜色向量时颜色通道被剔除（惰性）；传入后才生效（活性）。
-  B. **标定层契约**：``score_pair`` 必须把颜色直方图传下去 —— 否则 ``W_COLOR`` 惰性。
+  A. **服务层**：
+     - 三通道等权 ⇒ 得分 = 可用通道的算术平均；
+     - 缺通道不进入分母；
+     - **颜色向量即使传入也不影响任何得分**（废弃生效的守卫）。
+  B. **标定层**：``score_pair`` / ``score_pair_vs_target`` 与线上同口径
+     （三通道、无颜色）；得分**不随** ``color`` 权重变化。
 
-又一个「桩路径掩盖真实路径」的实例：``--fake-encoder`` 冒烟从不断言颜色是否生效，
-所以这个缺陷在假编码器下一路绿灯。
+历史注记
+--------
+v3.5.0 期间本文件守卫的是反方向命题（「颜色通道必须传入，否则 ``W_COLOR`` 惰性」，
+源于一次「桩路径掩盖真实路径」的缺陷）。颜色通道整体移除后，该守卫**方向反转**为
+「颜色不参与打分」——断言强度不变，仍是精确值比较（不放宽 tolerance）。
 
-作者：team-lead（齐活林）—— 修复者自留守卫。
+作者：team-lead（齐活林）—— 口径变更自留守卫。
 """
 import os
 import sys
 
 import numpy as np
+import pytest
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS_DIR = os.path.join(BACKEND_DIR, "scripts")
@@ -39,121 +42,152 @@ from calibrate_thresholds import (  # noqa: E402
     score_pair_vs_target,
 )
 
+# 正交构造，使各通道取值互不相同、便于精确断言：
+#   查询文 = [1,0]、目标文 = [1,0] → sim_tt   = 1.0
+#   查询图 = [0,1]、目标图 = [0,1] → sim_ii   = 1.0
+#   t2i = 查询文·目标图 = 0.0；i2t = 查询图·目标文 = 0.0 → sim_cross = 0.0
+_TEXT_VEC = np.array([1.0, 0.0], dtype=np.float32)
+_IMG_VEC = np.array([0.0, 1.0], dtype=np.float32)
 
-# --------------------------------------------------------------------------- #
-# 测试用编码器：图像通道恒同（sim_ii=1.0），颜色通道按路径正交（sim_col=0）
-# --------------------------------------------------------------------------- #
-class _ColorEncoder:
-    name = "color-fake"
-    model_name = "color-fake"
 
-    def encode_image(self, path):
-        return np.array([1.0, 0.0], dtype=np.float32)
+class _OrthogonalEncoder:
+    """文/图两个模态取正交向量，使 sim_tt 与 sim_ii 可精确区分、cross 恒 0。"""
+
+    name = "three-channel-fake"
+    model_name = "three-channel-fake"
 
     def encode_text(self, text):
-        return np.array([1.0, 0.0], dtype=np.float32)
+        return _TEXT_VEC.copy()
 
-    def encode_color(self, path):
-        # 查询图（含 "q_"）→ [1,0]；目标图 → [0,1] → 余弦 = 0
-        if "q_" in path:
-            return np.array([1.0, 0.0], dtype=np.float32)
-        return np.array([0.0, 1.0], dtype=np.float32)
+    def encode_image(self, path):
+        return _IMG_VEC.copy()
 
 
-def _pair():
+def _pair_full():
+    """三通道全可用（查询图文 + 目标图文）。"""
     return {
-        "id": "T1",
+        "id": "T-full",
         "label": 1,
-        "query": {"image": "uploads/q_img.jpg", "text": None},
-        "target": {"item_id": 1, "item_ref": "uploads/t_img.jpg", "text": None},
+        "query": {"image": "uploads/q.jpg", "text": "白色耳机"},
+        "target": {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "蓝牙耳机"},
     }
 
 
-# 仅 img-img 与 color 两个通道可用：前者 sim=1.0，后者 sim=0.0
-_W_ONLY_IMG = {"img_img": 1.0, "cross": 0.0, "text_text": 0.0, "color": 0.0}
-_W_IMG_AND_COLOR = {"img_img": 0.5, "cross": 0.0, "text_text": 0.0, "color": 0.5}
+def _pair_text_only_query():
+    """纯文查询（无查询图）→ 只有 文-文 与 图文跨模态 两个通道可用。"""
+    return {
+        "id": "T-text",
+        "label": 1,
+        "query": {"image": None, "text": "白色耳机"},
+        "target": {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "蓝牙耳机"},
+    }
+
+
+@pytest.fixture
+def no_penalty(monkeypatch):
+    """关闭跨模态一致性惩罚，使断言只针对「三通道等权」本身。
+
+    注意：开启惩罚时，本文件的构造会让 cc=0（cross 恒 0）且 sim_tt=1.0 ≥ 0.55
+    → 得分被 ×0.5（见 test_penalty_applies_on_top_of_three_channels）。
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "CROSS_PENALTY_ENABLED", False)
 
 
 # --------------------------------------------------------------------------- #
-# A. 服务层语义（机制注记）
+# A. 服务层语义
 # --------------------------------------------------------------------------- #
-def test_service_excludes_color_channel_without_vectors():
-    """机制：不传 color 向量时，``color_weight`` 改任何值都不影响得分（=缺陷根因）。
+def test_service_three_channels_arithmetic_mean(no_penalty):
+    """三通道全可用且等权 ⇒ 得分 = (sim_tt + sim_cross + sim_ii) / 3 = (1+0+1)/3。"""
+    from app.clip_service import clip_service
 
-    取 ``sim_ii=1.0``（非 0），使断言非平凡 —— 若颜色通道误被计入，得分会随
-    ``color_weight`` 变化。
+    s = clip_service.compute_weighted_similarity(
+        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC
+    )
+    assert abs(s - 2.0 / 3.0) < 1e-6, (
+        f"三通道等权口径不符：期望 (1+0+1)/3={2.0 / 3.0:.6f}，实得 {s}"
+    )
+
+
+def test_service_missing_channel_excluded_from_denominator(no_penalty):
+    """纯文查询（无查询图）⇒ 仅 文-文 与 图文跨模态 可用 ⇒ (1.0 + 0.0)/2 = 0.5。"""
+    from app.clip_service import clip_service
+
+    s = clip_service.compute_weighted_similarity(None, _TEXT_VEC, _IMG_VEC, _TEXT_VEC)
+    assert abs(s - 0.5) < 1e-6, f"缺通道动态归一化口径不符：期望 0.5，实得 {s}"
+
+
+def test_service_color_vectors_ignored_after_deprecation(no_penalty):
+    """**废弃守卫**：传入颜色向量且 ``color_weight`` 拉满，得分必须**完全不变**。
+
+    若颜色通道被误恢复为参与打分，本断言会失败（这正是它存在的意义）。
     """
     from app.clip_service import clip_service
 
-    q = np.array([1.0, 0.0], dtype=np.float32)
-    t = np.array([1.0, 0.0], dtype=np.float32)  # sim_ii = 1.0
-    base = dict(img_weight=0.5, cross_weight=0.0, text_weight=0.0)
-    s_zero = clip_service.compute_weighted_similarity(q, None, t, None, color_weight=0.0, **base)
-    s_max = clip_service.compute_weighted_similarity(q, None, t, None, color_weight=0.9, **base)
-    assert s_zero == s_max == 1.0, (
-        "未传颜色向量时 color_weight 影响了得分 —— 与 clip_service 的"
-        f"『缺维度动态归一化』语义不符（zero={s_zero}, max={s_max}）"
+    cq = np.array([1.0, 0.0], dtype=np.float32)
+    ct = np.array([0.0, 1.0], dtype=np.float32)  # sim_col = 0（与 img/text 正交）
+    s_without = clip_service.compute_weighted_similarity(
+        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC
     )
+    s_with = clip_service.compute_weighted_similarity(
+        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC,
+        color1=cq, color2=ct, color_weight=0.9,
+    )
+    assert s_without == s_with, (
+        "颜色通道已废弃，但其向量/权重仍影响了得分 —— 废弃未生效"
+        f"（不含色={s_without}, 含色={s_with}）"
+    )
+    # 服务层返回 round(base, 6)，故用容差比较而非精确 ==
+    assert abs(s_without - 2.0 / 3.0) < 1e-6, f"三通道等权口径不符：{s_without}"
 
 
-def test_service_color_channel_live_when_vectors_passed():
-    """对照：传入颜色向量后，``color_weight`` 必须真正生效（通道被接通）。"""
+def test_service_no_channel_available_returns_zero():
+    """全通道缺失 → 0.0（既有语义不变）。"""
     from app.clip_service import clip_service
 
-    q = np.array([1.0, 0.0], dtype=np.float32)
-    t = np.array([1.0, 0.0], dtype=np.float32)     # sim_ii = 1.0
-    cq = np.array([1.0, 0.0], dtype=np.float32)
-    ct = np.array([0.0, 1.0], dtype=np.float32)    # sim_col = 0
-    base = dict(img_weight=0.5, cross_weight=0.0, text_weight=0.0)
-    s_zero = clip_service.compute_weighted_similarity(
-        q, None, t, None, color1=cq, color2=ct, color_weight=0.0, **base
-    )
-    s_max = clip_service.compute_weighted_similarity(
-        q, None, t, None, color1=cq, color2=ct, color_weight=0.9, **base
-    )
-    assert s_zero == 1.0
-    assert abs(s_max - (0.5 / 1.4)) < 1e-6, f"颜色加权得分异常: {s_max}"
-    assert s_zero != s_max, "传入颜色向量后 color_weight 仍无效 —— 颜色通道未接通"
+    assert clip_service.compute_weighted_similarity(None, None, None, None) == 0.0
 
 
 # --------------------------------------------------------------------------- #
-# B. 标定层契约（本次修复的直接守卫）
+# B. 标定层契约（与线上同口径）
 # --------------------------------------------------------------------------- #
-def test_score_pair_passes_color_channel():
-    """``score_pair`` 必须把颜色直方图传给打分函数；否则 W_COLOR 惰性（原缺陷回归）。"""
-    cache = _EncoderCache(_ColorEncoder())
-    s_only_img = score_pair(cache, _pair(), _W_ONLY_IMG)
-    s_img_color = score_pair(cache, _pair(), _W_IMG_AND_COLOR)
-    assert s_only_img != s_img_color, (
-        "score_pair 的得分对 W_COLOR 不敏感 → 颜色直方图未传入 "
-        "compute_weighted_similarity（W_COLOR 惰性，网格搜索失真）"
+def test_score_pair_matches_three_channel_semantics(no_penalty):
+    """``score_pair`` 三通道全可用 ⇒ (1+0+1)/3，与线上口径一致。"""
+    cache = _EncoderCache(_OrthogonalEncoder())
+    s = score_pair(cache, _pair_full())
+    assert abs(s - 2.0 / 3.0) < 1e-6, f"score_pair 三通道口径不符：{s}"
+
+
+def test_score_pair_vs_target_matches_three_channel_semantics(no_penalty):
+    """``score_pair_vs_target``（Recall@K 排序用）与 :func:`score_pair` 同口径。"""
+    cache = _EncoderCache(_OrthogonalEncoder())
+    q = {"image": "uploads/q.jpg", "text": "白色耳机"}
+    t = {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "蓝牙耳机"}
+    s = score_pair_vs_target(cache, q, t)
+    assert abs(s - 2.0 / 3.0) < 1e-6, f"score_pair_vs_target 三通道口径不符：{s}"
+
+
+def test_calibrate_scores_insensitive_to_color_weight():
+    """标定层得分**不随** ``color`` 权重变化（颜色已废弃 ⇒ 传不传都无影响）。"""
+    cache = _EncoderCache(_OrthogonalEncoder())
+    w_color0 = {"text_text": 1.0, "cross": 1.0, "img_img": 1.0, "color": 0.0}
+    w_color9 = {"text_text": 1.0, "cross": 1.0, "img_img": 1.0, "color": 0.9}
+    assert score_pair(cache, _pair_full(), w_color0) == score_pair(cache, _pair_full(), w_color9)
+
+
+def test_text_only_query_uses_two_channels_in_calibration(no_penalty):
+    """纯文查询在标定层同样只走两通道 ⇒ (sim_tt + sim_t2i)/2 = (1.0 + 0.0)/2。"""
+    cache = _EncoderCache(_OrthogonalEncoder())
+    s = score_pair(cache, _pair_text_only_query())
+    assert abs(s - 0.5) < 1e-6, f"纯文查询两通道口径不符：{s}"
+
+
+def test_penalty_applies_on_top_of_three_channels():
+    """阶段5 惩罚仍在工作：三通道等权 base=2/3，cc=0 且 sim_tt=1.0≥0.55 → ×0.5 = 1/3。"""
+    from app.clip_service import clip_service
+
+    s = clip_service.compute_weighted_similarity(
+        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC
     )
-    # 与手工口径一致：(0.5*1.0 + 0.5*0.0)/1.0 = 0.5
-    assert abs(s_img_color - 0.5) < 1e-6, f"颜色加权得分异常: {s_img_color}"
-
-
-def test_score_pair_vs_target_passes_color_channel():
-    """``score_pair_vs_target``（Recall@K 排序用）同样必须传颜色。"""
-    cache = _EncoderCache(_ColorEncoder())
-    q = {"image": "uploads/q_img.jpg", "text": None}
-    t = {"item_id": 1, "item_ref": "uploads/t_img.jpg", "text": None}
-    s_only_img = score_pair_vs_target(cache, q, t, _W_ONLY_IMG)
-    s_img_color = score_pair_vs_target(cache, q, t, _W_IMG_AND_COLOR)
-    assert s_only_img != s_img_color, (
-        "score_pair_vs_target 对 W_COLOR 不敏感 → 候选排序未使用颜色（Recall@K 失真）"
-    )
-    assert abs(s_img_color - 0.5) < 1e-6, f"颜色加权得分异常: {s_img_color}"
-
-
-def test_score_pair_color_none_for_text_only_query():
-    """纯文查询（无图）→ 查询无颜色 → ``has_col=False``，与线上行为一致（不炸）。"""
-    cache = _EncoderCache(_ColorEncoder())
-    pair = {
-        "id": "T2",
-        "label": 1,
-        "query": {"image": None, "text": "白色耳机"},
-        "target": {"item_id": 1, "item_ref": None, "text": "蓝牙耳机"},
-    }
-    # 仅 text_text 可用；color 权重再大也只走 sim_tt
-    w = {"img_img": 0.0, "cross": 0.0, "text_text": 0.5, "color": 0.5}
-    assert score_pair(cache, pair, w) == 1.0  # sim_tt = 1.0（两文本同向量）
+    assert abs(s - (2.0 / 3.0) * 0.5) < 1e-6, f"阶段5 惩罚未按预期作用：{s}"

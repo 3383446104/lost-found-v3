@@ -86,17 +86,15 @@ def test_mixed_input_uses_all_channels(no_penalty):
     score = clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
     )
-    # 公式手算（4 通道权重：W_IMG_IMG=0.35 / W_CROSS=0.35 / W_TEXT_TEXT=0.15 / W_COLOR=0.15）：
+    # 公式手算（**三通道等权**，2026-09-16 修订；颜色通道已废弃）：
     #   sim_ii        = q_img·e0 · t_img·e0   = 1.0
     #   sim_tt        = q_text·e1 · t_text·e1  = 1.0
     #   sim_cross_t2i = q_text·e0 · t_img·e0   = 0
     #   sim_cross_i2t = q_img·e1 · t_text·e1   = 0
     #   sim_cross     = (0.5*0 + 0.5*0) / 1    = 0
-    #   color 缺 → 按比例剔除；阶段1 cat/loc 全空 → 加分 0；阶段5 已被 no_penalty 关闭
-    #   ⇒ expected = (W_II*1 + W_CROSS*0 + W_TT*1) / (W_II + W_CROSS + W_TT)
-    #              = (0.35*1 + 0.35*0 + 0.15*1) / (0.35 + 0.35 + 0.15)
-    #              = 0.50 / 0.85 = 10/17 ≈ 0.5882352941
-    expected = 10 / 17
+    #   阶段1 cat/loc 全空 → 加分 0；阶段5 已被 no_penalty 关闭
+    #   ⇒ expected = (1.0 + 0 + 1.0) / 3 = 2/3 ≈ 0.6666666667
+    expected = 2 / 3
     assert score == pytest.approx(expected, abs=1e-6)
 
 
@@ -124,10 +122,14 @@ def test_all_channels_missing_returns_zero():
 
 
 def test_color_channel_only():
-    """仅颜色可用 → 退回颜色余弦。"""
+    """仅颜色输入 → **0.0**（2026-09-16：颜色通道已废弃，不产生任何得分）。
+
+    原语义为「仅颜色可用 → 退回颜色余弦（1.0）」；颜色通道整体废弃后本用例方向反转，
+    用于守卫「颜色不得再参与打分」——若颜色被误恢复，此处会退回 1.0 而失败。
+    """
     c = np.ones(27, dtype=np.float32)
     c = c / np.linalg.norm(c)
-    assert clip_service.compute_weighted_similarity(color1=c, color2=c) == pytest.approx(1.0, abs=1e-6)
+    assert clip_service.compute_weighted_similarity(color1=c, color2=c) == pytest.approx(0.0, abs=1e-6)
 
 
 # --------------------------------------------------------------------------- #

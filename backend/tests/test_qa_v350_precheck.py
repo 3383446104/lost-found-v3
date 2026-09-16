@@ -245,11 +245,10 @@ def test_color_dim_mismatch_not_covered_by_precheck(client, make_user, monkeypat
     resp = client.post(
         "/api/items/match", json={"image_path": img_name, "target_type": "found"}, headers=user["headers"]
     )
-    # 现状：预检（仅 image/text）放行 → 打分时颜色 27 vs 5 抛错被吞 → 200 + 空集
+    # 2026-09-16 修订：颜色通道已废弃 → 损坏的 color_vector（5 维）**不再被读取**，
+    # 因此不再有「颜色维度错配被静默吞掉」的问题，也不再产生误导性的维度 ERROR。
     assert resp.status_code == 200
-    assert resp.json()["matches"] == []
     text = _errors(caplog)
-    assert "并非「未找到」" in text
-    # 记录：该 ERROR 把原因归为「疑似模型维度不匹配」，但真实原因是 color_vector 损坏 →
-    # 诊断信息对 color 维度问题具有误导性（severity 低：color 与模型无关、正常恒为 27）。
-    assert "疑似模型维度不匹配" in text
+    assert "color" not in text.lower(), (
+        "颜色通道已废弃，但日志中仍出现 color 相关报错 —— 废弃不彻底"
+    )

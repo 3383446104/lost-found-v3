@@ -546,11 +546,9 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
 
     query_img_vec = None
     query_text_vec = None
-    query_color_vec = None
     try:
         if image_path:
             query_img_vec = await run_in_threadpool(clip_service.get_image_feature, image_path)
-            query_color_vec = await run_in_threadpool(clip_service.get_color_histogram, image_path)
         if req.text:
             query_text_vec = await run_in_threadpool(clip_service.get_text_feature, req.text)
     except Exception as e:
@@ -584,15 +582,7 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
     for item in target_items:
         target_img_vec = json_to_vector(item['image_vector'])
         target_text_vec = json_to_vector(item['text_vector'])
-        # 颜色特征：优先取库中已持久化的 color_vector（R4，免重复磁盘 IO）；
-        # 缺失（NULL，老数据尚未回填）时才回退实时计算，保证老数据不炸。
-        target_color_vec = json_to_vector(item['color_vector']) if item['color_vector'] else None
-        if target_color_vec is None and item['image_path']:
-            try:
-                target_color_vec = await run_in_threadpool(clip_service.get_color_histogram, item['image_path'])
-            except Exception as e:
-                logger.warning(f"物品 {item['id']} 颜色直方图回退计算失败: {e}")
-                target_color_vec = None
+        # 【已废弃 2026-09-16】颜色通道不再参与打分：不再读取/计算 color_vector。
         # 时间衰减（兼容 SQLite "YYYY-MM-DD HH:MM:SS" 和 ISO 格式）
         try:
             ts = str(item['created_at'])
@@ -616,7 +606,6 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
                 cat1=req.category or '', cat2=item['category'] or '',
                 loc1=req.location or '', loc2=item['location'] or '',
                 days_old=days_old,
-                color1=query_color_vec, color2=target_color_vec,
             )
         except Exception as e:
             skipped += 1

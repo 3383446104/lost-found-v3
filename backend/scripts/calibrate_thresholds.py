@@ -11,16 +11,19 @@
 设计要点
 --------
 - **同一口径**：复用线上同一个 ``clip_service.compute_weighted_similarity``，
-  保证「标定口径 = 线上口径」。调用点与线上一致（``img1/text1/img2/text2`` +
-  ``color1/color2``，见 :func:`score_pair`）；**颜色通道必须显式传入**，否则
-  ``W_COLOR`` 会因 ``has_col=False`` 被动态归一化剔除而**完全惰性**（v3.5.0 已修）。
+  保证「标定口径 = 线上口径」。调用点与线上一致（``img1/text1/img2/text2``，见
+  :func:`score_pair`）。
+- **三通道（2026-09-16 修订）**：打分只含 ①文-文 ②图文跨模态 ③图-图；
+  线上默认**等权**（各 1.0，等价于可用通道的算术平均）。**颜色通道已废弃**
+  （不再计算/传入，``compute_weighted_similarity`` 仍保留其形参仅为兼容）。
 - **阈值口径（Q1）**：
     * ``AUTO``   = Precision ≥ 0.90 的**最低**分位；
     * ``EMAIL``  = Precision ≥ 0.98 的**最低**分位；
     * ``MANUAL`` = Recall ≥ 0.90 的**最高**分位。
 - **Recall@K**：每个正样本查询对全部候选目标打分排序，目标命中 rank ≤ K 记为命中。
-- **``--grid``**：对 ``{W_IMG_IMG, W_CROSS, W_TEXT_TEXT, W_COLOR}`` 做步长 0.05、和 = 1.0
+- **``--grid``**：对 ``{W_TEXT_TEXT, W_CROSS, W_IMG_IMG}`` 做步长 0.05、和 = 1.0
   的粗网格搜索，目标「在 Precision ≥ 0.90 的最低阈值处最大化 Recall@3」，输出 Top-5。
+  （线上默认等权，本网格仅供「若需重新分配通道权重」的探索。）
 - **可打桩**：:func:`evaluate` / :func:`run_calibration` 接受注入的 ``encoder``；
   测试传 ``FakeEncoder`` → **不加载真实模型**。
 - **阻塞性标注**：若任一阈值下 ``Recall@3 < 0.90``，报告显著标注为**阻塞性发现**。
@@ -50,8 +53,8 @@ DEFAULT_OUT = os.path.join(
     os.path.dirname(BACKEND_DIR), "docs", "review", "threshold-calibration-v3.5.0.md"
 )
 
-# 权重网格的 4 个维度 ↔ config 键名
-_WEIGHT_KEYS = ("img_img", "cross", "text_text", "color")
+# 权重网格的 3 个维度 ↔ config 键名（2026-09-16：颜色维度已废弃）
+_WEIGHT_KEYS = ("text_text", "cross", "img_img")
 
 
 class _FakeEncoder:
@@ -74,14 +77,6 @@ class _FakeEncoder:
 
         v = np.full(512, (abs(hash(text)) % 97) + 1, dtype=np.float32)
         return v / np.linalg.norm(v)
-
-    def encode_color(self, path):
-        """确定性 27 维颜色直方图（**仅**冒烟；形状对齐 ``get_color_histogram``）。"""
-        import numpy as np
-
-        h = np.zeros(27, dtype=np.float32)
-        h[abs(hash(path)) % 27] = 1.0
-        return h
 
 
 class _ServiceEncoderAdapter:
@@ -122,14 +117,6 @@ class _ServiceEncoderAdapter:
 
     def encode_image(self, path: str):
         return self.service.get_image_feature(path)
-
-    def encode_color(self, path: str):
-        """颜色直方图（27 维）——与线上 ``color1``/``color2`` 同源。
-
-        见 :func:`score_pair` 的『颜色通道缺失』注记：加上本方法后，标定脚本才
-        真正复现线上「图+文+色」的完整打表面。
-        """
-        return self.service.get_color_histogram(path)
 
 
 # --------------------------------------------------------------------------- #
@@ -394,13 +381,6 @@ class _EncoderCache:
             self._cache[key] = self.encoder.encode_image(path)
         return self._cache[key]
 
-    def color(self, path: str):
-        """颜色直方图缓存（27 维）。与 :meth:`image` 分开缓存：同一路径下两者不同物。"""
-        key = ("color", path)
-        if key not in self._cache:
-            self._cache[key] = self.encoder.encode_color(path)
-        return self._cache[key]
-
 
 @contextlib.contextmanager
 def penalty_enabled(enabled: bool):
@@ -414,13 +394,15 @@ def penalty_enabled(enabled: bool):
 
 
 def _weights_kwargs(weights: Optional[Dict[str, float]]) -> Dict[str, float]:
-    """把 4 维权重 dict 转成 ``compute_weighted_similarity`` 关键字参数。"""
+    """把三通道权重 dict 转成 ``compute_weighted_similarity`` 关键字参数。
+
+    2026-09-16：颜色通道已废弃 → 不再传 ``color_weight``；仅三个通道可调。
+    """
     if not weights:
         return {}
     return {
         "img_weight": weights["img_img"],
         "text_weight": weights["text_text"],
-        "color_weight": weights["color"],
         "cross_weight": weights["cross"],
     }
 
@@ -434,37 +416,25 @@ def score_pair(
 
     说明：默认**不传类别/位置/时间**（标定纯内容相似度，避免统一加分造成阈值漂移）。
 
-    颜色通道缺失缺陷（v3.5.0 真实权重实测第二处才暴露）
-    -----------------------------------------------------
-    本函数原先只传 ``(q_img, q_text, t_img, t_text)``，**不传** ``color1``/``color2``。
-    而线上两个真实调用点都传：
+    三通道口径（2026-09-16 修订）
+    ----------------------------
+    打分只含 ①文-文 ②图文跨模态 ③图-图 三个通道；线上默认**等权**（各 1.0）。
+    **颜色通道已废弃**：不再计算/传入 ``color1``/``color2``——``compute_weighted_similarity``
+    仍保留这两个形参（冻结接口兼容），但内部一律忽略。
 
-      - ``services/match_service.py:104`` → ``color1=new_color_vec, color2=target_color_vec``
-      - ``api/items.py:614``              → ``color1=query_color_vec, color2=target_color_vec``
-
-    后果：``clip_service.compute_weighted_similarity`` 里 ``has_col = color1 is not None
-    and color2 is not None`` **恒为 False** → 颜色通道被动态归一化剔除 → ``W_COLOR``
-    在标定里**数学上完全惰性**（实测 color_weight 取 0.0 / 0.15 / 0.5 / 0.9 得分**完全
-    相同**）。于是权重网格里那列 ``W_COLOR 0.7~0.9`` 是**假象**：网格实际选中的是
-    ``W_CROSS=0``（等价于纯 ``sim_tt``），只是把剩余权重随便塞进了惰性的 color 列。
-
-    这违反了本模块「标定口径 = 线上口径」的设计前提（见模块 docstring）。修法：与线上
-    一致，查询色取自 ``query.image``、目标色取自 ``target.item_ref``；无图则对应色为
-    ``None`` → ``has_col=False``（与线上「无查询图则无查询色」的行为一致）。
+    历史注记（已随废弃而失效）：v3.5.0 期间本函数曾因「不传 ``color1/color2``」导致
+    ``W_COLOR`` 在标定里**数学上完全惰性**，与线上口径不符；颜色通道整体移除后该坑不再适用。
     """
     query = pair.get("query", {})
     target = pair.get("target", {})
 
     q_img = cache.image(query["image"]) if query.get("image") else None
     q_text = cache.text(query["text"]) if query.get("text") else None
-    q_color = cache.color(query["image"]) if query.get("image") else None
     t_img = cache.image(target["item_ref"]) if target.get("item_ref") else None
     t_text = cache.text(target["text"]) if target.get("text") else None
-    t_color = cache.color(target["item_ref"]) if target.get("item_ref") else None
 
     return clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
-        color1=q_color, color2=t_color,
         **_weights_kwargs(weights),
     )
 
@@ -477,17 +447,14 @@ def score_pair_vs_target(
 ) -> float:
     """对一个查询与任意候选目标打分（Recall@K 排序用）。
 
-    颜色通道同 :func:`score_pair`：必须传入，否则 ``W_COLOR`` 惰性、候选排序与线上不符。
+    与 :func:`score_pair` 同口径：三通道、**无颜色**。
     """
     q_img = cache.image(query["image"]) if query.get("image") else None
     q_text = cache.text(query["text"]) if query.get("text") else None
-    q_color = cache.color(query["image"]) if query.get("image") else None
     t_img = cache.image(target["item_ref"]) if target.get("item_ref") else None
     t_text = cache.text(target["text"]) if target.get("text") else None
-    t_color = cache.color(target["item_ref"]) if target.get("item_ref") else None
     return clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
-        color1=q_color, color2=t_color,
         **_weights_kwargs(weights),
     )
 
@@ -691,18 +658,20 @@ def evaluate(
 # 权重网格
 # --------------------------------------------------------------------------- #
 def iter_weight_grid(step: float = 0.05) -> Iterable[Dict[str, float]]:
-    """枚举 ``{img_img, cross, text_text, color}`` 和为 1.0、步长 ``step`` 的粗网格。"""
+    """枚举三通道 ``{text_text, cross, img_img}`` 和为 1.0、步长 ``step`` 的粗网格。
+
+    ⚠️ 2026-09-16：颜色通道已废弃，网格不再含 ``color`` 维度；线上默认三通道等权
+    （各 1.0），本网格仅供「若需重新分配通道权重」的探索使用。
+    """
     n = round(1.0 / step)
-    for a in range(n + 1):
-        for b in range(n + 1 - a):
-            for c in range(n + 1 - a - b):
-                d = n - a - b - c
-                yield {
-                    "img_img": round(a * step, 4),
-                    "cross": round(b * step, 4),
-                    "text_text": round(c * step, 4),
-                    "color": round(d * step, 4),
-                }
+    for c in range(n + 1):
+        for b in range(n + 1 - c):
+            a = n - c - b
+            yield {
+                "text_text": round(c * step, 4),
+                "cross": round(b * step, 4),
+                "img_img": round(a * step, 4),
+            }
 
 
 def summarize_grid(results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -716,20 +685,16 @@ def summarize_grid(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     网格枚举顺序），把它当成「最优权重」会得出**不可复现的伪结论** —— 我们此前正是
     被它误导，把惰性的 ``W_COLOR`` 读成了「0.7~0.9 最优」。
 
-    有信息量的不是单个 Top-1，而是**合格集合的结构**：各权重维度允许取值、以及
-    ``W_COLOR`` 在「满分召回」子集中的取值直方图（单调递减即说明该维度越小越好）。
+    有信息量的不是单个 Top-1，而是**合格集合的结构**：各权重维度允许取值分布。
+    （2026-09-16：颜色通道废弃后，摘要不再含 ``W_COLOR`` 直方图。）
 
     Args:
         results: ``grid_search`` 收集的**全部**合格组合（每个含 ``weights`` / ``recall@K``）。
 
     Returns:
-        含 ``n_qualified`` / ``n_full_recall`` / 各维度取值集合 / 颜色直方图的摘要字典。
+        含 ``n_qualified`` / ``n_full_recall`` / 各维度取值集合 / Recall@1 取值集合。
     """
     full = [r for r in results if r.get("recall@3") == 1.0]
-    color_hist: Dict[float, int] = {}
-    for r in full:
-        c = float(r["weights"]["color"])
-        color_hist[c] = color_hist.get(c, 0) + 1
     per_dim = {
         name: sorted({float(r["weights"][name]) for r in results}) for name in _WEIGHT_KEYS
     }
@@ -737,9 +702,7 @@ def summarize_grid(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "n_qualified": len(results),
         "n_full_recall": len(full),
         "per_dim_values": per_dim,
-        "color_hist_full_recall": dict(sorted(color_hist.items())),
         "recall1_values": sorted({float(r["recall@1"]) for r in results}),
-        "max_color_full_recall": (max(color_hist) if color_hist else None),
     }
 
 
@@ -883,24 +846,16 @@ def write_markdown_report(
                 "请以下方的**合格集合分布**为准。\n"
             )
         lines.append("### 5.1 Top-N（并列代表，顺序无意义）\n")
-        lines.append("| # | W_IMG_IMG | W_CROSS | W_TEXT_TEXT | W_COLOR | auto 阈值 | Recall@1 | Recall@3 | Recall@5 | Recall@10 |")
-        lines.append("|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|")
+        lines.append("| # | W_TEXT_TEXT | W_CROSS | W_IMG_IMG | auto 阈值 | Recall@1 | Recall@3 | Recall@5 | Recall@10 |")
+        lines.append("|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|")
         for i, g in enumerate(grid_top, start=1):
             w = g["weights"]
             lines.append(
-                f"| {i} | {w['img_img']} | {w['cross']} | {w['text_text']} | {w['color']} | "
+                f"| {i} | {w['text_text']} | {w['cross']} | {w['img_img']} | "
                 f"{g['auto_threshold']} | {g['recall@1']} | {g['recall@3']} | {g['recall@5']} | {g['recall@10']} |"
             )
         if grid_summary:
             lines.append("\n### 5.2 合格集合分布（**有信息量**）\n")
-            hist = grid_summary.get("color_hist_full_recall", {})
-            lines.append(
-                "- `W_COLOR` 在「满分召回」子集中的取值分布（单调递减 ⇒ 该维度越小越好）："
-                f"`{hist}`"
-            )
-            lines.append(
-                f"- 合格集合内 `W_COLOR` 最大取值：`{grid_summary.get('max_color_full_recall')}`"
-            )
             per_dim = grid_summary.get("per_dim_values", {})
             for name, vals in per_dim.items():
                 lines.append(f"- 合格集合内 `{name}` 允许取值：`{vals}`")
@@ -1008,7 +963,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"  合格组合 {grid_summary['n_qualified']} 个，"
                 f"其中 {grid_summary['n_full_recall']} 个并列 Recall@3=1.0"
             )
-            print(f"  W_COLOR 在满分召回子集的分布: {grid_summary['color_hist_full_recall']}")
+            print(f"  合格集合内各维度允许取值: {grid_summary['per_dim_values']}")
 
     write_markdown_report(args.out, result, compare=compare, grid_top=grid_top,
                           grid_summary=grid_summary, fake_encoder=args.fake_encoder)

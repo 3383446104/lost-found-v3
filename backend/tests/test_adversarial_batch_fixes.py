@@ -245,7 +245,11 @@ def test_r4_match_uses_persisted_color_vector_no_disk_fallback(
 def test_r4_match_falls_back_when_color_vector_null(
     client, make_user, approve_item, monkeypatch
 ):
-    """老数据回退：color_vector 为 NULL 时，匹配应实时计算颜色直方图（保证不炸）。"""
+    """2026-09-16 修订：颜色通道已废弃 → **不再**实时计算颜色直方图（零颜色开销）。
+
+    原契约（v3.4.0 R4）为「color_vector 为 NULL 时回退实时计算」；颜色通道整体移除后
+    该回退路径不再需要，本用例方向反转为「不得调用 get_color_histogram」。
+    """
     owner = make_user(username="r4_match_null")
     target_id = _create_item_with_image(
         client, owner["headers"], type="found", title="颜色向量置空"
@@ -261,7 +265,9 @@ def test_r4_match_falls_back_when_color_vector_null(
         headers=owner["headers"],
     )
     assert resp.status_code == 200
-    assert calls, "color_vector 为 NULL 时应回退实时计算，但未观测到调用"
+    assert not calls, (
+        "颜色通道已废弃，不应再调用 get_color_histogram（颜色回退契约已作废）"
+    )
 
 
 # --------------------------------------------------------------------------- #

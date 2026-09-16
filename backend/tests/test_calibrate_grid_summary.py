@@ -7,8 +7,11 @@
 任意代表**（= 网格枚举顺序），把它当成「最优权重排名」会得出不可复现的伪结论。
 
 本文件锁死 :func:`summarize_grid` 的契约：它必须如实暴露合格集合的结构
-（合格数 / 满分召回数 / 颜色直方图 / 各维度取值集合），供报告以「集合」而非
+（合格数 / 满分召回数 / 各维度取值集合 / Recall@1 取值集合），供报告以「集合」而非
 「排名」的方式解读。
+
+2026-09-16 修订：颜色通道废弃 ⇒ 摘要**不再含** ``color`` 维度与颜色直方图；
+本文件据此新增「不得出现 color 键」的反向守卫（防止颜色维度被误恢复）。
 
 作者：team-lead（齐活林）—— 修复者自留守卫。
 """
@@ -24,9 +27,10 @@ for _p in (BACKEND_DIR, SCRIPTS_DIR):
 from calibrate_thresholds import summarize_grid  # noqa: E402
 
 
-def _row(img, cross, text, color, r1, r3):
+def _row(text, cross, img, r1, r3):
+    """按三通道口径构造一行网格结果（无 color 维度）。"""
     return {
-        "weights": {"img_img": img, "cross": cross, "text_text": text, "color": color},
+        "weights": {"text_text": text, "cross": cross, "img_img": img},
         "auto_threshold": 0.5,
         "recall@1": r1,
         "recall@3": r3,
@@ -36,41 +40,39 @@ def _row(img, cross, text, color, r1, r3):
 def test_summary_counts_qualified_and_full_recall():
     """合格数 / 满分召回数必须如实统计。"""
     rows = [
-        _row(0.05, 0.0, 0.95, 0.0, 0.7917, 1.0),
-        _row(0.10, 0.0, 0.90, 0.0, 0.7917, 1.0),
-        _row(0.05, 0.10, 0.85, 0.0, 0.75, 1.0),
-        _row(0.30, 0.30, 0.20, 0.20, 0.7083, 0.9),  # 非满分召回
+        _row(0.95, 0.0, 0.05, 0.7917, 1.0),
+        _row(0.90, 0.0, 0.10, 0.7917, 1.0),
+        _row(0.85, 0.10, 0.05, 0.75, 1.0),
+        _row(0.20, 0.30, 0.50, 0.7083, 0.9),  # 非满分召回
     ]
     s = summarize_grid(rows)
     assert s["n_qualified"] == 4
     assert s["n_full_recall"] == 3
 
 
-def test_summary_color_histogram_only_over_full_recall():
-    """颜色直方图只统计「满分召回」子集（并列出单调递减的证据）。"""
-    rows = [
-        _row(0.05, 0.0, 0.95, 0.00, 0.7917, 1.0),
-        _row(0.05, 0.0, 0.95, 0.00, 0.7917, 1.0),
-        _row(0.05, 0.05, 0.90, 0.05, 0.7917, 1.0),
-        _row(0.05, 0.10, 0.85, 0.15, 0.75, 1.0),
-        _row(0.30, 0.30, 0.20, 0.20, 0.7083, 0.9),  # 不计入（recall@3 != 1.0）
-    ]
-    s = summarize_grid(rows)
-    assert s["color_hist_full_recall"] == {0.0: 2, 0.05: 1, 0.15: 1}
-    assert s["max_color_full_recall"] == 0.15
-
-
 def test_summary_per_dim_values_cover_all_qualified():
-    """各维度取值集合取自**全部合格组合**（含非满分召回者）。"""
+    """各维度取值集合取自**全部合格组合**（含非满分召回者），且只含三通道。"""
     rows = [
-        _row(0.05, 0.0, 0.95, 0.00, 0.7917, 1.0),
-        _row(0.35, 0.35, 0.15, 0.15, 0.7083, 0.9),
+        _row(0.95, 0.0, 0.05, 0.7917, 1.0),
+        _row(0.15, 0.35, 0.50, 0.7083, 0.9),
     ]
     s = summarize_grid(rows)
-    assert s["per_dim_values"]["img_img"] == [0.05, 0.35]
-    assert s["per_dim_values"]["color"] == [0.0, 0.15]
+    assert s["per_dim_values"]["text_text"] == [0.15, 0.95]
     assert s["per_dim_values"]["cross"] == [0.0, 0.35]
+    assert s["per_dim_values"]["img_img"] == [0.05, 0.5]
     assert s["recall1_values"] == [0.7083, 0.7917]
+
+
+def test_summary_has_no_color_dimension():
+    """**废弃守卫**：颜色通道已废弃 ⇒ 摘要中不得出现任何 color 相关键。
+
+    若颜色维度被误恢复（或旧实现回滚），本断言会失败。
+    """
+    s = summarize_grid([_row(0.95, 0.0, 0.05, 0.7917, 1.0)])
+    assert "color_hist_full_recall" not in s
+    assert "max_color_full_recall" not in s
+    assert "color" not in s["per_dim_values"]
+    assert set(s["per_dim_values"]) == {"text_text", "cross", "img_img"}
 
 
 def test_summary_empty_is_safe():
@@ -78,5 +80,5 @@ def test_summary_empty_is_safe():
     s = summarize_grid([])
     assert s["n_qualified"] == 0
     assert s["n_full_recall"] == 0
-    assert s["color_hist_full_recall"] == {}
-    assert s["max_color_full_recall"] is None
+    assert s["per_dim_values"] == {"text_text": [], "cross": [], "img_img": []}
+    assert s["recall1_values"] == []

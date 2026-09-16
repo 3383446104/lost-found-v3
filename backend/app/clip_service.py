@@ -118,35 +118,33 @@ class CLIPService:
         w_cross_t2i: Optional[float] = None,
         w_cross_i2t: Optional[float] = None,
     ) -> float:
-        """五阶段 + 颜色增强 + **跨模态** 加权相似度算法。
+        """五阶段 + **三通道等权** 加权相似度算法（2026-09-16 修订）。
 
-        通道定义（``q`` = 查询，``t`` = 目标；``·`` = 余弦，向量均已 L2 归一化）：
+        三通道定义（``q`` = 查询，``t`` = 目标；``·`` = 余弦，向量均已 L2 归一化）：
 
-        ==================  ========================  =========================
-        通道                 表达式                     可用条件
-        ==================  ========================  =========================
-        ``sim_img_img``     ``q_img · t_img``         ``img1, img2`` 均非空
-        ``sim_text_text``   ``q_text · t_text``       ``text1, text2`` 均非空
-        ``sim_cross_t2i``   ``q_text · t_img``        ``text1, img2`` 均非空
-        ``sim_cross_i2t``   ``q_img · t_text``        ``img1, text2`` 均非空
-        ``sim_color``       ``cos(q_color, t_color)`` ``color1, color2`` 均非空
-        ==================  ========================  =========================
+        ==================  ================================================  =========================
+        通道                 表达式                                            可用条件
+        ==================  ================================================  =========================
+        ``sim_text_text``   ``q_text · t_text``                              ``text1, text2`` 均非空
+        ``sim_cross``       ``q_text·t_img`` 与 ``q_img·t_text`` 的加权平均    双向任一可用
+        ``sim_img_img``     ``q_img · t_img``                                ``img1, img2`` 均非空
+        ==================  ================================================  =========================
 
-        - ``sim_cross`` = 可用跨模态方向的加权平均（``MATCH_W_CROSS_T2I`` / ``MATCH_W_CROSS_I2T``）；
-        - 外层**缺维度动态归一化**：不可用通道从分母剔除，权重和恒为 1；全缺 → ``0.0``；
+        - **三通道各自独立、等权**（``MATCH_W_* = 1.0``）⇒ 打分等价于「可用通道的算术平均」；
+          缺通道**动态归一化**（不可用通道从分母剔除，权重和恒为 1）；全缺 → ``0.0``；
         - 阶段1 类别/位置；阶段2 时间衰减；阶段5 **跨模态一致性惩罚（只降权，≤×0.5）**。
 
-        权重参数默认 ``None`` → 回落 ``settings.*``（config 驱动，代码内不硬编码）。
-        新增的 ``cross_weight`` / ``w_cross_t2i`` / ``w_cross_i2t`` 位于 ``*`` 之后，
-        为**关键字专用**，杜绝位置参数错位。
+        ⚠️ **颜色通道已废弃**（2026-09-16）：``color1`` / ``color2`` / ``color_weight``
+        形参及 ``compute_color_similarity`` / ``get_color_histogram`` 方法仅为**兼容既有
+        调用点与冻结接口**保留，**不参与任何打分**。
 
-        Note:
-            四个外层权重与两个跨模态内权重均为**初值，需评测收敛**（见标定脚本）。
+        权重参数默认 ``None`` → 回落 ``settings.*``（config 驱动，代码内不硬编码）。
+        ``cross_weight`` / ``w_cross_t2i`` / ``w_cross_i2t`` 位于 ``*`` 之后，为关键字专用。
         """
-        # ---- 权重：None → 回落 config ----
+        # ---- 权重：None → 回落 config（三通道等权，默认均为 1.0）----
+        # 注：color_weight 形参已废弃（颜色不参与打分），仅为兼容旧调用点保留。
         w_ii = settings.MATCH_W_IMG_IMG if img_weight is None else img_weight
         w_tt = settings.MATCH_W_TEXT_TEXT if text_weight is None else text_weight
-        w_col = settings.MATCH_W_COLOR if color_weight is None else color_weight
         w_cross = settings.MATCH_W_CROSS if cross_weight is None else cross_weight
         w_t2i = settings.MATCH_W_CROSS_T2I if w_cross_t2i is None else w_cross_t2i
         w_i2t = settings.MATCH_W_CROSS_I2T if w_cross_i2t is None else w_cross_i2t
@@ -157,14 +155,14 @@ class CLIPService:
         has_t2i = text1 is not None and img2 is not None      # 查询文字 × 目标图片
         has_i2t = img1 is not None and text2 is not None      # 查询图片 × 目标文字
         has_cc = has_t2i or has_i2t
-        has_col = color1 is not None and color2 is not None
+        # 【已废弃 2026-09-16】颜色通道不再参与打分；color1/color2/color_weight
+        # 形参仅为兼容既有调用点与冻结接口而保留，内部一律忽略。
 
         # ---- 逐通道取值（None 表示不可用）----
         sim_ii = float(np.dot(img1, img2)) if has_ii else None
         sim_tt = float(np.dot(text1, text2)) if has_tt else None
         sim_t2i = float(np.dot(text1, img2)) if has_t2i else None
         sim_i2t = float(np.dot(img1, text2)) if has_i2t else None
-        sim_col = self.compute_color_similarity(color1, color2) if has_col else None
 
         # ---- 跨模态通道 = 可用方向的加权平均 ----
         if has_cc:
@@ -175,11 +173,11 @@ class CLIPService:
             sim_cross = None
 
         # ---- 外层缺维度动态归一化（权重和恒为 1；全缺 → 0.0）----
+        # 三通道等权（各 1.0）⇒ 等价于「可用通道的算术平均」；缺通道从分母剔除。
         channels = [
-            (w_ii, sim_ii),        # MATCH_W_IMG_IMG
-            (w_cross, sim_cross),  # MATCH_W_CROSS
-            (w_tt, sim_tt),        # MATCH_W_TEXT_TEXT
-            (w_col, sim_col),      # MATCH_W_COLOR
+            (w_tt, sim_tt),        # 通道① 文-文
+            (w_cross, sim_cross),  # 通道② 图文跨模态（双向合并）
+            (w_ii, sim_ii),        # 通道③ 图-图
         ]
         avail = [(w, s) for (w, s) in channels if s is not None and w > 0]
         base = (sum(w * s for w, s in avail) / sum(w for w, _ in avail)) if avail else 0.0
