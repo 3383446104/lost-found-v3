@@ -586,8 +586,8 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
         # 时间衰减（统一走 days_since_utc：修正 naive/aware 相减导致衰减静默失效的缺陷）
         days_old = days_since_utc(item['created_at'])
         try:
-            similarity = await run_in_threadpool(
-                clip_service.compute_weighted_similarity,
+            detail = await run_in_threadpool(
+                clip_service.compute_match_detail,
                 query_img_vec, query_text_vec, target_img_vec, target_text_vec,
                 cat1=req.category or '', cat2=item['category'] or '',
                 loc1=req.location or '', loc2=item['location'] or '',
@@ -597,8 +597,16 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
             skipped += 1
             logger.error(f"匹配物品 {item['id']} 时打分出错（已跳过）: {e}")
             continue
-        logger.info(f"  匹配计算: 物品{item['id']} 相似度={similarity:.4f}")
-        if similarity >= threshold:
+        # score          = 排序分（含时间衰减，实现「新物品优先」）
+        # content_score  = 内容分（不含类别/位置/时间，**与标定同尺度 → 用于阈值判定**）
+        # reference_score = 展示分（最强证据通道，供界面与邮件参考）
+        similarity = detail["score"]
+        content_score = detail["content_score"]
+        logger.info(
+            f"  匹配计算: 物品{item['id']} 内容分={content_score:.4f} 排序分={similarity:.4f} "
+            f"展示分={detail['reference_score']:.4f} 等级={detail['level']}"
+        )
+        if content_score >= threshold:
             results.append({
                 'id': item['id'],
                 'title': item['title'],
@@ -606,12 +614,24 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
                 'category': item['category'],
                 'location': item['location'],
                 'image_path': item['image_path'],
-                'similarity': round(similarity, 4),
+                # 展示分（用户与邮件看到的「相似度」）
+                'similarity': round(detail["reference_score"], 6),
+                # 内容分（阈值判定用，与标定同尺度）
+                'content_score': round(content_score, 6),
+                # 排序分（含衰减，内部口径）
+                'match_score': round(similarity, 6),
+                # 证据链：等级 + 命中依据 + 各通道原始值
+                'level': detail["level"],
+                'basis': detail["basis"],
+                'channels': {
+                    k: (round(v, 6) if isinstance(v, float) else v)
+                    for k, v in detail["channels"].items()
+                },
                 'match_source': match_source,
                 'created_at': item['created_at'],
             })
 
-    results.sort(key=lambda x: x['similarity'], reverse=True)
+    results.sort(key=lambda x: x['match_score'], reverse=True)
 
     if not results:
         # 区分「真的没找到」与「全挂了」：若所有目标都因异常被跳过，属系统性错误

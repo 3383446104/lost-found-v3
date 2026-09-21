@@ -43,9 +43,13 @@ def test_penalty_monotonic_in_cc():
 
 
 def test_penalty_uses_min_of_directions():
-    """cc = min(两方向)：更不一致的方向决定惩罚。"""
-    p_low = clip_service._cross_penalty(1.0, 1.0, 0.0, 0.9)
-    p_high = clip_service._cross_penalty(1.0, 1.0, 0.9, 0.9)
+    """cc = min(两方向)：更不一致的方向决定惩罚。
+
+    2026-09-21：触发条件收窄为「文-文高 且 图-图不高」→ sim_ii 传 0.0
+    （图-图高时惩罚本就不该触发，那由另一条用例守卫）。
+    """
+    p_low = clip_service._cross_penalty(0.0, 1.0, 0.0, 0.9)
+    p_high = clip_service._cross_penalty(0.0, 1.0, 0.9, 0.9)
     assert p_low < p_high
     assert p_low == pytest.approx(settings.CROSS_PENALTY_FLOOR, abs=1e-9)
 
@@ -75,9 +79,11 @@ def _base_score(inputs):
 
 def test_only_reduces_score(monkeypatch):
     """开启惩罚后的总分 ≤ 关闭时（只降权，绝不给物品加分）。"""
-    # q_img·t_img = 1.0（self 高，触发）；cross 两方向 = 0.0（cc=0 → 触底）
+    # 2026-09-21：触发条件收窄为「文-文高 且 图-图不高」。
+    # 构造 t_img ⟂ q_img（sim_ii = 0，不阻断触发）；文-文 = 1.0（高于门限）；
+    # cross 最不一致方向 = 0.0 → cc = 0 ≤ CC_LOW → 触底。
     q_img = np.zeros(512, dtype=np.float32); q_img[0] = 1.0
-    t_img = np.zeros(512, dtype=np.float32); t_img[0] = 1.0
+    t_img = np.zeros(512, dtype=np.float32); t_img[1] = 1.0
     q_text = np.zeros(512, dtype=np.float32); q_text[1] = 1.0
     t_text = np.zeros(512, dtype=np.float32); t_text[1] = 1.0
     inputs = (q_img, q_text, t_img, t_text)

@@ -86,15 +86,15 @@ def test_mixed_input_uses_all_channels(no_penalty):
     score = clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
     )
-    # 公式手算（**三通道等权**，2026-09-16 修订；颜色通道已废弃）：
+    # 公式手算（**主辅权重**，2026-09-21 修订；颜色通道已废弃）：
+    #   主证据：文-文 0.75、图-图 0.75；辅助：跨模态 0.25（先做尺度映射）
     #   sim_ii        = q_img·e0 · t_img·e0   = 1.0
     #   sim_tt        = q_text·e1 · t_text·e1  = 1.0
-    #   sim_cross_t2i = q_text·e0 · t_img·e0   = 0
-    #   sim_cross_i2t = q_img·e1 · t_text·e1   = 0
-    #   sim_cross     = (0.5*0 + 0.5*0) / 1    = 0
+    #   sim_cross     = 0（t2i=i2t=0；映射后仍 0，低于 LO 被夹到 0）
     #   阶段1 cat/loc 全空 → 加分 0；阶段5 已被 no_penalty 关闭
-    #   ⇒ expected = (1.0 + 0 + 1.0) / 3 = 2/3 ≈ 0.6666666667
-    expected = 2 / 3
+    #   ⇒ expected = (0.75*1 + 0.75*1 + 0.25*0) / (0.75+0.75+0.25)
+    #              = 1.5 / 1.75 = 6/7 ≈ 0.8571428571
+    expected = 6 / 7
     assert score == pytest.approx(expected, abs=1e-6)
 
 
@@ -138,8 +138,12 @@ def test_color_channel_only():
 def test_cross_direction_weights(no_penalty):
     """cross 内 t2i/i2t 方向按权重加权平均。
 
-    构造：t2i = 1.0、i2t = 0.0；外层仅保留 cross（其余权重置 0）→ base = sim_cross。
-    R-T2：手算锁定 expected = 0.7，不再现算权重比例。
+    构造：t2i = 1.0、i2t = 0.0；外层仅保留 cross（其余权重置 0）。
+
+    ⚠️ 2026-09-21 口径变更：跨模态值现在会先做**尺度映射**（0.194→0、0.298→1），
+    本构造的原始 cross = 0.7×1 + 0.3×0 = 0.7 已**越过 HI 而饱和到 1.0**。
+    因此本用例断言 1.0；内部方向权重的**线性**效果由
+    ``test_calibrate_color_channel.py::test_cross_mapping_*`` 覆盖（用落在映射区间内的余弦）。
     """
     q_text, t_img = _u(0), _u(0)     # t2i = 1.0
     q_img, t_text = _u(1), _u(0)     # i2t = q_img·t_text = e1·e0 = 0
@@ -152,8 +156,9 @@ def test_cross_direction_weights(no_penalty):
     #   sim_cross_t2i = q_text·e0 · t_img·e0  = 1.0
     #   sim_cross_i2t = q_img·e1 · t_text·e0  = 0
     #   sim_cross     = (0.7*1 + 0.3*0) / (0.7+0.3) = 0.7
-    #   img/text/color 全置 0 ⇒ 最终 score = sim_cross = 0.7
-    expected = 0.7
+    #   尺度映射：(0.7 - 0.194) / (0.298 - 0.194) = 4.87 → 夹到 1.0
+    #   img/text 全置 0 ⇒ 最终 score = mapped(sim_cross) = 1.0
+    expected = 1.0
     assert score == pytest.approx(expected, abs=1e-6)
 
 

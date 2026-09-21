@@ -1,26 +1,26 @@
-"""三通道打分口径回归测试（2026-09-16 修订：颜色通道**已废弃**）。
+# -*- coding: utf-8 -*-
+"""打分口径回归测试（2026-09-21 修订：按查询形态分三种检索模式 + 跨模态尺度映射）。
 
-背景
-----
-用户决策（2026-09-16）：打分通道收敛为三个 —— ①文-文 ②图文跨模态（双向合并）
-③图-图；**各自独立、等权**（``MATCH_W_* = 1.0``，缺通道按可用集合动态归一化 →
-数学上等价于「可用通道的算术平均」）。**颜色通道彻底废弃**：
-``compute_weighted_similarity`` 仍保留 ``color1/color2/color_weight`` 形参以兼容
-冻结接口与既有调用点，但**内部一律忽略**。
+口径变化（本轮）
+----------------
+1. **权重从「三通道等权」改为「主证据 + 辅助证据」**：
+   同模态通道（图-图 / 文-文）各 0.75 为**主证据**，跨模态 0.25 为**辅助证据**。
+   配合既有的「缺通道动态归一化」，三种检索模式自动成形 —— 无需分支代码：
 
-本文件锁死两点：
-  A. **服务层**：
-     - 三通道等权 ⇒ 得分 = 可用通道的算术平均；
-     - 缺通道不进入分母；
-     - **颜色向量即使传入也不影响任何得分**（废弃生效的守卫）。
-  B. **标定层**：``score_pair`` / ``score_pair_vs_target`` 与线上同口径
-     （三通道、无颜色）；得分**不随** ``color`` 权重变化。
+   | 查询形态 | 可用通道 | 归一化后 |
+   |---|---|---|
+   | 文字检索 | 文-文 + 跨模态 | 0.75 / 0.25 |
+   | 图片检索 | 图-图 + 跨模态 | 0.75 / 0.25 |
+   | 图文混合 | 图-图 + 文-文 + 跨模态 | 0.43 / 0.43 / 0.14 |
 
-历史注记
---------
-v3.5.0 期间本文件守卫的是反方向命题（「颜色通道必须传入，否则 ``W_COLOR`` 惰性」，
-源于一次「桩路径掩盖真实路径」的缺陷）。颜色通道整体移除后，该守卫**方向反转**为
-「颜色不参与打分」——断言强度不变，仍是精确值比较（不放宽 tolerance）。
+2. **跨模态通道做「尺度映射」**：原生余弦只落在 0.15~0.35（CLIP 固有特性），
+   按其实测分布（负样本均值 → 0、正样本均值 → 1）线性拉伸到可读尺度。
+   仅作用于**外层加权**；阶段5 惩罚仍用原始余弦。
+
+3. **跨模态一致性惩罚的触发条件收窄**：仅当「文-文高 **且** 图-图不高」时触发
+   （真正的「文本撞车」场景）。图-图同样高说明图像证据独立支持，不再误伤。
+
+另锁死「颜色通道已废弃」与「证据链（等级/依据/展示分）」语义。
 
 作者：team-lead（齐活林）—— 口径变更自留守卫。
 """
@@ -36,158 +36,211 @@ for _p in (BACKEND_DIR, SCRIPTS_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from app.config import settings  # noqa: E402
+from app.clip_service import clip_service  # noqa: E402
 from calibrate_thresholds import (  # noqa: E402
     _EncoderCache,
     score_pair,
     score_pair_vs_target,
 )
 
-# 正交构造，使各通道取值互不相同、便于精确断言：
-#   查询文 = [1,0]、目标文 = [1,0] → sim_tt   = 1.0
-#   查询图 = [0,1]、目标图 = [0,1] → sim_ii   = 1.0
-#   t2i = 查询文·目标图 = 0.0；i2t = 查询图·目标文 = 0.0 → sim_cross = 0.0
-_TEXT_VEC = np.array([1.0, 0.0], dtype=np.float32)
-_IMG_VEC = np.array([0.0, 1.0], dtype=np.float32)
+# 正交构造：文=[1,0]、图=[0,1] → sim_tt=1.0、sim_ii=1.0、跨模态=0
+_TEXT = np.array([1.0, 0.0], dtype=np.float32)
+_IMG = np.array([0.0, 1.0], dtype=np.float32)
 
 
-class _OrthogonalEncoder:
-    """文/图两个模态取正交向量，使 sim_tt 与 sim_ii 可精确区分、cross 恒 0。"""
-
-    name = "three-channel-fake"
-    model_name = "three-channel-fake"
+class _OrthoEncoder:
+    name = "ortho-fake"
+    model_name = "ortho-fake"
 
     def encode_text(self, text):
-        return _TEXT_VEC.copy()
+        return _TEXT.copy()
 
     def encode_image(self, path):
-        return _IMG_VEC.copy()
+        return _IMG.copy()
 
 
 def _pair_full():
-    """三通道全可用（查询图文 + 目标图文）。"""
-    return {
-        "id": "T-full",
-        "label": 1,
-        "query": {"image": "uploads/q.jpg", "text": "白色耳机"},
-        "target": {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "蓝牙耳机"},
-    }
+    return {"id": "P-full", "label": 1,
+            "query": {"image": "uploads/q.jpg", "text": "描述"},
+            "target": {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "目标描述"}}
 
 
-def _pair_text_only_query():
-    """纯文查询（无查询图）→ 只有 文-文 与 图文跨模态 两个通道可用。"""
-    return {
-        "id": "T-text",
-        "label": 1,
-        "query": {"image": None, "text": "白色耳机"},
-        "target": {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "蓝牙耳机"},
-    }
+def _pair_text_only():
+    return {"id": "P-text", "label": 1,
+            "query": {"image": None, "text": "描述"},
+            "target": {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "目标描述"}}
 
 
 @pytest.fixture
 def no_penalty(monkeypatch):
-    """关闭跨模态一致性惩罚，使断言只针对「三通道等权」本身。
-
-    注意：开启惩罚时，本文件的构造会让 cc=0（cross 恒 0）且 sim_tt=1.0 ≥ 0.55
-    → 得分被 ×0.5（见 test_penalty_applies_on_top_of_three_channels）。
-    """
-    from app.config import settings
-
     monkeypatch.setattr(settings, "CROSS_PENALTY_ENABLED", False)
 
 
 # --------------------------------------------------------------------------- #
-# A. 服务层语义
+# A. 主辅权重与三种检索模式（由缺通道归一化自动成形）
 # --------------------------------------------------------------------------- #
-def test_service_three_channels_arithmetic_mean(no_penalty):
-    """三通道全可用且等权 ⇒ 得分 = (sim_tt + sim_cross + sim_ii) / 3 = (1+0+1)/3。"""
-    from app.clip_service import clip_service
-
-    s = clip_service.compute_weighted_similarity(
-        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC
-    )
-    assert abs(s - 2.0 / 3.0) < 1e-6, (
-        f"三通道等权口径不符：期望 (1+0+1)/3={2.0 / 3.0:.6f}，实得 {s}"
-    )
+def test_three_channels_main_aux_weighting(no_penalty):
+    """三通道全可用：文-文(0.75,1.0) + 图-图(0.75,1.0) + 跨模态(0.25,0) = 1.5/1.75。"""
+    s = clip_service.compute_weighted_similarity(_IMG, _TEXT, _IMG, _TEXT)
+    assert abs(s - 1.5 / 1.75) < 1e-6, f"主辅加权口径不符：期望 6/7，实得 {s}"
 
 
-def test_service_missing_channel_excluded_from_denominator(no_penalty):
-    """纯文查询（无查询图）⇒ 仅 文-文 与 图文跨模态 可用 ⇒ (1.0 + 0.0)/2 = 0.5。"""
-    from app.clip_service import clip_service
-
-    s = clip_service.compute_weighted_similarity(None, _TEXT_VEC, _IMG_VEC, _TEXT_VEC)
-    assert abs(s - 0.5) < 1e-6, f"缺通道动态归一化口径不符：期望 0.5，实得 {s}"
+def test_text_search_mode_two_channels(no_penalty):
+    """文字检索（无查询图）⇒ 文-文 主(0.75) + 跨模态 辅(0.25) ⇒ (0.75*1 + 0.25*0)/1 = 0.75。"""
+    s = clip_service.compute_weighted_similarity(None, _TEXT, _IMG, _TEXT)
+    assert abs(s - 0.75) < 1e-6, f"文字检索模式口径不符：期望 0.75，实得 {s}"
 
 
-def test_service_color_vectors_ignored_after_deprecation(no_penalty):
-    """**废弃守卫**：传入颜色向量且 ``color_weight`` 拉满，得分必须**完全不变**。
+def test_image_search_mode_two_channels(no_penalty):
+    """图片检索（无查询文）⇒ 图-图 主(0.75) + 跨模态 辅(0.25)。
 
-    若颜色通道被误恢复为参与打分，本断言会失败（这正是它存在的意义）。
+    跨模态仅 i2t 可用 = q_img·t_text = [0,1]·[1,0] = 0 → 映射后 0。
     """
-    from app.clip_service import clip_service
-
-    cq = np.array([1.0, 0.0], dtype=np.float32)
-    ct = np.array([0.0, 1.0], dtype=np.float32)  # sim_col = 0（与 img/text 正交）
-    s_without = clip_service.compute_weighted_similarity(
-        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC
-    )
-    s_with = clip_service.compute_weighted_similarity(
-        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC,
-        color1=cq, color2=ct, color_weight=0.9,
-    )
-    assert s_without == s_with, (
-        "颜色通道已废弃，但其向量/权重仍影响了得分 —— 废弃未生效"
-        f"（不含色={s_without}, 含色={s_with}）"
-    )
-    # 服务层返回 round(base, 6)，故用容差比较而非精确 ==
-    assert abs(s_without - 2.0 / 3.0) < 1e-6, f"三通道等权口径不符：{s_without}"
-
-
-def test_service_no_channel_available_returns_zero():
-    """全通道缺失 → 0.0（既有语义不变）。"""
-    from app.clip_service import clip_service
-
-    assert clip_service.compute_weighted_similarity(None, None, None, None) == 0.0
+    s = clip_service.compute_weighted_similarity(_IMG, None, _IMG, _TEXT)
+    assert abs(s - 0.75) < 1e-6, f"图片检索模式口径不符：期望 0.75，实得 {s}"
 
 
 # --------------------------------------------------------------------------- #
-# B. 标定层契约（与线上同口径）
+# B. 跨模态尺度映射
 # --------------------------------------------------------------------------- #
-def test_score_pair_matches_three_channel_semantics(no_penalty):
-    """``score_pair`` 三通道全可用 ⇒ (1+0+1)/3，与线上口径一致。"""
-    cache = _EncoderCache(_OrthogonalEncoder())
-    s = score_pair(cache, _pair_full())
-    assert abs(s - 2.0 / 3.0) < 1e-6, f"score_pair 三通道口径不符：{s}"
+def test_cross_mapping_lifts_low_cosine():
+    """映射把「正样本均值」(HI) 抬到 1.0、把「负样本均值」(LO) 压到 0.0。"""
+    lo, hi = settings.MATCH_CROSS_REF_LO, settings.MATCH_CROSS_REF_HI
+    assert abs(clip_service._map_cross(hi) - 1.0) < 1e-9
+    assert abs(clip_service._map_cross(lo) - 0.0) < 1e-9
+    assert abs(clip_service._map_cross((lo + hi) / 2) - 0.5) < 1e-9
+    # 评测集实测：正样本最小值 0.2474 → 映射后应显著高于原值
+    assert clip_service._map_cross(0.2474) > 0.2474
 
 
-def test_score_pair_vs_target_matches_three_channel_semantics(no_penalty):
-    """``score_pair_vs_target``（Recall@K 排序用）与 :func:`score_pair` 同口径。"""
-    cache = _EncoderCache(_OrthogonalEncoder())
-    q = {"image": "uploads/q.jpg", "text": "白色耳机"}
-    t = {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "蓝牙耳机"}
-    s = score_pair_vs_target(cache, q, t)
-    assert abs(s - 2.0 / 3.0) < 1e-6, f"score_pair_vs_target 三通道口径不符：{s}"
+def test_cross_mapping_clips_out_of_range():
+    """越界夹紧：低于 LO → 0；高于 HI → 1；None 透传。"""
+    lo, hi = settings.MATCH_CROSS_REF_LO, settings.MATCH_CROSS_REF_HI
+    assert clip_service._map_cross(lo - 0.1) == 0.0
+    assert clip_service._map_cross(hi + 0.5) == 1.0
+    assert clip_service._map_cross(None) is None
 
 
-def test_calibrate_scores_insensitive_to_color_weight():
-    """标定层得分**不随** ``color`` 权重变化（颜色已废弃 ⇒ 传不传都无影响）。"""
-    cache = _EncoderCache(_OrthogonalEncoder())
-    w_color0 = {"text_text": 1.0, "cross": 1.0, "img_img": 1.0, "color": 0.0}
-    w_color9 = {"text_text": 1.0, "cross": 1.0, "img_img": 1.0, "color": 0.9}
-    assert score_pair(cache, _pair_full(), w_color0) == score_pair(cache, _pair_full(), w_color9)
-
-
-def test_text_only_query_uses_two_channels_in_calibration(no_penalty):
-    """纯文查询在标定层同样只走两通道 ⇒ (sim_tt + sim_t2i)/2 = (1.0 + 0.0)/2。"""
-    cache = _EncoderCache(_OrthogonalEncoder())
-    s = score_pair(cache, _pair_text_only_query())
-    assert abs(s - 0.5) < 1e-6, f"纯文查询两通道口径不符：{s}"
-
-
-def test_penalty_applies_on_top_of_three_channels():
-    """阶段5 惩罚仍在工作：三通道等权 base=2/3，cc=0 且 sim_tt=1.0≥0.55 → ×0.5 = 1/3。"""
-    from app.clip_service import clip_service
-
+def test_cross_mapping_affects_outer_weighting(no_penalty):
+    """映射后的跨模态值参与外层加权（构造原始余弦 = HI，应被抬到满值）。"""
+    hi = settings.MATCH_CROSS_REF_HI
+    q_text = np.array([1.0, 0.0], dtype=np.float32)
+    t_img = np.array([hi, float(np.sqrt(1 - hi ** 2))], dtype=np.float32)
     s = clip_service.compute_weighted_similarity(
-        _IMG_VEC, _TEXT_VEC, _IMG_VEC, _TEXT_VEC
+        None, q_text, t_img, None,
+        img_weight=0.0, text_weight=0.0, cross_weight=1.0,
     )
-    assert abs(s - (2.0 / 3.0) * 0.5) < 1e-6, f"阶段5 惩罚未按预期作用：{s}"
+    assert abs(s - 1.0) < 1e-5, f"跨模态映射未进入外层加权：{s}"
+
+
+# --------------------------------------------------------------------------- #
+# C. 颜色通道废弃（沿用既有守卫）
+# --------------------------------------------------------------------------- #
+def test_color_vectors_ignored_after_deprecation(no_penalty):
+    """传入颜色向量且 color_weight 拉满，得分必须**完全不变**。"""
+    cq = np.array([1.0, 0.0], dtype=np.float32)
+    ct = np.array([0.0, 1.0], dtype=np.float32)
+    s_without = clip_service.compute_weighted_similarity(_IMG, _TEXT, _IMG, _TEXT)
+    s_with = clip_service.compute_weighted_similarity(
+        _IMG, _TEXT, _IMG, _TEXT, color1=cq, color2=ct, color_weight=0.9,
+    )
+    assert s_without == s_with == pytest.approx(1.5 / 1.75, abs=1e-6)
+
+
+# --------------------------------------------------------------------------- #
+# D. 跨模态一致性惩罚的触发条件（2026-09-21 收窄）
+# --------------------------------------------------------------------------- #
+def test_penalty_triggers_when_text_high_but_image_low():
+    """真·文本撞车：文-文高 + 图-图低 → 惩罚生效（触底 ×0.5）。
+
+    构造：t_text = q_text（文-文=1.0）；t_img ⟂ q_img（图-图=0）；
+    cc = min(t2i, i2t) = 0 ≤ CC_LOW → 触底。
+    """
+    old = settings.CROSS_PENALTY_ENABLED
+    settings.CROSS_PENALTY_ENABLED = False
+    try:
+        s_off = clip_service.compute_weighted_similarity(_TEXT, _TEXT, _IMG, _TEXT)
+    finally:
+        settings.CROSS_PENALTY_ENABLED = old
+    s_on = clip_service.compute_weighted_similarity(_TEXT, _TEXT, _IMG, _TEXT)
+    assert s_on < s_off, f"文本撞车未被惩罚（on={s_on}, off={s_off}）"
+    assert abs(s_on - s_off * settings.CROSS_PENALTY_FLOOR) < 1e-6
+
+
+def test_penalty_not_triggered_when_image_also_high():
+    """图-图同样高 → 图像证据独立支持，**不得惩罚**（原实现会误伤）。
+
+    这正是「拿原图搜」与「图文混合」被无谓压低的原因。
+    """
+    old = settings.CROSS_PENALTY_ENABLED
+    settings.CROSS_PENALTY_ENABLED = False
+    try:
+        s_off = clip_service.compute_weighted_similarity(_IMG, _TEXT, _IMG, _TEXT)
+    finally:
+        settings.CROSS_PENALTY_ENABLED = old
+    s_on = clip_service.compute_weighted_similarity(_IMG, _TEXT, _IMG, _TEXT)
+    assert s_on == s_off, f"图-图高时仍被惩罚（on={s_on}, off={s_off}）"
+
+
+def test_penalty_disabled_returns_one():
+    """总开关关闭 → 不惩罚。"""
+    old = settings.CROSS_PENALTY_ENABLED
+    settings.CROSS_PENALTY_ENABLED = False
+    try:
+        assert clip_service._cross_penalty(0.0, 1.0, 0.0, 0.0) == 1.0
+    finally:
+        settings.CROSS_PENALTY_ENABLED = old
+
+
+# --------------------------------------------------------------------------- #
+# E. 证据链（等级 / 依据 / 展示分）
+# --------------------------------------------------------------------------- #
+def test_evidence_confirmed_on_identical_image():
+    """图-图 = 1.0 → 等级「确定为同一物品」，展示分 1.0，依据 image_match。"""
+    ev = clip_service.build_evidence(1.0, None, 0.238)
+    assert ev["level"] == "confirmed"
+    assert ev["basis"] == ["image_match"]
+    assert abs(ev["reference_score"] - 1.0) < 1e-9
+
+
+def test_evidence_confirmed_on_identical_text():
+    """文-文 = 1.0 → 等级 confirmed，展示分 1.0，依据 text_match。"""
+    ev = clip_service.build_evidence(None, 1.0, 0.27)
+    assert ev["level"] == "confirmed"
+    assert ev["basis"] == ["text_match"]
+    assert abs(ev["reference_score"] - 1.0) < 1e-9
+
+
+def test_evidence_reference_score_is_strongest_channel():
+    """展示分取**最强证据通道**（不被弱通道稀释）。"""
+    ev = clip_service.build_evidence(0.80, 0.65, 0.2724)
+    assert abs(ev["reference_score"] - 0.80) < 1e-9
+    assert ev["level"] == "high_suspect"
+
+
+def test_evidence_empty_channels_is_reference():
+    """全通道缺失 → reference，展示分 0。"""
+    ev = clip_service.build_evidence(None, None, None)
+    assert ev["level"] == "reference"
+    assert ev["reference_score"] == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# F. 标定层与线上同口径
+# --------------------------------------------------------------------------- #
+def test_score_pair_matches_main_aux_semantics(no_penalty):
+    cache = _EncoderCache(_OrthoEncoder())
+    assert abs(score_pair(cache, _pair_full()) - 1.5 / 1.75) < 1e-6
+
+
+def test_score_pair_vs_target_same_semantics(no_penalty):
+    cache = _EncoderCache(_OrthoEncoder())
+    q = {"image": "uploads/q.jpg", "text": "描述"}
+    t = {"item_id": 1, "item_ref": "uploads/t.jpg", "text": "目标描述"}
+    assert abs(score_pair_vs_target(cache, q, t) - 1.5 / 1.75) < 1e-6
+
+
+def test_text_only_query_in_calibration(no_penalty):
+    cache = _EncoderCache(_OrthoEncoder())
+    assert abs(score_pair(cache, _pair_text_only()) - 0.75) < 1e-6
