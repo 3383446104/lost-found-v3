@@ -104,6 +104,14 @@
 
 ## 算法口径（易与文档不一致）
 
+25. **【2026-09-21 已修】时间衰减曾「完全失效」——静默失败家族又一例**
+    - 根因：`datetime.fromisoformat("2026-07-02 01:06:44")`（SQLite 格式，无时区）**解析成功但返回 naive** → 与 aware 的 `datetime.now(timezone.utc)` 相减抛 `TypeError` → 被 `except Exception` 吞成 `days_old = 0` → 衰减恒 ×1.0，**无日志、无任何可观测症状**。
+    - 修法：新增公共函数 **`app/utils/time_utils.days_since_utc()`**（ISO 含 Z/偏移 + SQLite 空格格式含微秒 + naive→补 UTC + 失败记 warning），两个调用点（`api/items.py`、`services/match_service.py`）统一改用它。**今后凡需要「距今天数」一律用它，不要各自写解析**。
+    - 参数（用户确认的温和档）：`MATCH_DECAY_DAYS=240`、`MATCH_DECAY_FLOOR=0.6`。原 90/0.2 过激（76 天物品 → 12%，配合 0.35 阈值会让结果集体消失）。
+    - 实测阶梯：今天 58% / 30 天 51% / 81 天 38%（仍过阈值）/ 300 天 35%（触底）。
+    - 守卫：`tests/test_time_decay.py`（5 例，含「SQLite 无时区格式必须算出真实天数」+「days_old 增大→分数必须下降」）。天数语义 = `timedelta.days`（**不满 24 小时为 0**，别写成 1）。
+    - ★ **静默失败家族**（同一模式已出现 5 次，务必警惕）：CLIP 维度错配、编码器接口漂移、颜色通道惰性、前端 `computed` 未导入、**本次 naive/aware 相减**。**共性：异常或缺陷被宽 `except`/惰性维度/构建期检测不到而掩盖**。防御：①宽 `except` 必须记日志或返回可区分哨兵；②任何「声明式契约」都要运行期断言。
+
 - **v3.4.1 及以前**：相似度三通道加权 图 **0.50** / 文 **0.30** / 色 **0.20**，缺失维度按比例重归一化。
 - **v3.5.0 起（四通道 + 跨模态）**：`CLIP_BACKEND="cn_clip"` + `CLIP_CN_MODEL_NAME="ViT-H-14"`；权重 `W_IMG_IMG=0.35 / W_CROSS=0.35 / W_TEXT_TEXT=0.15 / W_COLOR=0.15`，跨模态内部分 `W_CROSS_T2I=0.5 / W_CROSS_I2T=0.5`；阈值为初值 `MANUAL=0.35 / AUTO=0.55 / EMAIL=0.70`，`MATCH_LEGEND_HIGH/MID=None`（由阈值派生，不硬编码）。以上全部 **config 驱动、无硬编码**，切配置即可回滚到 `open_clip`。
 - **阶段5 跨模态一致性惩罚**：`cc = min(cross_t2i, cross_i2t)`，仅当 `max(sim_ii, sim_tt) >= CROSS_PENALTY_SELF_HIGH(0.55)` 触发，**只降权不升权**（penalty ∈ [0.5,1.0]，单调），可由 `CROSS_PENALTY_ENABLED` 开关。
