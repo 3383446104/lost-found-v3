@@ -59,6 +59,25 @@ def _errors(caplog):
 def _unit(v):
     return np.ones(v, np.float32) / np.sqrt(v)
 
+def _detail(content_score, reference_score=None, level="high_suspect", basis=None):
+    """构造 ``compute_match_detail`` 的返回契约（2026-09-21 新增接口）。
+
+    自动匹配与 /match 现在统一调用它，mock 必须对齐新接口名与结构，
+    否则 mock 静默失效（本文件原先 4 处即因此失效）。
+    """
+    return {
+        "score": content_score,
+        "content_score": content_score,
+        "reference_score": reference_score if reference_score is not None else content_score,
+        "level": level,
+        "basis": basis or ["text_match"],
+        "channels": {
+            "sim_img_img": None, "sim_text_text": None, "sim_t2i": None,
+            "sim_i2t": None, "sim_cross": None, "sim_cross_mapped": None,
+        },
+    }
+
+
 
 # --------------------------------------------------------------------------- #
 # 1) 核心：预检在逐条打分之前拦截（HTTP 500），不进入打分循环
@@ -71,10 +90,10 @@ def test_precheck_blocks_before_scoring_with_500(client, make_user, monkeypatch)
 
     def _sentinel(*a, **k):
         calls["n"] += 1
-        return 1.0
+        return _detail(1.0)
 
     monkeypatch.setattr(clip_service, "get_text_feature", lambda _t: _unit(1024))  # 当前模型 1024 维
-    monkeypatch.setattr(clip_service, "compute_weighted_similarity", _sentinel)
+    monkeypatch.setattr(clip_service, "compute_match_detail", _sentinel)
 
     resp = client.post(
         "/api/items/match", json={"text": "任意", "target_type": "found"}, headers=user["headers"]
@@ -95,10 +114,10 @@ def test_precheck_passes_when_dims_match(client, make_user, monkeypatch):
 
     def _sentinel(*a, **k):
         calls["n"] += 1
-        return 1.0
+        return _detail(1.0)
 
     monkeypatch.setattr(clip_service, "get_text_feature", lambda _t: _unit(512))
-    monkeypatch.setattr(clip_service, "compute_weighted_similarity", _sentinel)
+    monkeypatch.setattr(clip_service, "compute_match_detail", _sentinel)
 
     resp = client.post(
         "/api/items/match", json={"text": "任意", "target_type": "found"}, headers=user["headers"]
@@ -169,7 +188,7 @@ def test_all_targets_throw_logs_error_not_plain_no_hit(client, make_user, monkey
     def _boom(*a, **k):
         raise RuntimeError("synthetic score error")
 
-    monkeypatch.setattr(clip_service, "compute_weighted_similarity", _boom)
+    monkeypatch.setattr(clip_service, "compute_match_detail", _boom)
 
     resp = client.post(
         "/api/items/match", json={"text": "任意", "target_type": "found"}, headers=user["headers"]
@@ -185,7 +204,7 @@ def test_genuine_no_hit_has_no_such_error(client, make_user, monkeypatch, caplog
     user = make_user(username="qa_no_hit")
     _insert_item(user["id"], tv_dim=512)
     monkeypatch.setattr(clip_service, "get_text_feature", lambda _t: _unit(512))
-    monkeypatch.setattr(clip_service, "compute_weighted_similarity", lambda *a, **k: 0.0)
+    monkeypatch.setattr(clip_service, "compute_match_detail", lambda *a, **k: _detail(0.0))
 
     resp = client.post(
         "/api/items/match", json={"text": "任意", "target_type": "found"}, headers=user["headers"]
@@ -218,7 +237,7 @@ def test_auto_match_happy_path_inserts_when_dims_match(client, make_user, monkey
     new_id = _insert_item(user["id"], type_="lost", iv_dim=512, tv_dim=512)
     _insert_item(user["id"], type_="found", iv_dim=512, tv_dim=512)
     monkeypatch.setattr(settings, "AUTO_MATCH_ENABLED", True)
-    monkeypatch.setattr(clip_service, "compute_weighted_similarity", lambda *a, **k: 0.90)
+    monkeypatch.setattr(clip_service, "compute_match_detail", lambda *a, **k: _detail(0.90))
 
     auto_match_and_notify(new_id, "lost")
 

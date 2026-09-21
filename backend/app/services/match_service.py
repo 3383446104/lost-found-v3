@@ -6,6 +6,28 @@ from ..utils.time_utils import days_since_utc
 from ..logger import logger
 from ..config import settings
 
+# 证据等级 → 用户可读文案（2026-09-21）
+LEVEL_TEXT = {
+    "confirmed": "高度确定",
+    "high_suspect": "高度疑似",
+    "related": "可能相关",
+    "reference": "仅供参考",
+}
+
+# 命中依据 → 用户可读文案（2026-09-21）
+BASIS_TEXT = {
+    "image_match": "图像高度一致",
+    "text_match": "文字描述高度吻合",
+    "cross_modal": "图片与描述相互印证",
+}
+
+
+def _basis_text(basis) -> str:
+    """把依据标识列表翻成中文短句（供通知与邮件使用）。"""
+    if not basis:
+        return ""
+    return "、".join(BASIS_TEXT.get(b, b) for b in basis)
+
 
 def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
     """
@@ -84,7 +106,11 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             # 修正 naive/aware 相减抛 TypeError 被吞导致衰减静默失效的缺陷（2026-09-21）
             days_old = days_since_utc(target['created_at'])
 
-            similarity = clip_service.compute_weighted_similarity(
+            # 一次调用拿到「三分数 + 证据链」（2026-09-21 口径统一）
+            #   content_score 不含时间衰减与类别位置 → **与阈值标定同尺度**，用于判定
+            #   score         含时间衰减             → 排序
+            #   reference_score 最强证据通道          → 展示与邮件
+            detail = clip_service.compute_match_detail(
                 new_img_vec, new_text_vec,
                 target_img_vec, target_text_vec,
                 cat1=new_item['category'] or '',
@@ -94,11 +120,20 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 days_old=days_old,
             )
 
-            if similarity >= settings.MATCH_THRESHOLD_AUTO:
+            # ⚠️ 必须用 content_score 与 MATCH_THRESHOLD_AUTO 比较：
+            # 阈值标定于「纯内容分」尺度（标定脚本不传时间/类别位置）。若用含衰减的
+            # score 比较，老物品会被系统性挡住（实测：内容分 0.95 的强命中，81 天衰减后
+            # 仅 0.63 ＜ 0.734 → 永远不推送）。
+            if detail["content_score"] >= settings.MATCH_THRESHOLD_AUTO:
                 matches.append({
                     'lost_item_id': new_item_id if item_type == 'lost' else target['id'],
                     'found_item_id': new_item_id if item_type == 'found' else target['id'],
-                    'similarity': similarity,
+                    # similarity：对外展示分（最强证据通道）→ 通知文案与邮件用
+                    'similarity': detail["reference_score"],
+                    'content_score': detail["content_score"],
+                    'match_score': detail["score"],
+                    'level': detail["level"],
+                    'basis': detail["basis"],
                     'target_user_id': target['user_id'],
                     'target_title': target['title'],
                     'new_item_title': new_item['title'],
@@ -108,8 +143,8 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             logger.info(f"新物品 {new_item_id} 未找到高相似度匹配 (阈值 {settings.MATCH_THRESHOLD_AUTO})")
             return
 
-        # 按相似度降序，只保留 Top-N
-        matches.sort(key=lambda m: m['similarity'], reverse=True)
+        # 按「排序分」（含时间衰减 → 新物品优先）降序，只保留 Top-N
+        matches.sort(key=lambda m: m['match_score'], reverse=True)
         if len(matches) > settings.MAX_AUTO_MATCH_NOTIFICATIONS:
             logger.info(
                 f"新物品 {new_item_id} 匹配到 {len(matches)} 条，"
@@ -117,7 +152,10 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             )
             matches = matches[:settings.MAX_AUTO_MATCH_NOTIFICATIONS]
 
-        logger.info(f"新物品 {new_item_id} 推送 {len(matches)} 条匹配通知")
+        logger.info(
+            f"新物品 {new_item_id} 推送 {len(matches)} 条匹配通知"
+            f"（判定用内容分 ≥ {settings.MATCH_THRESHOLD_AUTO}）"
+        )
 
         # 5. 批量插入匹配记录（事务）
         with get_db_connection() as conn:
@@ -126,7 +164,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 cursor.execute('''
                     INSERT INTO matches (lost_item_id, found_item_id, similarity_score)
                     VALUES (?, ?, ?)
-                ''', (match['lost_item_id'], match['found_item_id'], match['similarity']))
+                ''', (match['lost_item_id'], match['found_item_id'], match['match_score']))
             # 插入完成后自动提交
 
         # 6. 获取所有相关用户信息（用于双向通知）
@@ -146,18 +184,25 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             # --- 通知目标物品的拥有者（已有物品被匹配） ---
             try:
                 target_title = f"[匹配通知] 您的物品 '{match['target_title']}' 有新匹配"
-                target_content = f"与新发布的物品 '{match['new_item_title']}' 相似度 {match['similarity']:.2%}"
+                target_content = (
+                    f"与新发布的物品 '{match['new_item_title']}' 相似度 {match['similarity']:.2%}"
+                    f"（{LEVEL_TEXT.get(match['level'], '')}）"
+                )
                 target_link = f"/items/{new_item_id}"
                 add_notification(match['target_user_id'], target_title, target_content, target_link)
 
                 target_user = users.get(match['target_user_id'])
-                if target_user and target_user.get('email') and match['similarity'] >= settings.MATCH_THRESHOLD_EMAIL:
+                # 邮件触发同样用「内容分」比阈值（与标定同尺度）
+                if target_user and target_user.get('email') and \
+                        match['content_score'] >= settings.MATCH_THRESHOLD_EMAIL:
                     send_match_notification(
                         email=target_user['email'],
                         username=target_user['username'],
                         item_title=match['target_title'],
                         similarity=match['similarity'],
-                        link=f"{settings.BASE_URL}{target_link}"
+                        link=f"{settings.BASE_URL}{target_link}",
+                        level_text=LEVEL_TEXT.get(match['level'], ''),
+                        basis_text=_basis_text(match.get('basis')),
                     )
             except Exception as e:
                 logger.error(f"处理匹配通知失败 (目标用户 {match['target_user_id']}): {e}")
@@ -165,7 +210,10 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             # --- 通知新物品的发布者（自己的物品匹配到了已有物品） ---
             try:
                 new_title = f"[匹配通知] 您新发布的 '{match['new_item_title']}' 找到匹配"
-                new_content = f"与已有物品 '{match['target_title']}' 相似度 {match['similarity']:.2%}"
+                new_content = (
+                    f"与已有物品 '{match['target_title']}' 相似度 {match['similarity']:.2%}"
+                    f"（{LEVEL_TEXT.get(match['level'], '')}）"
+                )
                 # 链接到匹配到的目标物品（非自己的那个）
                 if item_type == 'lost':
                     new_link = f"/items/{match['found_item_id']}"
@@ -173,13 +221,17 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                     new_link = f"/items/{match['lost_item_id']}"
                 add_notification(new_item['user_id'], new_title, new_content, new_link)
 
-                if new_item_owner and new_item_owner.get('email') and match['similarity'] >= settings.MATCH_THRESHOLD_EMAIL:
+                # 邮件触发同样用「内容分」比阈值（与标定同尺度）
+                if new_item_owner and new_item_owner.get('email') and \
+                        match['content_score'] >= settings.MATCH_THRESHOLD_EMAIL:
                     send_match_notification(
                         email=new_item_owner['email'],
                         username=new_item_owner['username'],
                         item_title=match['new_item_title'],
                         similarity=match['similarity'],
-                        link=f"{settings.BASE_URL}{new_link}"
+                        link=f"{settings.BASE_URL}{new_link}",
+                        level_text=LEVEL_TEXT.get(match['level'], ''),
+                        basis_text=_basis_text(match.get('basis')),
                     )
             except Exception as e:
                 logger.error(f"处理匹配通知失败 (新物品发布者 {new_item['user_id']}): {e}")

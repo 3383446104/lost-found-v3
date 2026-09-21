@@ -33,9 +33,26 @@ def send_email(to_email: str, subject: str, body: str, html: bool = False) -> bo
         return False
 
 
-def send_match_notification(email: str, username: str, item_title: str, similarity: float, link: str) -> bool:
-    """发送匹配通知邮件（HTML 格式）"""
+def send_match_notification(
+    email: str, username: str, item_title: str, similarity: float, link: str,
+    level_text: str = "", basis_text: str = "",
+) -> bool:
+    """发送匹配通知邮件（HTML 格式）。
+
+    2026-09-21：新增 ``level_text``（证据等级，如「高度疑似」）与 ``basis_text``
+    （命中依据，如图像完全一致），让收件人不只看到一个百分比，还知道**凭什么说像**。
+    ``similarity`` 现为「参考相似度」（最强证据通道），不再是多通道平均分。
+    """
     subject = f"【校园失物检索】您的物品 '{item_title}' 有新匹配！"
+    level_line = (
+        f'<p style="font-size: 15px; color: #444;"><strong>匹配等级：</strong>'
+        f'<span style="color: #0F6E56; font-weight: 600;">{level_text}</span></p>'
+        if level_text else ""
+    )
+    basis_line = (
+        f'<p style="font-size: 14px; color: #666;"><strong>命中依据：</strong>{basis_text}</p>'
+        if basis_text else ""
+    )
     body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f7fc;">
@@ -43,7 +60,9 @@ def send_match_notification(email: str, username: str, item_title: str, similari
             <h2 style="color: #2c3e50;">🔍 校园失物检索平台</h2>
             <p style="font-size: 16px; color: #333;">亲爱的 <strong>{username}</strong>：</p>
             <p style="font-size: 15px; color: #444;">系统发现一条与您发布的物品 <strong>“{item_title}”</strong> 高度相似的匹配！</p>
-            <p style="font-size: 15px; color: #444;"><strong>相似度：</strong>{similarity:.2%}</p>
+            {level_line}
+            <p style="font-size: 15px; color: #444;"><strong>参考相似度：</strong>{similarity:.2%}</p>
+            {basis_line}
             <p style="margin: 24px 0;">
                 <a href="{link}" style="display: inline-block; padding: 10px 24px; background: #667eea; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 500;">👉 查看详情</a>
             </p>
