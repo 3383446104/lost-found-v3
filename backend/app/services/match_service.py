@@ -2,6 +2,7 @@
 from ..database import get_db_connection, json_to_vector, add_notification
 from ..clip_service import clip_service
 from ..utils.email_utils import send_match_notification
+from ..utils.time_utils import days_since_utc
 from ..logger import logger
 from ..config import settings
 
@@ -79,12 +80,9 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             target_text_vec = json_to_vector(target['text_vector']) if target['text_vector'] else None
             # 【已废弃 2026-09-16】颜色通道不再参与打分：不再读取/计算 color_vector。
 
-            # 计算目标物品已发布天数（时间衰减）
-            try:
-                target_date = datetime.fromisoformat(str(target['created_at']).replace('Z', '+00:00'))
-                days_old = max(0, (now - target_date).days)
-            except Exception:
-                days_old = 0
+            # 计算目标物品已发布天数（时间衰减）—— 统一走 days_since_utc，
+            # 修正 naive/aware 相减抛 TypeError 被吞导致衰减静默失效的缺陷（2026-09-21）
+            days_old = days_since_utc(target['created_at'])
 
             similarity = clip_service.compute_weighted_similarity(
                 new_img_vec, new_text_vec,

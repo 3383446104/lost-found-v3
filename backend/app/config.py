@@ -66,9 +66,10 @@ class Settings(BaseSettings):
     MATCH_LOC_SAME_BONUS: float = 0.03
     MATCH_LOC_DIFF_PENALTY: float = 0.04
 
-    # 阶段2 时间衰减
-    MATCH_DECAY_DAYS: int = 90
-    MATCH_DECAY_FLOOR: float = 0.2
+    # 阶段2 时间衰减（2026-09-21 调参：原 90 天 / 下限 0.2 过激——
+    # 老物品分数被打到地板上，配合 0.35 手动阈值会让结果集体消失）
+    MATCH_DECAY_DAYS: int = 240
+    MATCH_DECAY_FLOOR: float = 0.6
 
     # ===================================================================== #
     # v3.5.0 新增：阶段5 跨模态一致性惩罚（D3）——「初值，需评测收敛」

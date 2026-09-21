@@ -786,6 +786,33 @@ git checkout HEAD~1
 - **文档**：`PROJECT.md`（§9.2 算法、§3.3/§8.4 配置、版本清单）/ `README.md`（简介、功能表、架构图、设计系统）/ `SRS.md`（FR-MATCH-03/04、§8.2 算法）现行口径同步；标定报告由脚本重新生成。
 - ⚠️ **遗留（未修，待决策）**：时间衰减阶段因 `days_old` 解析缺陷**恒不生效**（`datetime.fromisoformat` 返回 naive → 与 aware 相减抛 `TypeError` → 被 `except` 兜底为 0）。修复会让 76 天前物品的分数再乘 0.2（58% → 12%），**必须与阈值下调同步**，故本轮未动。
 
+### 13. 时间衰减失效修复 + 衰减参数调温和（2026-09-21）✅
+**缺陷（「静默失败」家族）**：`api/items.py` 与 `services/match_service.py` 各自用 `try/except` 解析 `created_at`：
+
+```
+target_date = datetime.fromisoformat("2026-07-02 01:06:44")  # 解析「成功」但返回 naive
+days_old = max(0, (datetime.now(timezone.utc) - target_date).days)  # aware − naive → TypeError
+except Exception:
+    days_old = 0   # ← 异常被吞：衰减恒失效，且无任何日志
+```
+
+SQLite `CURRENT_TIMESTAMP` 存 UTC 但不带时区标记 → `fromisoformat` 返回 naive → 与 aware 的 `now` 相减抛 `TypeError` → 被兜底吞掉。**后果**：所有物品都被视为「今天创建」，阶段2 时间衰减恒等于 ×1.0（老物品分数不降、无任何可观测症状）。实测对比：item64（81 天前）旧行为 58%，正确衰减后应为 38%。
+
+**修复**：抽出公共函数 `utils/time_utils.days_since_utc()`（统一处理 ISO 含 Z/偏移、SQLite 空格格式含微秒、naive→补 UTC；解析失败返回 0 **并记 warning**，绝不静默），两处调用点改为调用它；新增 5 例回归守卫测试 `tests/test_time_decay.py`（含「SQLite 无时区格式必须算出真实天数」的核心守卫 + 「衰减必须真的影响打分」的集成断言）。
+
+**参数调温和（用户确认方案）**：`MATCH_DECAY_DAYS` 90 → **240**、`MATCH_DECAY_FLOOR` 0.2 → **0.6**。原 90 天/0.2 过激——76 天物品会被打到 0.2（12%），配合 0.35 手动阈值会使**结果集体消失**；温和档下老物品降至 38% **仍可见，无需改动阈值体系**。
+
+**实测（真实模型 + 真实库）**：
+
+| 创建时间 | 衰减乘数 | 匹配分数 |
+|---|---|---|
+| 今天 | ×1.000 | 58%（高置信）|
+| 30 天前 | ×0.875 | 51% |
+| 81 天前（库中实际） | ×0.662 | 38%（中等）|
+| 300 天前 | ×0.600（触底）| 35% |
+
+端到端：`POST /api/items/match` 返回 item64 = 0.3849（38%）。**测试 213 → 218 用例 / 216 passed / 2 门控 skip / 0 failed**。
+
 ### ⚠️ 如实声明（重要）
 - **`MATCH_THRESHOLD_AUTO` / `EMAIL` 仍不可用**（Precision 上界 0.6129 → 扩充轮后 0.6889，均 ＜ 0.90）：线上**自动匹配 / 邮件通知**的阈值**尚未收敛**，禁止表述为「已可靠标定」；扩充评测集复标已完成（2026-09-14，84 对），结论为**结构性无解**——解除须待真实物品类别多样性增长。
 - **权重只能给方向性结论**（`W_COLOR≈0`、文本主导）：合格集合 102 个并列，**不存在唯一最优权重**。

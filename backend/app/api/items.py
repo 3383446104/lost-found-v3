@@ -11,7 +11,7 @@ from ..config import settings
 from ..database import get_db_connection, vector_to_json, json_to_vector, CATEGORIES
 from ..dependencies.auth import get_current_user, resolve_optional_viewer
 from ..utils.file import allowed_file
-from ..utils.time_utils import format_beijing_time
+from ..utils.time_utils import format_beijing_time, days_since_utc
 from ..clip_service import clip_service
 from ..validators import validate_item_title, validate_contact
 from ..logger import logger
@@ -583,22 +583,8 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
         target_img_vec = json_to_vector(item['image_vector'])
         target_text_vec = json_to_vector(item['text_vector'])
         # 【已废弃 2026-09-16】颜色通道不再参与打分：不再读取/计算 color_vector。
-        # 时间衰减（兼容 SQLite "YYYY-MM-DD HH:MM:SS" 和 ISO 格式）
-        try:
-            ts = str(item['created_at'])
-            target_date = None
-            for fmt in (None, '%Y-%m-%d %H:%M:%S'):
-                try:
-                    target_date = datetime.fromisoformat(ts.replace('Z', '+00:00')) if fmt is None else datetime.strptime(ts[:19], fmt).replace(tzinfo=timezone.utc)
-                    break
-                except Exception:
-                    continue
-            if target_date is None:
-                days_old = 0
-            else:
-                days_old = max(0, (datetime.now(timezone.utc) - target_date).days)
-        except Exception:
-            days_old = 0
+        # 时间衰减（统一走 days_since_utc：修正 naive/aware 相减导致衰减静默失效的缺陷）
+        days_old = days_since_utc(item['created_at'])
         try:
             similarity = await run_in_threadpool(
                 clip_service.compute_weighted_similarity,
