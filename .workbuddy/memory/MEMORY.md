@@ -135,6 +135,20 @@
     - ★ **方法论**：用户对「算法思想有问题」的判断值得优先做**归因实验**（分通道可分性对比），
       别在参数层反复打转。
 
+29. **【2026-09-21 修】自动匹配/邮件的阈值必须用 `content_score` 判定 —— 尺度一致性纪律**
+    - 缺陷：`auto_match_and_notify` 原用 `compute_weighted_similarity()` 返回值（**含时间衰减**）比
+      `MATCH_THRESHOLD_AUTO/EMAIL`，而阈值标定在**内容分**尺度 → 老物品被系统性挡住。
+      实测：「蓝牙耳机↔蓝牙耳机」内容分 0.9377、81 天衰减后排序分 0.6278 ＜ 0.734 → **永不推送**。
+    - **纪律**：凡「与标定阈值比较」一律用 **`compute_match_detail()['content_score']`**；
+      排序用 `match_score`（含衰减）；展示/邮件用 `reference_score`。
+    - 邮件发送条件：`content_score >= MATCH_THRESHOLD_EMAIL`；通知与邮件均带 `level` + `basis` 文案。
+    - 灰度开关：`AUTO_MATCH_ENABLED`（.env）默认 **false** —— 关闭时 `match_service.py:14` 直接 return，
+      **不打分/不落库/不通知/不发邮件**。排查「通知没触发」先看这个开关。
+    - ★★ **mock 失效陷阱（新教训）**：`test_qa_v350_precheck.py` 有 4 处 mock 旧接口名
+      `compute_weighted_similarity`，接口改名后 mock **静默失效**，其中 3 处因"期望不落库"**侥幸通过**。
+      **改接口名后必须全仓 grep 测试里的 mock 名**（只做单侧断言期望的用例会掩盖失效）。
+    - 尺度守卫：`tests/test_match_scale_consistency.py`（3 例）。
+
 ## 算法口径（易与文档不一致）
 
 25. **【2026-09-21 已修】时间衰减曾「完全失效」——静默失败家族又一例**
