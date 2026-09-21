@@ -102,6 +102,20 @@
 - `POST /api/items/` 落库为 `status='pending', review_status='pending'`，而 `/match` 只扫 `active + approved` → **契约类测试建完物品必须调用 `approve_item` 夹具**，否则拿到空 matches（已踩，`test_match_contract_v350.py`）。
 - 首次需先装测试依赖：`venv\Scripts\python.exe -m pip install -r requirements-dev.txt`
 
+## 前端约定（Element Plus / Vue）
+
+26. **【2026-09-21】** Element Plus `el-input` 的 `#append` / `#prepend` **不是放主按钮的地方**
+    - 反向案例：`HomeView.vue` 的「智能查找」曾用 `#append` 放 `type="primary"` 按钮 →
+      插槽自带的浅灰背景（`.el-input-group__append`）**把主色覆盖掉**，主操作看起来像禁用态；
+      且 append 的直角边框抹平输入框右侧圆角 → 交界处断层（用户截图发现）。
+    - **规则**：主按钮一律作为**同级元素**用 flex 布局（`.bar { display:flex; gap:12px }` +
+      按钮 `flex-shrink:0`），并补窄屏媒体查询让按钮占满整行；`#append` 只用于「单位/后缀文本」。
+    - 改前端后的固定验证三步：`vite build` → `scripts/check_sfc_integrity.py` → 转译产物核对
+      （`http://localhost:5173/src/views/X.vue` 里搜新 class 是否生效、旧痕迹是否为 0）。
+
+27. **【环境】Bash 工具传含嵌套引号的 `python -c` 会解析失败**（`syntax error near unexpected token '('`）
+    → 一律写成临时 `.py` 文件再执行；PowerShell 工具不回传 stdout，需 `| Out-File` 后 Read。
+
 ## 算法口径（易与文档不一致）
 
 25. **【2026-09-21 已修】时间衰减曾「完全失效」——静默失败家族又一例**
