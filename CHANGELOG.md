@@ -45,6 +45,10 @@
 - 新增 9 个测试文件共 75 例（claims/reports/comments/banners/categories/stats_admin/multi_image/similar_recommend/announcement_draft），全套 **302 passed / 2 skipped**
 - 真实库迁移实测：9 行数据完整保留、幂等可重复执行（迁移前备份 `backend/lost_found.db.bak-20261014-105411`）
 
+### 9. 版本与文档同步 ✅
+- `APP_VERSION` 3.5.0 → **3.6.0**；PROJECT.md / SRS.md / README.md / docs/README.md 全面同步
+- 本轮同步同时补齐 V3.5.0 遗留的「文档全面同步」欠账（§14 遗留项）：三检索模式 / 主辅证据权重（0.75 / 0.75 / 0.25）/ 跨模态尺度映射（0.194→0.298）/ 证据链（level·basis·channels）/ 时间衰减调参（240 天 · 下限 0.6）/ 三档阈值标定值（MANUAL 0.624956 · AUTO 0.733952 · EMAIL 0.832069）/ 自动匹配改用 `content_score` 判定
+
 ---
 
 ## V3.1 — 体验增强迭代 (2026-06-29)
@@ -958,4 +962,4 @@ Recall@1 亦由 0.75 提升至 **0.7778**（@3/@5/@10 保持 1.0）。
 
 ---
 
-> **当前版本**: V3.5.0 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS + PWA
+> **当前版本**: V3.6.0 | **下一迭代**: V4.0 — PostgreSQL + pgvector / Celery + Redis / OSS + PWA

@@ -1,6 +1,6 @@
 # 校园失物检索平台 — 软件需求规格说明书 (SRS)
 
-> 版本：v3.5.0 | 日期：2026-09-14 | 基于 v3.3 源码 + v3.4.x 加固 + v3.5.0 中文化模型与跨模态检索，逐项与代码对齐
+> 版本：v3.6.0 | 日期：2026-10-14 | 基于 v3.3 源码 + v3.4.x 加固 + v3.5.0 中文化模型 / 跨模态检索 + v3.6.0 打分口径重构与社区化融合，逐项与代码对齐
 
 ---
 
@@ -25,12 +25,14 @@
 本系统是一个面向高校校园的智能化失物招领平台，核心能力包括：
 
 - 用户注册与登录（JWT 鉴权，7 天有效期）
-- 失物/拾物信息发布与管理（含图片上传）
-- 基于 **Chinese-CLIP ViT-H-14**（默认，中文图文跨模态）多模态模型的图文特征提取与智能匹配；`open_clip ViT-B-32` 为可回滚后端
-- 管理员审核机制（通过/驳回 + 双向邮件通知）
-- 站内消息与 QQ 邮箱 HTML 邮件通知
-- 物品认领/归还自标记流程（发布者标记"已找回/已认领"）
-- 数据统计看板（展示中/今日失物/今日拾物/总计找回 + 分类占比）
+- 失物/拾物信息发布与管理（**1-3 张图片**、拖拽排序、首图封面）
+- 基于 **Chinese-CLIP ViT-H-14**（默认，中文图文跨模态）多模态模型的图文特征提取与智能匹配（**三检索模式** + 主辅证据加权 + 跨模态尺度映射 + 证据链）；`open_clip ViT-B-32` 为可回滚后端
+- 管理员审核机制（通过/驳回 + 双向邮件通知 + 设为首页推荐）
+- 站内消息与 QQ 邮箱 HTML 邮件通知（含匹配等级与命中依据）
+- **认领闭环**（申请含特征描述 + 证明图 → 发布者审批（互斥自动拒绝）→ 归还确认；联系方式脱敏；v3.6.0 起取代旧"通知式认领"）
+- **社区互动**（五类举报 + 处理留痕 + 进度查询；楼中楼留言）
+- **内容运营**（轮播图 / 分类管理 / 公告草稿）与**相似推荐**（详情页相似物品、首页推荐位）
+- 数据统计看板（首页 4 卡片 + 分类占比；管理端找回率 / 发布趋势 / 分类占比）
 - 深色/浅色主题切换
 
 ### 1.2 技术栈
@@ -128,6 +130,7 @@ router.afterEach:
 | FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征+重算 `color_vector`）。非管理员编辑后 review_status 重置为 pending |
 | FR-ITEM-08 | 删除物品 | `DELETE /api/items/{id}` — 仅本人/管理员。同时删除图片文件 |
 | FR-ITEM-09 | 图片访问 | `GET /api/items/uploads/{filename}` — 公开，路径遍历防护 |
+| FR-ITEM-10 | 多图上传（v3.6.0） | 1-3 张，首图封面（`images` 有序 JSON）；**仅封面参与向量检索**；编辑用 `keep`（保留文件新顺序）+ 新图，封面变更才重算向量、移除的文件同步删除 |
 
 ### 3.3 智能匹配模块 (FR-MATCH)
 
@@ -135,12 +138,14 @@ router.afterEach:
 |------|------|---------|
 | FR-MATCH-01 | 以图搜图 | `POST /api/items/match` — 上传 temp 图片 → CLIP 图像特征 → 计算与目标物品余弦相似度 |
 | FR-MATCH-02 | 以文搜图（**真跨模态**） | 输入文字 → CLIP 文本特征 → 与目标**图片**特征计算跨模态相似度（`sim_cross_t2i = q_text · t_img`，而非仅比文本自相似） |
-| FR-MATCH-03 | 图文混合匹配 | 同时提供图片+文字，三通道等权加权融合相似度 |
-| FR-MATCH-04 | 加权相似度算法（三通道等权跨模态 + 五阶段） | 基础三通道：文-文 + **图文跨模态** + 图-图，**权重均为 1.0**（缺通道动态归一化 ⇒ 可用通道算术平均）；跨模态内 `q_text·t_img` 与 `q_img·t_text` 各 0.5；叠加类别/位置调节、时间衰减、分层阈值与**阶段5 跨模态一致性惩罚**；**颜色通道 2026-09-16 废弃** |
-| FR-MATCH-05 | 结果排序 | 按相似度降序返回 Top 20，仅匹配 active + approved 物品 |
-| FR-MATCH-06 | 分层阈值 | 手动匹配 0.35 / 自动推送 0.55 / 邮件通知 0.70（**v3.5.0 初值，待标定**） |
+| FR-MATCH-03 | 图文混合匹配 | 同时提供图片+文字；按查询形态的**三种检索模式**（文字 / 图片 / 图文混合）由缺通道动态归一化自动成形，混合模式权重 ≈ 0.43 / 0.43 / 0.14 |
+| FR-MATCH-04 | 加权相似度算法（主辅证据 + 五阶段） | 权重「**主证据 + 辅助证据**」：同模态（文-文 / 图-图）0.75、跨模态 0.25（缺通道动态归一化）；**跨模态尺度映射** 0.194→0 / 0.298→1（仅外层加权与展示）；跨模态内 `q_text·t_img` 与 `q_img·t_text` 各 0.5；叠加类别/位置调节（+0.05/-0.08、+0.03/-0.04）、时间衰减（240 天 / 下限 0.6）、分层阈值与**阶段5 跨模态一致性惩罚**（触发条件收窄为「文-文高且图-图不高」）；**颜色通道 2026-09-16 废弃** |
+| FR-MATCH-05 | 结果排序 | 按 `match_score`（含时间衰减）降序返回 Top 20，仅匹配 active + approved 物品；判定用 `content_score` ≥ 阈值 |
+| FR-MATCH-06 | 分层阈值（**已标定**） | 手动 0.624956 / 自动 0.733952（P=91.7% / R=61.1%）/ 邮件 0.832069（P=100% / R=19.4%）；**内容分尺度**（2026-09-21） |
 | FR-MATCH-07 | 临时图片上传 | `POST /api/items/temp-upload` — 上传后返回文件名，匹配后自动删除 |
-| FR-MATCH-08 | 匹配来源标注 | 结果项含 `match_source`（∈ `text` / `image` / `mixed`）；响应顶层含 `legend: {high, mid}`（由 `MATCH_THRESHOLD_AUTO` / `_MANUAL` 派生） |
+| FR-MATCH-08 | 匹配来源标注 + 证据链 | 结果项含 `match_source`（∈ `text` / `image` / `mixed`）与 `level`（confirmed / high_suspect / related / reference）、`basis`（命中依据）、`channels`（各通道原始值）；响应顶层含 `legend: {high, mid}`（由阈值派生）；三分数：`content_score`（判定）/ `match_score`（排序）/ `similarity` = `reference_score`（展示） |
+| FR-MATCH-09 | 多图检索（v3.6.0） | `image_paths` ≤3：各图向量 L2 归一化 → 均值 → 再归一化（**仅查询侧聚合**）；物品侧仅封面参与 |
+| FR-MATCH-10 | 相似推荐（v3.6.0） | `GET /api/items/{id}/similar` — 反类型 + 复用 `compute_match_detail`，内容分 ≥ 手动阈值，按展示分排序 |
 
 ### 3.4 管理员审核模块 (FR-ADMIN)
 
@@ -149,11 +154,12 @@ router.afterEach:
 | FR-ADMIN-01 | 待审核列表（分页） | `GET /api/admin/reviews?page=&size=` — 返回 review_status=pending 的物品 |
 | FR-ADMIN-02 | 审核通过 | `PUT /api/admin/reviews/{id}` action=approved → status=active, review_status=approved。BackgroundTasks 异步触发自动匹配 |
 | FR-ADMIN-03 | 审核驳回 | action=rejected → status=rejected, review_status=rejected。发送站内通知（含驳回理由）+ HTML 邮件（含重新编辑链接） |
-| FR-ADMIN-04 | 自动匹配推送 | 审核通过后异步匹配异类物品（失物↔拾物），**维度预检**通过后逐对打分，相似度≥0.55（`MATCH_THRESHOLD_AUTO`，初值）双向推送通知+邮件 |
+| FR-ADMIN-04 | 自动匹配推送 | 审核通过后异步匹配异类物品（失物↔拾物），**维度预检**通过后逐对打分；**判定用内容分 ≥ 0.733952**（`MATCH_THRESHOLD_AUTO`，与标定同尺度；2026-09-21 尺度修正），双向推送通知 + 邮件（含匹配等级与命中依据） |
 | FR-ADMIN-05 | 批量审核通过 | `POST /api/admin/reviews/batch-approve` — 多选物品 → 一键批量通过（最多 50 条/次）。驳回不支持批量（需逐一填写理由+站内通知） |
 | FR-ADMIN-06 | 防止重复审核 | SQL `WHERE review_status='pending'` 条件更新 + rowcount 检查（单条+批量均适用） |
 | FR-ADMIN-07 | 用户管理 | `GET /api/admin/users` — 用户列表（分页）；支持逻辑删除用户（`status` → `deleted`） |
 | FR-ADMIN-08 | 用户角色/状态变更 | `PUT /api/admin/users/{id}` — 设角色（user/admin）/ 切换账号状态（active↔disabled）。**v3.4.0：禁用/启用只改 `status` 并保留 `role`** |
+| FR-ADMIN-09 | 审核设推荐（v3.6.0） | 审核操作可传 `is_recommend`，写入 `items.is_recommend`（首页"为你推荐"数据源） |
 
 > ⚠️ **v3.4.0（C2 / O2）**：`toggle_status`（禁用/启用）仅翻转 `status`，不再改动 `role`；管理员**不能禁用/删除自己的账号**（`toggle_status`、`delete_user` 针对 target==current 时返回 400 "不能修改自己的账号状态"/"不能删除自己的账号"）。允许管理员禁用/删除**其他**管理员账号。
 
@@ -169,7 +175,7 @@ router.afterEach:
 | FR-NOTIFY-06 | 邮件通知 | 匹配成功/审核结果/认领申请时发送 HTML 邮件（QQ SMTP），经 `BackgroundTasks` 异步投递 |
 | FR-NOTIFY-07 | 轮询更新 | 每次路由切换 + 每 30 秒定时 `fetchUnreadCount()` |
 
-### 3.6 物品认领/归还模块 (FR-CLAIM)
+### 3.6 认领闭环模块 (FR-CLAIM)
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
@@ -179,10 +185,46 @@ router.afterEach:
 | FR-CLAIM-04 | 总计找回计数 | 每次标记 claimed 后，总计找回数自动 +1（持久化计数器） |
 | FR-CLAIM-05 | 已认领物品展示 | claimed 物品在详情页显示"该物品已找回"状态标签，隐藏所有操作按钮 |
 | FR-CLAIM-06 | 历史记录查看 | `GET /api/me/history` — 个人中心查看自己发布的所有物品（含已认领/已驳回/已关闭）+ 认领记录 |
+| FR-CLAIM-07 | 认领申请（v3.6.0） | `POST /api/claims` — feature_description 必填、proof_image（`proof_` 持久上传）。校验物品 active+approved、非本人、同人同物无进行中申请（status∈0/1） |
+| FR-CLAIM-08 | 申请列表与按钮态（v3.6.0） | `GET /api/claims/mine` / `received`（分页）/ `status/{item_id}`（详情页按钮态驱动） |
+| FR-CLAIM-09 | 审批与互斥（v3.6.0） | `POST /api/claims/{id}/approve`（发布者）— **同一事务**：0→1 + 同物品其他待审自动置 2（互斥）+ 物品转 `claiming`；通知申请人（通过后可见脱敏联系方式） |
+| FR-CLAIM-10 | 拒绝 / 撤销 / 完成（v3.6.0） | `reject`（`review_remark` 必填，物品保持 active）/ `cancel`（申请人，0→4）/ `complete`（1→3 + 物品 `claimed` + `increment_counter('total_claimed')`） |
+| FR-CLAIM-11 | 隐私脱敏（v3.6.0） | `GET /api/claims/{id}` 三方权限（申请人/发布者/管理员）；status∈(1,3) 时向申请人返回脱敏联系方式（138\*\*\*\*1234） |
 
 > ⚠️ **v3.3 变更**：删除原有的"确认/拒绝"两步流程（`PUT /api/items/{id}/claim/confirm`），改为发布者自行标记。线下联系通过通知中附带的手机号进行。
+>
+> **v3.6.0 升级为认领闭环**：新表 `claims` 取代通知式认领（status：0 待审核 / 1 已通过 / 2 已拒绝 / 3 已完成 / 4 已撤销）；`POST /items/{id}/claim` 保留为**薄包装**（响应结构不变），`mark-claimed` 允许 active/claiming 两态并联动已完成申请（**计数器不重复计数**）。
 
-### 3.7 数据统计模块 (FR-STATS)
+### 3.7 社区互动模块 (FR-COMMUNITY) — v3.6.0
+
+| 编号 | 功能 | 实现细节 |
+|------|------|---------|
+| FR-REPORT-01 | 提交举报 | `POST /api/reports` — report_type ∈ 1 虚假信息 / 2 不良内容 / 3 联系方式异常 / 4 重复发布 / 5 其他；reason 必填；同人同物 pending 去重 |
+| FR-REPORT-02 | 我的举报进度 | `GET /api/reports/mine` — 待处理 / 已处理 / 已驳回 |
+| FR-REPORT-03 | 管理端列表与详情 | `GET /api/reports/admin`（keyword / type / status 筛选，pending 优先）+ `/{id}`（并排：举报全字段 + 被举报物品快照） |
+| FR-REPORT-04 | 处理留痕 | `PUT /api/reports/admin/{id}/handle` — handle_result 必填，写 handler_id / handle_time，通知举报人 |
+| FR-COMMENT-01 | 留言列表 | `GET /api/comments/item/{item_id}` — 公开，仅 status=1，扁平结构（含 username / is_mine），前端组树 |
+| FR-COMMENT-02 | 发表 / 楼中楼回复 | `POST /api/comments` — content ≤ 500 字；parent 须同物品且可见 |
+| FR-COMMENT-03 | 删除 / 隐藏 | `DELETE /api/comments/{id}`（本人 / 管理员；**父留言级联删回复**）+ `PUT /api/comments/admin/{id}/status`（隐藏 / 恢复）+ `GET /api/comments/admin`（管理端列表） |
+
+### 3.8 内容运营模块 (FR-OPS) — v3.6.0
+
+| 编号 | 功能 | 实现细节 |
+|------|------|---------|
+| FR-OPS-01 | 轮播图 | 公开 `GET /api/banners`（仅启用、sort_no 升序）；管理端上传（`banner_` 前缀）+ CRUD（标题 / 描述 / 跳转链接 / 排序 / 启停） |
+| FR-OPS-02 | 分类管理 | `GET/POST/PUT/DELETE /api/categories/admin*` — 表驱动（种子 7 类）；**被物品使用的分类删除返回 400**；`GET /api/items/categories` 空表回退常量（响应结构不变） |
+| FR-OPS-03 | 公告草稿 / 发布分离 | announcements 加 `status`（draft / published）；公开列表仅 published；`PUT /{id}/publish` / `unpublish` |
+
+### 3.9 管理端统计模块 (FR-STATS-ADMIN) — v3.6.0
+
+| 编号 | 功能 | 实现细节 |
+|------|------|---------|
+| FR-STATS-ADMIN-01 | 总览 | `GET /api/stats/admin/overview` — 物品总数 / 待审核 / 已完成 / 用户数 |
+| FR-STATS-ADMIN-02 | 找回率 | `GET /api/stats/admin/recovery` — claimed_total = max(计数器, by_type 求和)；rate = claimed/(claimed+active+claiming)，分母 0 → 0 |
+| FR-STATS-ADMIN-03 | 发布趋势 | `GET /api/stats/admin/publish-trend?days=30` — lost / found 拆分，**北京时间区间口径**（复用 `_bj_day_utc_range`） |
+| FR-STATS-ADMIN-04 | 分类占比 | `GET /api/stats/admin/category-pie` |
+
+### 3.10 数据统计模块 (FR-STATS)
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
@@ -192,7 +234,7 @@ router.afterEach:
 
 > ⚠️ **v3.3 变更**：第4卡片从"今日找回"改为"总计找回"（累计值），移除累计活跃功能。**分类占比（`categories`）仍保留并由首页 ECharts 饼图渲染**——早期"移除分类占比"的表述与代码不符。
 
-### 3.8 UI 设计系统 (FR-UI)
+### 3.11 UI 设计系统 (FR-UI)
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
@@ -221,7 +263,8 @@ router.afterEach:
 | NFR-PERF-02 | 列表接口响应时间 | < 500ms |
 | NFR-PERF-03 | 图片上传限制 | ≤ 16MB/张（物品图片）；v3.3 已移除头像功能 |
 | NFR-PERF-04 | CLIP 模型 | 默认 **Chinese-CLIP ViT-H-14**（权重约 3.83GB），输出 L2 归一化 **1024 维**联合投影向量；回滚 **open_clip ViT-B-32**（约 600MB），输出 **512 维** |
-| NFR-PERF-05 | 颜色特征复用 | `color_vector` 持久化于 `items` 表，避免每次匹配重复计算（v3.4.0 / R4） |
+| NFR-PERF-05 | 颜色特征复用 | ⚠️ **已失效**：颜色通道 2026-09-16 废弃；`color_vector` 列与持久化逻辑保留但不再被匹配读取（v3.4.0 / R4 的历史口径） |
+| NFR-PERF-06 | 多图上传限制（v3.6.0） | 每物品 1-3 张，单张 ≤ 16MB；**仅封面编码向量**（录入成本不随图数增长） |
 
 > ⚠️ **旧 `NFR-PERF-01`「匹配 < 3s」在 v3.5.0 作废**（口径偏旧、未按路径拆分），以本表的 `NFR-PERF-01 / 01b / 01c` 为准。
 
@@ -277,14 +320,16 @@ router.afterEach:
 | POST | `/api/items/` | ✅ | 发布物品（FormData） |
 | GET | `/api/items/` | ❌ 公开 | 物品列表（分页+筛选）；匿名仅见已审核+活跃物品 |
 | GET | `/api/items/{id}` | ❌ 公开 | 物品详情；未审核物品仅发布者/管理员可见 |
-| GET | `/api/items/categories` | ❌ 公开 | 类别列表 |
+| GET | `/api/items/categories` | ❌ 公开 | 类别列表（v3.6.0 表驱动，空表回退常量） |
 | GET | `/api/items/uploads/{filename}` | ❌ 公开 | 访问物品图片（路径遍历防护） |
-| POST | `/api/items/match` | ✅ | 智能匹配（需登录） |
+| GET | `/api/items/recommend` | ❌ 公开 | 首页推荐位（is_recommend=1 + active + approved） |
+| GET | `/api/items/{id}/similar` | ❌ 公开 | 详情页相似物品（反类型 + 复用匹配口径） |
+| POST | `/api/items/match` | ✅ | 智能匹配（需登录；支持 `image_paths` 多图 ≤3） |
 | POST | `/api/items/temp-upload` | ✅ | 临时上传匹配图片 |
-| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员） |
-| DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员） |
-| POST | `/api/items/{id}/claim` | ✅ | 申请认领/归还（通知含申请人手机号） |
-| PUT | `/api/items/{id}/mark-claimed` | ✅ | 发布者标记物品已找回/已认领 |
+| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；多图 `keep` + 新图） |
+| DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员；清理全部图片） |
+| POST | `/api/items/{id}/claim` | ✅ | 申请认领/归还（v3.6.0 起为 claims 薄包装，响应结构不变） |
+| PUT | `/api/items/{id}/mark-claimed` | ✅ | 发布者标记物品已找回/已认领（允许 active/claiming，联动已完成申请） |
 
 > ⚠️ **v3.3 变更**：删除 `PUT /api/items/{id}/claim/confirm`（确认/拒绝认领）。新增 `PUT /api/items/{id}/mark-claimed`（发布者自标记）。
 >
@@ -293,6 +338,8 @@ router.afterEach:
 > **v3.4.1**：`POST /api/items/match` 已补齐鉴权（`Depends(get_current_user)`）——缺 `Authorization` 头 → 403 `{"detail":"Not authenticated"}`；token 非法 / 过期 → 401 `{"detail":"无效或过期的 Token"}`。前端 `/match` 路由本就以 `requiresAuth` 守卫，拦截器自动附带 token。
 >
 > **v3.5.0**：`POST /api/items/match` 结果项新增 `match_source`（∈ `text` / `image` / `mixed`），响应顶层新增 `legend: {high, mid}`（派生自三档阈值，可由 `MATCH_LEGEND_HIGH` / `_MID` 覆盖）；打分前做**向量维度预检**，库中向量维度 ≠ 当前模型维度 → **HTTP 500**（提示先运行 `reembed_all_vectors.py`），不再静默返回空集。**403/401 契约不变，未新增端点**。
+>
+> **v3.6.0**：新增 `GET /items/recommend` 与 `GET /items/{id}/similar`；多图（1-3 张）**仅封面参与向量检索**；`/match` 请求新增 `image_paths`（≤3，仅查询侧聚合）、结果项新增 `similarity`（展示分）/ `content_score` / `match_score` / `level` / `basis` / `channels`（打分口径重构，判定改用 `content_score`）。
 
 ### 5.3 管理员接口
 
@@ -322,6 +369,10 @@ router.afterEach:
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|:--:|------|
 | GET | `/api/stats/dashboard` | ✅ | 展示中/今日失物/今日拾物/总计找回 + 分类占比 `categories` |
+| GET | `/api/stats/admin/overview` | Admin | 管理端总览（物品总数/待审核/已完成/用户数）（v3.6.0） |
+| GET | `/api/stats/admin/recovery` | Admin | 找回率（口径见 FR-STATS-ADMIN-02）（v3.6.0） |
+| GET | `/api/stats/admin/publish-trend` | Admin | 发布趋势（`?days=30`，北京时间口径）（v3.6.0） |
+| GET | `/api/stats/admin/category-pie` | Admin | 分类占比（v3.6.0） |
 
 > ⚠️ **v3.3 变更**：移除累计活跃数据。`total_claimed` 替代 `today_claimed`，统计 `status='claimed'` 的物品总数（由 `stats_counters` 持久化计数器提供）。
 >
@@ -331,12 +382,59 @@ router.afterEach:
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|:--:|------|
-| GET | `/api/announcements` | ✅ | 获取公告列表 |
-| POST | `/api/announcements` | Admin | 发布公告 |
+| GET | `/api/announcements` | ✅ | 获取公告列表（公开仅 `published`；管理员 `all=true` 可见全量含草稿） |
+| POST | `/api/announcements` | Admin | 新建公告（可存草稿） |
 | PUT | `/api/announcements/{id}` | Admin | 编辑公告 |
+| PUT | `/api/announcements/{id}/publish` | Admin | 发布（draft → published）（v3.6.0） |
+| PUT | `/api/announcements/{id}/unpublish` | Admin | 下架（published → draft）（v3.6.0） |
 | DELETE | `/api/announcements/{id}` | Admin | 删除公告 |
 
-### 5.7 错误响应格式
+### 5.7 认领接口（v3.6.0）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|:--:|------|
+| POST | `/api/claims/proof-upload` | ✅ | 证明图上传（`proof_` 持久前缀，独立于 temp_ 清理） |
+| POST | `/api/claims` | ✅ | 提交认领申请（特征描述必填；防冒领 / 防重复校验） |
+| GET | `/api/claims/mine` / `received` | ✅ | 我的申请 / 收到的申请（分页） |
+| GET | `/api/claims/status/{item_id}` | ✅ | 详情页按钮态 |
+| GET | `/api/claims/{id}` | ✅ | 申请详情（三方可见；通过后对申请人返回**脱敏**联系方式） |
+| POST | `/api/claims/{id}/approve` | ✅ | 同意（同事务互斥 + 物品转 claiming） |
+| POST | `/api/claims/{id}/reject` | ✅ | 拒绝（`review_remark` 必填） |
+| POST | `/api/claims/{id}/complete` | ✅ | 确认完成（物品转 claimed + 计数器 +1） |
+| POST | `/api/claims/{id}/cancel` | ✅ | 申请人撤销（仅待审核态） |
+
+### 5.8 举报接口（v3.6.0）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|:--:|------|
+| POST | `/api/reports` | ✅ | 提交举报（type 1-5、reason 必填；pending 去重） |
+| GET | `/api/reports/mine` | ✅ | 我的举报（进度） |
+| GET | `/api/reports/admin` | Admin | 管理端列表（筛选 + pending 优先） |
+| GET | `/api/reports/admin/{id}` | Admin | 并排详情（举报 + 物品快照） |
+| PUT | `/api/reports/admin/{id}/handle` | Admin | 处理（结论必填 + 处理人/时间 + 通知举报人） |
+
+### 5.9 留言接口（v3.6.0）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|:--:|------|
+| GET | `/api/comments/item/{item_id}` | ❌ | 留言列表（仅正常态，扁平结构） |
+| POST | `/api/comments` | ✅ | 发表 / 回复（≤500 字） |
+| DELETE | `/api/comments/{id}` | ✅ | 删除（本人/admin；**父留言级联删回复**） |
+| PUT | `/api/comments/admin/{id}/status` | Admin | 隐藏 / 恢复 |
+| GET | `/api/comments/admin` | Admin | 管理端列表 |
+
+### 5.10 轮播图与分类接口（v3.6.0）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|:--:|------|
+| GET | `/api/banners` | ❌ | 启用中的轮播图（sort_no 升序） |
+| POST | `/api/banners/upload` | Admin | 图片上传（`banner_` 前缀） |
+| GET / POST | `/api/banners/admin` | Admin | 列表 / 新建 |
+| PUT / DELETE | `/api/banners/admin/{id}` | Admin | 编辑 / 删除 |
+| GET / POST | `/api/categories/admin` | Admin | 分类列表（含 item_count）/ 新建 |
+| PUT / DELETE | `/api/categories/admin/{id}` | Admin | 编辑 / 删除（**被物品使用 → 400**） |
+
+### 5.11 错误响应格式
 
 ```json
 {"detail": "错误描述"}
@@ -371,13 +469,16 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 | title | TEXT | NOT NULL | 标题 (2-50字符) |
 | description | TEXT | | 描述 |
 | category | TEXT | | 类别 |
-| image_path | TEXT | | 图片路径 |
+| image_path | TEXT | | 图片路径（v3.6.0 起与封面同步） |
+| cover_image | TEXT | | 封面文件名（= images[0]，**仅封面参与向量检索**）（v3.6.0） |
+| images | TEXT | | 有序图片文件名 JSON 数组（1-3 张）（v3.6.0） |
+| is_recommend | INTEGER | DEFAULT 0 | 首页推荐位标记（v3.6.0） |
 | image_vector | TEXT | | CLIP 图像特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
 | text_vector | TEXT | | CLIP 文本特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
 | color_vector | TEXT | | 27维 RGB 颜色直方图特征 (JSON)（⚠️ v3.4.0 新增，用于颜色相似度增强） |
 | contact | TEXT | | 联系方式 |
 | location | TEXT | | 地点 |
-| status | TEXT | CHECK(6 states) | pending/active/claimed/done/rejected/closed |
+| status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming 为 v3.6.0 新增「认领中」，经表重建迁移） |
 | user_id | INTEGER | FK→users.id | 发布者 |
 | review_status | TEXT | CHECK(3 states) | pending/approved/rejected |
 | reviewer_id | INTEGER | FK→users.id | 审核人 |
@@ -423,11 +524,24 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 | announcements | id, title, content, target_role, created_at | 管理员发布，按可见范围展示（v3.3 引入） |
 | stats_counters | key, value | 持久化计数器（如 `total_claimed`），不受物品删除影响（v3.3） |
 
-### 6.6 类别常量
+### 6.6 类别（v3.6.0 表驱动）
 
 ```
-CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '服装配饰', '钥匙门禁', '其他']
+categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书籍文具 / 服装配饰 / 钥匙门禁 / 其他）
+空表时 GET /api/items/categories 回退常量 CATEGORIES（同 7 项），响应结构不变
 ```
+
+### 6.7 新增表组（v3.6.0）
+
+| 表 | 关键字段 | 说明 |
+|----|---------|------|
+| claims | id, item_id, claimer_id, claim_reason, feature_description, proof_image, contact_phone, status(0待审核/1已通过/2已拒绝/3已完成/4已撤销), review_remark, reviewed_at, completed_at | 认领申请；索引 `(item_id,status)`、`(claimer_id,status)` |
+| reports | id, item_id, reporter_id, report_type(1-5), report_reason, report_image, handle_status(0待处理/1已处理/2已驳回), handle_result, handler_id, handle_time | 举报 + 处理留痕；索引 `(handle_status,created_at)`、`(item_id)` |
+| comments | id, item_id, user_id, parent_id(楼中楼), content, status(1正常/0隐藏) | 留言；索引 `(item_id,status,created_at)` |
+| banners | id, title, image_path, description, link_url, sort_no, status(1启用/0停用) | 轮播图（sort_no 升序） |
+| categories | id, name UNIQUE, sort_no | 分类表（使用中拒绝删除） |
+| announcements（改） | + status(draft/published) | v3.6.0 加列 |
+| items（改） | + cover_image / images(JSON) / is_recommend；status 枚举 + claiming | v3.6.0 加列 + 表重建 |
 
 ---
 
@@ -439,11 +553,14 @@ CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '�
 |------|------|:--:|------|------|
 | `/login` | LoginView | 独立(毛玻璃) | 未登录 | 校园航拍背景 + 半透明卡片 + 登录后按角色自动跳转 |
 | `/register` | RegisterView | 独立(毛玻璃) | 未登录 | 注册表单(用户名/密码/手机/邮箱) |
-| `/items` | HomeView | DefaultLayout | 登录 | 公告栏 + 统计看板(4卡片+饼图) + 筛选栏 + 卡片网格 + 骨架屏 + 分页 |
-| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 双栏布局 + 状态标签 + 「我要认领/归还」或「标记已找回/已认领」按钮 + 编辑/删除 |
-| `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 图片上传 + 编辑模式(`?edit=`) |
-| `/match` | MatchView | DefaultLayout | 登录 | 匹配面板 + 图片/文字输入 + 相似度进度条 |
-| `/admin` | AdminView | DefaultLayout | 管理员 | 三标签(物品审核+批量通过+用户管理+公告管理) |
+| `/items` | HomeView | DefaultLayout | 登录 | 轮播图 + 公告栏 + 统计看板(4卡片+饼图) + 筛选栏 + 卡片网格 + 「为你推荐」+ 骨架屏 + 分页 |
+| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区(楼中楼) + 相似推荐 + 认领闭环操作区(申请/审批/脱敏联系方式) + 举报入口 + 编辑/删除 |
+| `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 多图上传(1-3 张, 拖拽排序, 首图封面) + 编辑模式(`?edit=`) |
+| `/match` | MatchView | DefaultLayout | 登录 | 匹配面板 + 多图上传 + 证据徽章/依据 + 相似度进度条 |
+| `/claims` | ClaimsView | DefaultLayout | 登录 | 双 tab（我的申请/收到的申请）+ 同意(互斥提示)/拒绝(必填理由)/确认完成/撤销 |
+| `/reports/mine` | MyReportsView | DefaultLayout | 登录 | 举报进度卡片 |
+| `/admin` | AdminView | DefaultLayout | 管理员 | 物品审核(批量+设推荐) + 用户管理 + 公告(草稿/发布) + 举报/留言/轮播图/分类管理 |
+| `/admin/stats` | AdminStatsView | DefaultLayout | 管理员 | 指标卡 + 找回率仪表盘 + 发布趋势 + 分类占比（含表格视图） |
 | `/notifications` | NotificationsView | DefaultLayout | 登录 | 通知卡片 + 标记已读 + 一键全部已读 + 链接跳转 |
 | `/profile` | ProfileView | DefaultLayout | 登录 | 信息横幅(首字母头像) + Tab分段(账户设置/联系方式/历史记录) + 危险区域(注销) |
 
@@ -479,51 +596,64 @@ CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '�
 
 延迟加载：首次调用 `get_image_feature()` 或 `get_text_feature()` 时按 `CLIP_BACKEND` 选择后端并初始化模型。`CLIPService` 为兼容壳，实际编码委托 `app/clip_backend.py`；每个 `encode_*` 在 L2 归一化后经 `_assert_embed_dim` 断言维度。
 
-### 8.2 加权相似度融合（三通道等权跨模态 + 五阶段）
+### 8.2 加权相似度融合（三检索模式 + 主辅证据 + 五阶段）
 
 ```
+按查询形态三种检索模式（缺通道动态归一化自动成形，零分支代码）：
+  ① 文字检索 → 文-文 0.75（主） + 跨模态 0.25（辅）
+  ② 图片检索 → 图-图 0.75（主） + 跨模态 0.25（辅）
+  ③ 图文混合 → 图-图 0.43 + 文-文 0.43 + 跨模态(双向) 0.14
+
 通道（q=查询, t=目标）:
   sim_img_img = q_img·t_img;  sim_text_text = q_text·t_text
   sim_cross_t2i = q_text·t_img;  sim_cross_i2t = q_img·t_text
   sim_cross = 可用跨模态方向加权平均（内权重 0.5/0.5）
+  sim_cross_mapped = clip((sim_cross−0.194)/(0.298−0.194), 0, 1)   ← 跨模态尺度映射
 
-阶段1 基础加权: Sim = 0.35×sim_img_img + 0.35×sim_cross + 0.15×sim_text_text + 0.15×sim_color
-              （缺失通道时动态权重归一化；全缺 → 0.0）
+阶段1 基础加权: Sim = Σ(wᵢ·simᵢ)/Σ(wᵢ)（主证据 0.75 / 辅助证据 0.25；缺失通道动态归一化；全缺 → 0.0）
 阶段2 类别/位置调节: 同类 +5% / 异类 -8%；同地点 +3% / 异地 -4%
-阶段3 时间衰减: 90 天线性衰减至下限 20%
-阶段4 分层阈值: 手动匹配 0.35 / 自动推送 0.55 / 邮件通知 0.70（初值待标定）
-阶段5 跨模态一致性惩罚: cc = min(可用跨模态方向)；仅当 max(sim_ii,sim_tt)≥0.55 触发；
-              只降权、对 cc 单调，因子 ∈ [0.5, 1.0]；CROSS_PENALTY_ENABLED 可关闭
+阶段3 时间衰减: 240 天线性衰减至下限 60%（2026-09-21 调温和，原 90天/20%）
+阶段4 分层阈值: 手动 0.624956 / 自动 0.733952 / 邮件 0.832069（2026-09-21 标定，内容分尺度）
+阶段5 跨模态一致性惩罚: 仅当「文-文 ≥ 0.55 且图-图不高」触发（真·文本撞车）；
+              cc = min(可用跨模态方向)；只降权、对 cc 单调，因子 ∈ [0.5, 1.0]；CROSS_PENALTY_ENABLED 可关闭
+
+三分数分离: content_score（阈值判定，与标定同尺度）/ match_score（排序，含衰减）/ reference_score（展示，最强证据通道）
+证据链: level（confirmed/high_suspect/related/reference）+ basis（命中依据）+ channels（各通道原始值）
 ```
 
 > ⚠️ **颜色通道已于 2026-09-16 废弃**（不参与打分）；`items.color_vector` 字段与 v3.4.0 的持久化逻辑保留但不再被匹配读取。
 >
-> ⚠️ 三通道默认等权（各 1.0），跨模态内权重与阶段5 参数为 config 化初值；三档阈值经真实标定后 `AUTO`/`EMAIL` 仍无解（见标定报告 §5）。旧「阶段5 交叉验证（图文矛盾降权 50%~75%）」已被真跨模态惩罚取代。
+> ✅ **三档阈值已标定成功**（2026-09-21 打分口径重构后，扭转此前「AUTO/EMAIL 结构性无解」）；样本量仍小，建议灰度观察（`EMAIL` 召回 19.4%）。旧「阶段5 交叉验证（图文矛盾降权 50%~75%）」已被真跨模态惩罚取代。
 
 ### 8.3 自动匹配流程
 
 ```
 管理员审核通过
-  → 若 AUTO_MATCH_ENABLED=false 短路（灰度期）
+  → 若 AUTO_MATCH_ENABLED=false 短路
   → BackgroundTasks.add_task(auto_match_and_notify)
   → 查询异类活跃物品 (type相反, status=active, review_status=approved)
   → 维度预检：库向量维度 ≠ 当前模型维度 → 记 ERROR 并跳过
-  → 逐对计算三通道等权跨模态 + 五阶段加权相似度
-  → 筛选 ≥ MATCH_THRESHOLD_AUTO (0.55，初值) 的匹配
-  → 批量 INSERT matches 表
-  → 双向发送站内通知 (新物品发布者 + 目标物品拥有者)
-  → 相似度 ≥ MATCH_THRESHOLD_EMAIL (0.70，初值) 且有邮箱时发送 HTML 邮件（异步投递）
+  → 逐对调用 compute_match_detail（三检索模式 + 五阶段）
+  → 判定用 content_score ≥ 0.733952（MATCH_THRESHOLD_AUTO，与标定同尺度）
+  → 按 match_score 降序，Top-3 落库
+  → 双向站内通知（含匹配等级 + 命中依据）
+  → content_score ≥ 0.832069（MATCH_THRESHOLD_EMAIL）且有邮箱 → HTML 邮件（含等级与依据）
 ```
 
 ### 8.4 认领/归还语义规则
 
 | 物品类型 | 操作者视角 | 操作 | 系统行为 |
 |---------|-----------|---------|---------|
-| lost | 非发布者(捡到者) | "我要归还" | 发送 `[归还申请]` 通知给发布者（附申请人手机号） |
-| found | 非发布者(失主) | "我要认领" | 发送 `[认领申请]` 通知给发布者（附申请人手机号） |
-| 任一 | 发布者 | "标记已找回"/"标记已认领" | 物品 status → claimed，从列表移除并计入历史；总计找回 +1 |
+| lost | 非发布者(捡到者) | "我要归还" | 创建 claims 记录（特征描述 + 证明图），通知发布者审批 |
+| found | 非发布者(失主) | "我要认领" | 同上 |
+| 任一 | 发布者 | 同意 | claim → 1，同物品其他待审**自动拒绝**（互斥），物品 → `claiming`；申请人可见**脱敏**联系方式 |
+| 任一 | 发布者 | 拒绝（理由必填）/ 申请人撤销 | claim → 2 / 4；物品保持 active |
+| 任一 | 发布者 | 确认完成 | claim → 3，物品 → `claimed`，总计找回 +1 |
+| 任一 | 发布者 | "标记已找回/已认领"（快捷） | 物品 → claimed；若存在已通过申请则联动置 3（**不重复计数**） |
 
-> ⚠️ **v3.3 变更**：删除发布者"确认/拒绝"两步流程（原 `PUT /api/items/{id}/claim/confirm`），改为发布者**自行标记**（`PUT /api/items/{id}/mark-claimed`）。线下联系通过通知中的手机号进行。
+> ⚠️ **v3.3 变更**：删除发布者"确认/拒绝"两步流程（原 `PUT /api/items/{id}/claim/confirm`），改为发布者**自行标记**（`PUT /api/items/{id}/mark-claimed`）。
+>
+> **v3.6.0**：认领升级为**审批制闭环**（claims 表 + 互斥 + 脱敏 + 撤销）；`POST /items/{id}/claim` 与 `mark-claimed` 保留（兼容薄包装，计数器不重复计数）。
 
 ---
 
@@ -547,8 +677,8 @@ CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '�
 |------|------|
 | 管理员手动创建 | 首个管理员需通过数据库直接插入或 Python 脚本创建 |
 | 邮件可选 | 未配置 SMTP 时静默跳过邮件通知 |
-| 单张图片 | 每个物品仅支持 1 张图片 |
-| 用户自行联系 | 认领确认后用户自行通过联系方式沟通取回 |
+| 多图（v3.6.0） | 每个物品支持 1-3 张图片，**仅封面参与向量检索** |
+| 用户自行联系 | 认领通过后申请人经脱敏联系方式线下沟通取回；发布者确认完成 |
 
 ### 9.3 已知限制
 
@@ -559,17 +689,19 @@ CATEGORIES = ['电子产品', '证件卡片', '包袋箱包', '书籍文具', '�
 | 无 WebSocket | 通知非实时 | 引入 WebSocket 推送 |
 | 无草稿箱 UI | 驳回物品无独立管理入口 | 在发布页增加草稿列表 |
 | ~~真实 Chinese-CLIP 权重未下载验证~~ ✅ 已下载并端到端验证 | 权重 3.83GB 已在**本机**下载（ModelScope 源，`CLIP_CN_CKPT_PATH` 零网络加载）并验证：1024 维 + L2 归一 + 语义合理 + 真实 Recall@K | 已闭环（`scripts/verify_real_clip.py`；`RUN_REAL_CLIP=1` 冒烟 2 用例由 skip 转通过） |
-| **分层阈值 AUTO/EMAIL 仍不可用** | 真实模型下标定：`Recall@3=1.0`、`Recall@1=0.75`，扩充评测集（n=64→78）后 Precision 上界仅由 0.6129 升至 **0.6889** → `Precision≥0.90/0.98` **仍无解**，`AUTO`/`EMAIL` 返回 `None` | **结构性瓶颈**：同类近重复与正样本分数不可分；须待真实物品类别多样性增长复标；**不得为凑出 0.90 而放宽口径** |
-| **权重的「最优值」证据不足** | 2026-09-16 起三通道**等权**（权重不再可调）；此前四通道网格合格组合 103 个、102 个并列 `Recall@3=1.0` | `--grid` 保留三通道网格供探索 |
+| ~~分层阈值 AUTO/EMAIL 不可用~~ ✅ **2026-09-21 首次标定成功** | 打分口径重构（三检索模式 + 尺度映射）后：`AUTO`=0.733952（P=91.7% / R=61.1%）、`EMAIL`=0.832069（P=100% / R=19.4%） | ⚠️ 样本量仍小（EMAIL 处仅 7 个正样本）；建议灰度观察；随数据增长持续复标 |
+| **权重的「最优值」证据不足** | 2026-09-21 起「主证据 0.75 / 辅助证据 0.25」含明确语义，不再依赖网格搜索 | `--grid` 保留三维网格供探索 |
 | ~~两代向量空间不兼容~~ ✅ 本库已完成重嵌入（2026-09-14） | 切模型未重嵌入则新旧向量不可比（已加维度防线 → HTTP 500） | 已执行 `reembed_all_vectors.py` 全量重嵌入（冷备 + 守卫，6 条全部 1024 维）；`/match` 实测恢复 HTTP 200 |
 | **评测集规模小** | `eval_set_v3.5.0.json` **84 对**（有效 **36 正 / 42 负**，n=78），置信区间仍宽 | 随数据增长扩充复标；不得表述为「已可靠标定」 |
 
 ---
 
-> **文档维护者**：开发团队 | **最后更新**：2026-09-14 | **基于源码版本**：v3.5.0
+> **文档维护者**：开发团队 | **最后更新**：2026-10-14 | **基于源码版本**：v3.6.0
 >
 > **v3.4.0 核心变更摘要**：账户状态语义拆分（C2：`role` 收敛为 user/admin，新增 `status`） | 公开接口账号状态校验（C1：`resolve_optional_viewer`） | 颜色特征持久化（R4：`items.color_vector`） | 邮件异步化（R5）| 路由 `:int` 健壮化（R6）| 去静默异常（R7）| 请求体 Pydantic 化（R9）| 依赖与版本清理（R10）| 自动化测试 70 用例全通过
 >
 > **v3.4.1 补齐**：`POST /api/items/match` 鉴权（缺 token → 403 / 非法 token → 401）| 自动化测试扩至 **72 用例**全通过
 >
-> **v3.5.0 中文化模型 + 跨模态检索**：新增 `app/clip_backend.py` 双后端抽象（默认 `cn_clip` Chinese-CLIP ViT-H-14 **1024 维** / 回滚 `open_clip` ViT-B-32 **512 维**，未知值抛 `RuntimeError`）| 启用 img·text **跨模态四通道**打分（图-图 0.35 / 跨模态 0.35 / 文-文 0.15 / 色 0.15）| 阶段5 升级为**真跨模态一致性惩罚**（`cc=min(可用跨模态方向)`，≥0.55 触发，只降权 ≤×0.5，可开关）| 阈值重设（手动 0.35 / 自动 0.55 / 邮件 0.70，初值）| `/match` 新增 `match_source` + `legend`（**403/401 契约冻结不变，不新增端点**）| 新增三脚本（`reembed_all_vectors.py` / `calibrate_thresholds.py` / `backfill_color_vectors.py`）| 评测集 **84 对**（42 正 / 42 负，有效 36 正 / 42 负 n=78）| 维度错配运行期防线（编码断言 + 打分前预检 → HTTP 500）| 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**。⚠️ **真实权重已下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 评测集扩充轮（84 对，n=78）复标后 Precision 上界仅 0.6889，`AUTO`/`EMAIL` **结构性无解**（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）。✅ **生产库已完成全量重嵌入（2026-09-14，冷备 + `_exit_code` 守卫，6 条全部 1024 维）**，`/match` 实测恢复 HTTP 200；`AUTO_MATCH_ENABLED=false` 灰度保持
+> **v3.5.0 中文化模型 + 跨模态检索**：新增 `app/clip_backend.py` 双后端抽象（默认 `cn_clip` Chinese-CLIP ViT-H-14 **1024 维** / 回滚 `open_clip` ViT-B-32 **512 维**，未知值抛 `RuntimeError`）| 启用 img·text **跨模态四通道**打分（图-图 0.35 / 跨模态 0.35 / 文-文 0.15 / 色 0.15）| 阶段5 升级为**真跨模态一致性惩罚**（`cc=min(可用跨模态方向)`，≥0.55 触发，只降权 ≤×0.5，可开关）| 阈值重设（手动 0.35 / 自动 0.55 / 邮件 0.70，初值）| `/match` 新增 `match_source` + `legend`（**403/401 契约冻结不变，不新增端点**）| 新增三脚本（`reembed_all_vectors.py` / `calibrate_thresholds.py` / `backfill_color_vectors.py`）| 评测集 **84 对**（42 正 / 42 负，有效 36 正 / 42 负 n=78）| 维度错配运行期防线（编码断言 + 打分前预检 → HTTP 500）| 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**。⚠️ **真实权重已下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 评测集扩充轮（84 对，n=78）复标后 Precision 上界仅 0.6889，`AUTO`/`EMAIL` **结构性无解**（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）。✅ **生产库已完成全量重嵌入（2026-09-14，冷备 + `_exit_code` 守卫，6 条全部 1024 维）**，`/match` 实测恢复 HTTP 200（后续于 v3.6.0 完成阈值标定并开启自动推送，见下）
+>
+> **v3.6.0 打分口径重构 + 社区化融合**：按查询形态**三种检索模式**（文字/图片/图文混合）| 权重「主证据 0.75 + 辅助证据 0.25」| 跨模态尺度映射（0.194→0.298）| 证据链 + 三分数分离（`content_score` 判定 / `match_score` 排序 / `reference_score` 展示）| 时间衰减失效修复并调温和（240 天 / 0.6）| **三档阈值首次标定成功**（MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069，内容分尺度）| 自动匹配尺度修正（判定改 `content_score`）| 新增 5 表（claims / reports / comments / banners / categories）+ items 3 列（cover_image / images / is_recommend）+ status 枚举新增 `claiming`（表重建迁移）| 认领闭环 / 举报 / 留言 / 多图 / 管理端统计看板 / 相似推荐 / 内容运营 上线 | 自动化测试 **304 用例（302 通过 / 2 门控跳过）**

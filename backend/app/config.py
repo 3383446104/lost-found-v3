@@ -5,7 +5,7 @@ from typing import Optional, Set
 
 class Settings(BaseSettings):
     APP_NAME: str = "校园失物检索平台"
-    APP_VERSION: str = "3.5.0"
+    APP_VERSION: str = "3.6.0"
     API_V1_STR: str = "/api"
 
     # 安全配置
