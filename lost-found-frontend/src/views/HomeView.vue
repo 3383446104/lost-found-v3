@@ -10,6 +10,21 @@
       </el-button>
     </div>
 
+    <!-- v3.6.0：轮播图（管理员运营位） -->
+    <div v-if="banners.length" class="banner-carousel">
+      <el-carousel height="220px" :interval="5000" arrow="hover" indicator-position="none">
+        <el-carousel-item v-for="b in banners" :key="b.id">
+          <div class="banner-item" @click="bannerClick(b)">
+            <img :src="getImageUrl(b.image_path)" :alt="b.title" />
+            <div class="banner-caption" v-if="b.title || b.description">
+              <span class="banner-title" v-if="b.title">{{ b.title }}</span>
+              <span class="banner-desc" v-if="b.description">{{ b.description }}</span>
+            </div>
+          </div>
+        </el-carousel-item>
+      </el-carousel>
+    </div>
+
     <!-- 智能查找入口：用一句话描述，帮你找（跳转 /match 并自动执行一次匹配） -->
     <div class="smart-entry">
       <div class="smart-bar">
@@ -90,6 +105,30 @@
         </div>
       </div>
     </el-drawer>
+
+    <!-- v3.6.0：为你推荐（管理员审核时勾选的推荐位） -->
+    <div v-if="recommends.length" class="recommend-section">
+      <div class="recommend-head">
+        <h2 class="recommend-title">
+          <el-icon><StarFilled /></el-icon>为你推荐
+        </h2>
+      </div>
+      <div class="recommend-grid">
+        <div
+          v-for="r in recommends"
+          :key="r.id"
+          class="recommend-card"
+          @click="$router.push(`/items/${r.id}`)"
+        >
+          <img v-if="r.image_path" :src="getImageUrl(r.image_path)" :alt="r.title" loading="lazy" />
+          <div v-else class="img-placeholder"><el-icon :size="28"><PictureFilled /></el-icon></div>
+          <div class="recommend-body">
+            <span class="recommend-item-title">{{ r.title }}</span>
+            <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
@@ -202,9 +241,10 @@
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getItems, getCategories } from '@/api/items'
+import { getItems, getCategories, getRecommend } from '@/api/items'
+import { publicBanners } from '@/api/banners'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
-import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick } from '@element-plus/icons-vue'
+import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
@@ -223,6 +263,9 @@ const showMine = ref(false)
 const stats = ref(null)
 const announcements = ref([])
 const annDrawerVisible = ref(false)
+// v3.6.0：轮播图 + 为你推荐
+const banners = ref([])
+const recommends = ref([])
 
 const pinnedAnn = computed(() => announcements.value.find(a => a.is_pinned))
 const pieChartRef = ref(null)
@@ -315,11 +358,27 @@ const loadAnnouncements = async () => {
   try { const res = await getAnnouncements(); announcements.value = res.announcements || [] } catch { }
 }
 
+// v3.6.0：轮播图与推荐位
+const loadBanners = async () => {
+  try { const res = await publicBanners(); banners.value = res.banners || [] } catch { }
+}
+const bannerClick = (b) => {
+  if (b.link_url) {
+    if (b.link_url.startsWith('http')) window.open(b.link_url, '_blank')
+    else router.push(b.link_url)
+  }
+}
+const loadRecommends = async () => {
+  try { const res = await getRecommend({ limit: 8 }); recommends.value = res.items || [] } catch { }
+}
+
 onMounted(() => {
   getCategories().then(res => { categories.value = res.categories || [] }).catch(() => {})
   loadItems()
   loadStats()
   loadAnnouncements()
+  loadBanners()
+  loadRecommends()
 })
 
 onUnmounted(() => {
@@ -344,6 +403,131 @@ onUnmounted(() => {
 .publish-cta {
   flex-shrink: 0;
   font-weight: 600;
+}
+
+/* ---- v3.6.0：轮播图 ---- */
+.banner-carousel {
+  margin-bottom: var(--space-5);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+}
+
+.banner-item {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  cursor: pointer;
+}
+
+.banner-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.banner-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-4) var(--space-5);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.banner-desc {
+  font-size: var(--text-sm);
+  opacity: 0.9;
+}
+
+/* ---- v3.6.0：为你推荐 ---- */
+.recommend-section {
+  margin-bottom: var(--space-6);
+}
+
+.recommend-head {
+  margin-bottom: var(--space-3);
+}
+
+.recommend-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recommend-title .el-icon {
+  color: #F9A825;
+}
+
+.recommend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-4);
+}
+
+.recommend-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition-slow);
+}
+
+.recommend-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+.recommend-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+}
+
+.recommend-card .img-placeholder {
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--neutral-100);
+}
+
+.recommend-body {
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recommend-item-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recommend-meta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
 /* ---- 智能查找入口 ---- */

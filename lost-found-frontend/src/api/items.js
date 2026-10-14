@@ -40,3 +40,9 @@ export const claimItem = (id) => request.post(`/items/${id}/claim`)
 
 // 发布者标记已找回/已认领
 export const markClaimed = (id) => request.put(`/items/${id}/mark-claimed`)
+
+// v3.6.0：详情页相似推荐（失物推相似招领 / 招领推相似失物）
+export const getSimilar = (id, params) => request.get(`/items/${id}/similar`, { params })
+
+// v3.6.0：首页「为你推荐」（is_recommend 物品）
+export const getRecommend = (params) => request.get('/items/recommend', { params })

@@ -1,5 +1,6 @@
 # app/api/items.py
 import os
+import json
 import uuid
 import asyncio
 import functools
@@ -7,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request, BackgroundTasks
 from fastapi.responses import FileResponse
+import numpy as np
 from ..config import settings
 from ..database import get_db_connection, vector_to_json, json_to_vector, CATEGORIES
 from ..dependencies.auth import get_current_user, resolve_optional_viewer
@@ -115,6 +117,61 @@ def delete_file_if_exists(file_path: str):
 def is_temp_file(file_path: str) -> bool:
     return file_path and os.path.basename(file_path).startswith("temp_")
 
+
+# ---------- v3.6.0 多图辅助 ----------
+MAX_IMAGES = 3  # 每物品最多 3 张图
+
+
+def _parse_stored_images(item_row) -> List[str]:
+    """解析物品已存图片有序列表（images JSON；缺省回退单图 image_path）。"""
+    item_row = dict(item_row) if item_row is not None else None
+    if item_row and item_row.get("images"):
+        try:
+            arr = json.loads(item_row["images"])
+            if isinstance(arr, list):
+                return [s for s in arr if s]
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"物品 {item_row.get('id')} 的 images 字段解析失败，回退单图")
+    if item_row and item_row.get("image_path"):
+        return [item_row["image_path"]]
+    return []
+
+
+async def _save_upload(file: UploadFile) -> str:
+    """保存一个上传文件到 UPLOAD_FOLDER（校验类型与大小），返回磁盘路径。"""
+    content = await file.read()
+    if not allowed_file(file.filename, content):
+        raise HTTPException(400, "文件类型不支持")
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(400, f"图片大小不能超过 {MAX_UPLOAD_SIZE//1024//1024}MB")
+    ext = os.path.splitext(file.filename)[1][1:].lower()
+    filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
+    file_path = os.path.join(settings.UPLOAD_FOLDER, filename)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"保存图片失败: {e}")
+        raise HTTPException(500, "图片上传失败，请稍后重试")
+    return file_path
+
+
+def _aggregate_query_vectors(vectors) -> np.ndarray:
+    """多图查询聚合：各向量 L2 归一化 → 均值 → 再归一化（参考项目「多图综合评分」）。
+
+    聚合只发生在查询侧向量层面，不触碰 compute_match_detail 与阈值尺度。
+    """
+    if not vectors:
+        raise ValueError("vectors 不能为空")
+    vecs = []
+    for v in vectors:
+        v = np.asarray(v, dtype=np.float32)
+        norm = float(np.linalg.norm(v))
+        vecs.append(v / norm if norm > 0 else v)
+    mean = np.mean(vecs, axis=0)
+    norm = float(np.linalg.norm(mean))
+    return mean / norm if norm > 0 else mean
+
 # ---------- 接口 ----------
 @router.post("/", status_code=201)
 async def create_item(
@@ -125,9 +182,10 @@ async def create_item(
         contact: str = Form(""),
         location: str = Form(""),
         image: Optional[UploadFile] = File(None),
+        images: Optional[List[UploadFile]] = File(None),
         current_user: dict = Depends(get_current_user)
 ):
-    """发布物品（失物/招领）"""
+    """发布物品（失物/招领；v3.6.0 支持 1-3 张图，首图作封面，仅封面参与向量检索）"""
     if type not in ['lost', 'found']:
         raise HTTPException(400, "物品类型无效")
 
@@ -141,33 +199,39 @@ async def create_item(
     if image == "":
         image = None
 
+    # 归一化上传文件列表：优先 images 多图字段；兼容旧单图字段 image
+    files: List[UploadFile] = []
+    if images:
+        files = list(images)
+    elif image is not None and image.filename:
+        files = [image]
+    if len(files) > MAX_IMAGES:
+        raise HTTPException(400, f"最多上传 {MAX_IMAGES} 张图片")
+
+    saved_paths: List[str] = []
     image_path = None
     image_vector = None
     color_vector = None
-    if image is not None and image.filename:
-        content = await image.read()
-        if not allowed_file(image.filename, content):
-            raise HTTPException(400, "文件类型不支持")
-        if len(content) > MAX_UPLOAD_SIZE:
-            raise HTTPException(400, f"图片大小不能超过 {MAX_UPLOAD_SIZE//1024//1024}MB")
-        ext = os.path.splitext(image.filename)[1][1:].lower()
-        filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
-        image_path = os.path.join(settings.UPLOAD_FOLDER, filename)
-        try:
-            with open(image_path, "wb") as f:
-                f.write(content)
-        except Exception as e:
-            logger.error(f"保存图片失败: {e}")
-            raise HTTPException(500, "图片上传失败，请稍后重试")
-
-        try:
+    try:
+        for i, f in enumerate(files):
+            p = await _save_upload(f)
+            saved_paths.append(p)
+            if i == 0:
+                image_path = p
+        if image_path:
+            # 仅封面参与向量检索（匹配口径不变）
             image_vector = await run_in_threadpool(clip_service.get_image_feature, image_path)
             # R4：同步计算 27 维颜色直方图并随物品持久化，匹配时免重复磁盘 IO
             color_vector = await run_in_threadpool(clip_service.get_color_histogram, image_path)
-        except Exception as e:
-            delete_file_if_exists(image_path)
-            logger.error(f"图片特征提取失败: {e}")
-            raise HTTPException(500, "图片特征提取失败")
+    except HTTPException:
+        for p in saved_paths:
+            delete_file_if_exists(p)
+        raise
+    except Exception as e:
+        for p in saved_paths:
+            delete_file_if_exists(p)
+        logger.error(f"图片特征提取失败: {e}")
+        raise HTTPException(500, "图片特征提取失败")
 
     text_vector = None
     full_text = f"{title} {description}".strip()
@@ -175,27 +239,34 @@ async def create_item(
         try:
             text_vector = await run_in_threadpool(clip_service.get_text_feature, full_text)
         except Exception as e:
-            delete_file_if_exists(image_path)
+            for p in saved_paths:
+                delete_file_if_exists(p)
             logger.error(f"文本特征提取失败: {e}")
             raise HTTPException(500, "文本特征提取失败")
+
+    cover_name = os.path.basename(image_path) if image_path else None
+    images_json = json.dumps([os.path.basename(p) for p in saved_paths]) if saved_paths else None
 
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO items (type, title, description, category, image_path,
-                                   image_vector, text_vector, color_vector, contact, location, status, user_id, review_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   images, cover_image, image_vector, text_vector, color_vector,
+                                   contact, location, status, user_id, review_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (type, title, description, category, image_path,
+                  images_json, cover_name,
                   vector_to_json(image_vector), vector_to_json(text_vector), vector_to_json(color_vector),
                   contact, location, 'pending', current_user['user_id'], 'pending'))
             item_id = cursor.lastrowid
     except Exception as e:
-        delete_file_if_exists(image_path)
+        for p in saved_paths:
+            delete_file_if_exists(p)
         logger.error(f"数据库插入失败: {e}")
         raise HTTPException(500, "发布失败，请检查内容后重试")
 
-    logger.info(f"用户 {current_user['user_id']} 发布了物品 {item_id}")
+    logger.info(f"用户 {current_user['user_id']} 发布了物品 {item_id}（{len(saved_paths)} 张图）")
     return {"success": True, "id": item_id}
 
 
@@ -217,8 +288,8 @@ async def get_items(
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        base_query = """SELECT id, type, title, description, category, image_path, contact,
-                          location, status, review_status, user_id, created_at, review_time
+        base_query = """SELECT id, type, title, description, category, image_path, cover_image, images,
+                          contact, location, status, review_status, user_id, created_at, review_time
                    FROM items WHERE 1=1"""
         count_query = "SELECT COUNT(*) AS total FROM items WHERE 1=1"
         params = []
@@ -271,8 +342,14 @@ async def get_items(
 
 @router.get("/categories")
 async def get_categories():
-    """获取类别列表"""
-    return {"categories": CATEGORIES}
+    """获取类别列表（v3.6.0 表驱动：查 categories 表；空表回退常量，响应结构不变）"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM categories ORDER BY sort_no ASC, id ASC")
+        names = [r["name"] for r in cursor.fetchall()]
+    if not names:
+        names = list(CATEGORIES)
+    return {"categories": names}
 
 
 @router.get("/uploads/{filename:path}")
@@ -285,6 +362,39 @@ async def uploaded_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(404, "图片不存在")
     return FileResponse(file_path)
+
+
+@router.get("/recommend")
+async def recommend_items(
+    limit: int = Query(8, ge=1, le=20),
+    type: Optional[str] = Query(None, description="可选：仅推荐 lost / found")
+):
+    """首页「为你推荐」（v3.6.0：管理员审核时勾选的推荐位物品）
+
+    注意：本路由须注册在 ``/{item_id:int}`` 之前（静态路径优先）。
+    """
+    params: List = []
+    where = "is_recommend = 1 AND status = 'active' AND review_status = 'approved'"
+    if type:
+        if type not in ("lost", "found"):
+            raise HTTPException(400, "type 必须为 lost 或 found")
+        where += " AND items.type = ?"
+        params.append(type)
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""SELECT id, type, title, description, category, image_path, cover_image,
+                       images, location, created_at
+                FROM items WHERE {where}
+                ORDER BY created_at DESC LIMIT ?""",
+            params + [limit],
+        )
+        items = [dict(r) for r in cursor.fetchall()]
+
+    for item in items:
+        item['created_at'] = format_beijing_time(item.get('created_at'))
+    return {"items": items}
 
 
 @router.get("/{item_id:int}")
@@ -318,6 +428,78 @@ async def get_item(item_id: int, request: Request):
     return {"item": result}
 
 
+@router.get("/{item_id:int}/similar")
+async def similar_items(
+    item_id: int,
+    limit: int = Query(6, ge=1, le=12),
+):
+    """详情页相似推荐（v3.6.0，公开异步加载）：失物推相似招领 / 招领推相似失物。
+
+    复用物品自身的图/文向量作查询，走 ``compute_match_detail`` 同一打分口径，
+    以 content_score ≥ 手动阈值过滤、reference_score 降序返回。
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, type, image_vector, text_vector, review_status, status FROM items WHERE id = ?",
+            (item_id,),
+        )
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(404, "物品不存在")
+        if target['review_status'] != 'approved' or target['status'] != 'active':
+            raise HTTPException(404, "物品不存在")
+
+        opposite = 'found' if target['type'] == 'lost' else 'lost'
+        cursor.execute(
+            """SELECT id, title, description, image_vector, text_vector, image_path,
+                      cover_image, category, location, created_at
+               FROM items
+               WHERE type = ? AND status = 'active' AND review_status = 'approved' AND id != ?""",
+            (opposite, item_id),
+        )
+        candidates = cursor.fetchall()
+
+    query_img_vec = json_to_vector(target['image_vector'])
+    query_text_vec = json_to_vector(target['text_vector'])
+    if query_img_vec is None and query_text_vec is None:
+        return {"items": [], "legend": resolve_legend()}
+
+    threshold = float(settings.MATCH_THRESHOLD_MANUAL)
+    results = []
+    for cand in candidates:
+        cand_img = json_to_vector(cand['image_vector'])
+        cand_text = json_to_vector(cand['text_vector'])
+        if cand_img is None and cand_text is None:
+            continue
+        days_old = days_since_utc(cand['created_at'])
+        try:
+            detail = await run_in_threadpool(
+                clip_service.compute_match_detail,
+                query_img_vec, query_text_vec, cand_img, cand_text,
+                cat1='', cat2=cand['category'] or '',
+                loc1='', loc2=cand['location'] or '',
+                days_old=days_old,
+            )
+        except Exception as e:
+            logger.warning(f"相似推荐打分失败（物品 {cand['id']}，已跳过）: {e}")
+            continue
+        if detail["content_score"] >= threshold:
+            results.append({
+                "id": cand['id'],
+                "title": cand['title'],
+                "category": cand['category'],
+                "location": cand['location'],
+                "image_path": cand['image_path'],
+                "cover_image": cand['cover_image'],
+                "similarity": round(detail["reference_score"], 6),
+                "level": detail["level"],
+            })
+
+    results.sort(key=lambda x: x['similarity'], reverse=True)
+    return {"items": results[:limit], "legend": resolve_legend()}
+
+
 @router.put("/{item_id:int}/mark-claimed")
 async def mark_item_claimed(
     item_id: int,
@@ -341,7 +523,8 @@ async def mark_item_claimed(
             u = cursor.fetchone()
             if not u or u['role'] != 'admin':
                 raise HTTPException(403, "仅物品发布者可标记")
-        if item['status'] != 'active':
+        # v3.6.0：认领中（claiming）物品也可自标记完成（与认领闭环的 complete 等价）
+        if item['status'] not in ('active', 'claiming'):
             raise HTTPException(400, "该物品已处理或不可操作")
 
         cursor.execute(
@@ -353,11 +536,36 @@ async def mark_item_claimed(
             (user_id, f"/items/{item_id}")
         )
 
+        # v3.6.0 联动：若存在已通过的认领申请，一并置为「已完成」（不自增计数器，避免重复计数）
+        cursor.execute(
+            """UPDATE claims SET status = 3, completed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP WHERE item_id = ? AND status = 1""",
+            (item_id,)
+        )
+        linked_claimer_id = None
+        if cursor.rowcount > 0:
+            cursor.execute(
+                "SELECT claimer_id FROM claims WHERE item_id = ? AND status = 3 ORDER BY id DESC LIMIT 1",
+                (item_id,)
+            )
+            linked = cursor.fetchone()
+            linked_claimer_id = linked['claimer_id'] if linked else None
+
         action_label = '已找回' if item['type'] == 'lost' else '已归还'
 
     # 事务已提交，计数器 +1
     from ..database import increment_counter
     increment_counter('total_claimed', 1)
+
+    # 通知关联申请人（若有）
+    if linked_claimer_id:
+        from ..database import add_notification
+        add_notification(
+            linked_claimer_id,
+            f"[{action_label}] 交接完成",
+            f"物品 '{item['title']}' 已完成交接，感谢您的配合！",
+            f"/items/{item_id}"
+        )
 
     logger.info(f"用户 {user_id} 将物品 {item_id} 标记为 {action_label}")
     return {"success": True, "message": f"物品已标记为{action_label}", "new_status": "claimed"}
@@ -369,12 +577,12 @@ async def update_item(
     request: Request,
     current_user: dict = Depends(get_current_user)
 ):
-    """编辑物品（本人或管理员）"""
+    """编辑物品（本人或管理员；v3.6.0 多图：keep=保留文件新顺序 + images=新增图）"""
     user_id = current_user['user_id']
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT user_id, image_path, image_vector, color_vector, type, review_status, status FROM items WHERE id = ?', (item_id,))
+        cursor.execute('SELECT * FROM items WHERE id = ?', (item_id,))
         item = cursor.fetchone()
         if not item:
             raise HTTPException(404, "物品不存在")
@@ -401,39 +609,82 @@ async def update_item(
     if not valid:
         raise HTTPException(400, msg)
 
-    new_image_path = item['image_path']
+    # ---- v3.6.0 多图处理 ----
+    # stored：库中已有图（有序）；keep：前端提交的保留子集（新顺序）；
+    # 新文件：images 多图字段（兼容旧单图 image 字段，旧语义=整组替换）。
+    stored = _parse_stored_images(item)
+    keep_raw = form.get('keep')
+    kept: Optional[List[str]] = None
+    if keep_raw:
+        try:
+            kept = json.loads(keep_raw)
+            if not isinstance(kept, list):
+                raise ValueError
+        except (json.JSONDecodeError, ValueError, TypeError):
+            raise HTTPException(400, "keep 参数格式不正确")
+        # 只能保留库中已存在的文件
+        if not set(kept).issubset(set(stored)):
+            raise HTTPException(400, "keep 包含不属于该物品的图片")
+
+    new_files: List[UploadFile] = []
+    multi_files = form.getlist('images') if hasattr(form, 'getlist') else None
+    if multi_files:
+        new_files = [f for f in multi_files if f and f.filename]
+    if not new_files and 'image' in form:
+        f = form['image']
+        if f and f.filename:
+            new_files = [f]
+
+    if kept is not None:
+        final_names = list(kept)
+    elif new_files:
+        final_names = []  # 旧单图语义：有图上传但未传 keep → 整组替换
+    else:
+        final_names = list(stored)  # 未动图片
+    if len(new_files) > MAX_IMAGES:
+        raise HTTPException(400, f"最多上传 {MAX_IMAGES} 张图片")
+
+    # 保存新文件（失败清理已存的新文件）
+    saved_new: List[str] = []
+    try:
+        for f in new_files:
+            saved_new.append(await _save_upload(f))
+    except HTTPException:
+        for p in saved_new:
+            delete_file_if_exists(p)
+        raise
+    final_names = final_names + [os.path.basename(p) for p in saved_new]
+
+    # 仅当用户主动调整了图片（传了 keep 或新图）时才要求至少一张；
+    # 无图物品（旧数据）不带图片字段编辑时保持无图状态不变。
+    if (kept is not None or new_files) and not final_names:
+        raise HTTPException(400, "物品至少需要一张图片")
+    if len(final_names) > MAX_IMAGES:
+        for p in saved_new:
+            delete_file_if_exists(p)
+        raise HTTPException(400, f"图片总数不能超过 {MAX_IMAGES} 张")
+
+    new_cover = final_names[0] if final_names else None
+    old_cover = os.path.basename(item['image_path']) if item['image_path'] else None
+    cover_changed = new_cover != old_cover
+
     image_vector = None
     color_vector = None
-    if 'image' in form:
-        file = form['image']
-        if file and file.filename:
-            content = await file.read()
-            if not allowed_file(file.filename, content):
-                raise HTTPException(400, "文件类型不支持")
-            if len(content) > MAX_UPLOAD_SIZE:
-                raise HTTPException(400, f"图片大小不能超过 {MAX_UPLOAD_SIZE//1024//1024}MB")
-            ext = os.path.splitext(file.filename)[1][1:].lower()
-            filename = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
-            temp_path = os.path.join(settings.UPLOAD_FOLDER, filename)
-            try:
-                with open(temp_path, "wb") as f:
-                    f.write(content)
-            except Exception as e:
-                logger.error(f"保存新图片失败: {e}")
-                raise HTTPException(500, "图片上传失败，请稍后重试")
-
-            try:
-                image_vector = await run_in_threadpool(clip_service.get_image_feature, temp_path)
-                # R4：换图时必须同步更新颜色直方图，否则留下脏数据
-                color_vector = await run_in_threadpool(clip_service.get_color_histogram, temp_path)
-            except Exception as e:
-                delete_file_if_exists(temp_path)
-                logger.error(f"新图片特征提取失败: {e}")
-                raise HTTPException(500, "图片特征提取失败")
-
-            old_path = new_image_path
-            new_image_path = temp_path
-            delete_file_if_exists(old_path)
+    if cover_changed:
+        cover_path = os.path.join(settings.UPLOAD_FOLDER, new_cover)
+        if not os.path.exists(cover_path):
+            for p in saved_new:
+                delete_file_if_exists(p)
+            raise HTTPException(400, "封面图片文件不存在")
+        try:
+            image_vector = await run_in_threadpool(clip_service.get_image_feature, cover_path)
+            # R4：换封面时必须同步更新颜色直方图，否则留下脏数据
+            color_vector = await run_in_threadpool(clip_service.get_color_histogram, cover_path)
+        except Exception as e:
+            for p in saved_new:
+                delete_file_if_exists(p)
+            logger.error(f"新封面特征提取失败: {e}")
+            raise HTTPException(500, "图片特征提取失败")
 
     text_vector = None
     full_text = f"{title} {description}".strip()
@@ -441,13 +692,13 @@ async def update_item(
         try:
             text_vector = await run_in_threadpool(clip_service.get_text_feature, full_text)
         except Exception as e:
-            if new_image_path != item['image_path']:
-                delete_file_if_exists(new_image_path)
+            for p in saved_new:
+                delete_file_if_exists(p)
             logger.error(f"文本特征提取失败: {e}")
             raise HTTPException(500, "文本特征提取失败")
 
     image_vector_json = vector_to_json(image_vector) if image_vector is not None else item['image_vector']
-    # R4：换图时 color_vector 已重算；未换图时保留库中原值（避免脏数据 / 丢特征）
+    # R4：换封面时 color_vector 已重算；未换图时保留库中原值（避免脏数据 / 丢特征）
     color_vector_json = vector_to_json(color_vector) if color_vector is not None else item['color_vector']
     review_status = item['review_status']
     status = item['status']
@@ -464,14 +715,22 @@ async def update_item(
             UPDATE items SET
                 title = ?, description = ?, category = ?,
                 contact = ?, location = ?, image_path = ?,
+                images = ?, cover_image = ?,
                 image_vector = ?, text_vector = ?, color_vector = ?,
                 review_status = ?, status = ?,
                 reviewer_id = ?, review_time = ?, reject_reason = ?
             WHERE id = ?
         ''', (title, description, category, contact, location,
-              new_image_path, image_vector_json,
+              os.path.join(settings.UPLOAD_FOLDER, new_cover) if new_cover else None,
+              json.dumps(final_names) if final_names else None, new_cover,
+              image_vector_json,
               vector_to_json(text_vector), color_vector_json, review_status, status,
               reviewer_id, review_time, reject_reason, item_id))
+
+    # 删除已不再属于该物品的旧图文件（不在 final_names 中的 stored 文件）
+    removed = [s for s in stored if s not in final_names]
+    for r in removed:
+        delete_file_if_exists(os.path.join(settings.UPLOAD_FOLDER, os.path.basename(r)))
 
     # 如果是从驳回状态重新提交，标记旧驳回通知为已读
     if item['review_status'] == 'rejected':
@@ -483,7 +742,7 @@ async def update_item(
                 (user_id, f"/items/{item_id}")
             )
 
-    logger.info(f"用户 {user_id} 更新了物品 {item_id}")
+    logger.info(f"用户 {user_id} 更新了物品 {item_id}（图片 {len(final_names)} 张，封面 {new_cover}）")
     return {"success": True, "id": item_id}
 
 
@@ -498,7 +757,7 @@ async def delete_item(
     # 先获取图片路径用于删除文件
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT user_id, image_path FROM items WHERE id = ?', (item_id,))
+        cursor.execute('SELECT user_id, image_path, images FROM items WHERE id = ?', (item_id,))
         item = cursor.fetchone()
         if not item:
             raise HTTPException(404, "物品不存在")
@@ -513,42 +772,56 @@ async def delete_item(
         cursor.execute('DELETE FROM items WHERE id = ?', (item_id,))
         if cursor.rowcount == 0:
             raise HTTPException(404, "物品已不存在")
-        # 保存图片路径以备删除
-        image_path = item['image_path']
+        # 保存图片路径以备删除（v3.6.0：多图全部清理）
+        image_paths = _parse_stored_images(item)
 
     # 事务已提交，删除图片文件
-    delete_file_if_exists(image_path)
+    for p in image_paths:
+        delete_file_if_exists(os.path.join(settings.UPLOAD_FOLDER, os.path.basename(p)))
     logger.info(f"用户 {user_id} 删除了物品 {item_id}")
     return {"success": True}
 
 
 @router.post("/match")
 async def match_items(req: MatchRequest, current_user: dict = Depends(get_current_user)):
-    """智能匹配（基于图片或文本描述，需登录）"""
-    if not req.image_path and not req.text:
+    """智能匹配（基于图片或文本描述，需登录；v3.6.0 支持多图综合评分）"""
+    query_paths: List[str] = []
+    if req.image_paths:
+        query_paths = list(req.image_paths)
+    elif req.image_path:
+        query_paths = [req.image_path]
+
+    if not query_paths and not req.text:
         raise HTTPException(400, "需要提供图片路径或文本描述")
 
     if req.target_type not in ('lost', 'found'):
         raise HTTPException(400, "target_type 必须为 'lost' 或 'found'")
 
-    image_path = None
-    if req.image_path:
-        filename = os.path.basename(req.image_path)
-        image_path = os.path.join(settings.UPLOAD_FOLDER, filename)
-        if not is_safe_path(settings.UPLOAD_FOLDER, image_path):
+    temp_paths: List[str] = []
+    valid_paths: List[str] = []
+    for p in query_paths:
+        filename = os.path.basename(p)
+        full = os.path.join(settings.UPLOAD_FOLDER, filename)
+        if not is_safe_path(settings.UPLOAD_FOLDER, full):
             raise HTTPException(400, "图片路径不合法")
-        if not os.path.exists(image_path):
+        if not os.path.exists(full):
             if req.text:
-                logger.warning(f"临时图片不存在，转为文本匹配: {req.image_path}")
-                image_path = None
-            else:
-                raise HTTPException(404, "图片文件不存在")
+                logger.warning(f"临时图片不存在，跳过: {p}")
+                continue
+            raise HTTPException(404, "图片文件不存在")
+        valid_paths.append(full)
+        if is_temp_file(full):
+            temp_paths.append(full)
 
     query_img_vec = None
     query_text_vec = None
     try:
-        if image_path:
-            query_img_vec = await run_in_threadpool(clip_service.get_image_feature, image_path)
+        if valid_paths:
+            vecs = []
+            for p in valid_paths:
+                vecs.append(await run_in_threadpool(clip_service.get_image_feature, p))
+            # 多图综合评分：归一化 → 均值 → 再归一化（单图时退化为普通查询向量）
+            query_img_vec = _aggregate_query_vectors(vecs) if len(vecs) > 1 else vecs[0]
         if req.text:
             query_text_vec = await run_in_threadpool(clip_service.get_text_feature, req.text)
     except Exception as e:
@@ -648,8 +921,8 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
             f"skipped={skipped}"
         )
 
-    if image_path and is_temp_file(image_path):
-        delete_file_if_exists(image_path)
+    for p in temp_paths:
+        delete_file_if_exists(p)
 
     return {"matches": results[:20], "legend": resolve_legend()}
 
@@ -660,7 +933,11 @@ async def claim_item(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
-    """申请认领/归还物品（发送站内通知 + 邮件给物品发布者）"""
+    """申请认领/归还物品（兼容端点：内部落 claims 表，响应结构保持 v3.5 契约不变）
+
+    v3.6.0 起认领数据源从「通知表查重」迁移到 claims 表（双向审批闭环），
+    本端点保留为薄包装：无特征描述/证明图的快速申请入口，与 POST /claims 等价。
+    """
     user_id = current_user['user_id']
 
     with get_db_connection() as conn:
@@ -678,10 +955,10 @@ async def claim_item(
         if item['status'] != 'active' or item['review_status'] != 'approved':
             raise HTTPException(400, "该物品当前不可操作")
 
-        # 检查是否已有待处理的申请
+        # 防重：同一申请人同一物品已有待审核/已通过的申请（claims 表口径）
         cursor.execute(
-            "SELECT id FROM notifications WHERE user_id = ? AND link = ? AND is_read = 0 AND (title LIKE '%认领%' OR title LIKE '%归还%')",
-            (item['user_id'], f"/items/{item_id}")
+            "SELECT id FROM claims WHERE claimer_id = ? AND item_id = ? AND status IN (0, 1)",
+            (user_id, item_id)
         )
         if cursor.fetchone():
             raise HTTPException(400, "已发送申请，请等待回复")
@@ -707,9 +984,17 @@ async def claim_item(
         else:
             action_word = '认领'
 
+        # 落 claims 表（无特征描述的快速申请）
+        cursor.execute(
+            """INSERT INTO claims (item_id, claimer_id, claim_reason, feature_description,
+                                   proof_image, contact_phone, status)
+               VALUES (?, ?, NULL, NULL, NULL, ?, 0)""",
+            (item_id, user_id, claimer['phone']),
+        )
+
         title = f"[{action_word}申请] 用户 '{claimer['username']}' 想要{action_word}您的物品"
         content = f"物品 '{item['title']}' 收到{action_word}申请。申请人联系方式：{claimer_phone}。请及时联系确认。"
-        link = f"/items/{item_id}"
+        link = f"/claims/received"
 
         cursor.execute(
             'INSERT INTO notifications (user_id, title, content, link) VALUES (?, ?, ?, ?)',

@@ -1,6 +1,13 @@
 <template>
   <div class="page-container">
-    <h1 class="page-title">管理面板</h1>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">管理面板</h1>
+      </div>
+      <el-button type="primary" plain @click="$router.push('/admin/stats')">
+        <el-icon><TrendCharts /></el-icon>数据统计
+      </el-button>
+    </div>
 
     <el-tabs v-model="activeTab" type="border-card">
       <!-- ====== 物品管理 Tab（合并原审核+管理） ====== -->
@@ -17,6 +24,7 @@
           </el-select>
           <el-select v-model="itemFilter.status" placeholder="状态" size="small" style="width:110px" @change="onItemFilterChange" clearable>
             <el-option label="展示中" value="active" />
+            <el-option label="认领中" value="claiming" />
             <el-option label="待审核" value="pending" />
             <el-option label="已找回/已归还" value="claimed" />
             <el-option label="已关闭" value="closed" />
@@ -82,9 +90,16 @@
             <el-table-column prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
                 <el-tag v-if="row.status==='active'" type="success" size="small">展示中</el-tag>
-                <el-tag v-else-if="row.status==='pending'" type="warning" size="small">待审核</el-tag>
+                <el-tag v-else-if="row.status==='claiming'" type="warning" size="small">认领中</el-tag>
+                <el-tag v-else-if="row.status==='pending'" type="warning" size="small" effect="plain">待审核</el-tag>
                 <el-tag v-else-if="row.status==='claimed'" type="info" size="small">{{ row.type === 'lost' ? '已找回' : '已归还' }}</el-tag>
                 <el-tag v-else size="small">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="推荐" width="70" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.is_recommend" size="small" effect="dark" color="#F9A825">推荐</el-tag>
+                <span v-else style="color:var(--text-muted);font-size:var(--text-xs)">—</span>
               </template>
             </el-table-column>
             <el-table-column prop="created_at" label="时间" width="160" />
@@ -125,6 +140,25 @@
           <template #footer>
             <el-button @click="dialogVisible=false">取消</el-button>
             <el-button type="danger" @click="confirmReject" :loading="rejecting">确认驳回</el-button>
+          </template>
+        </el-dialog>
+
+        <!-- v3.6.0：审核通过对话框（推荐位开关） -->
+        <el-dialog v-model="approveDialogVisible" title="审核通过" width="440px" :close-on-click-modal="false">
+          <p style="margin:0 0 12px;color:var(--text-secondary);font-size:var(--text-sm)">
+            通过后将自动进行智能匹配并通知相关用户。
+          </p>
+          <el-switch
+            v-model="approveRecommend"
+            active-text="设为首页推荐"
+            inactive-text="不推荐"
+          />
+          <p style="margin:12px 0 0;color:var(--text-tertiary);font-size:var(--text-xs)">
+            推荐物品将出现在首页「为你推荐」板块。
+          </p>
+          <template #footer>
+            <el-button @click="approveDialogVisible=false">取消</el-button>
+            <el-button type="success" @click="confirmApprove">确认通过</el-button>
           </template>
         </el-dialog>
       </el-tab-pane>
@@ -223,18 +257,47 @@
             <el-table-column prop="target_role" label="范围" width="90">
               <template #default="{ row }">{{ row.target_role==='all'?'全体':row.target_role==='user'?'用户':'管理' }}</template>
             </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag :type="row.status==='published' ? 'success' : 'info'" size="small">
+                  {{ row.status === 'published' ? '已发布' : '草稿' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="content" label="内容" min-width="200">
               <template #default="{ row }">{{ row.content?.substring(0, 60) }}{{ row.content?.length > 60 ? '...' : '' }}</template>
             </el-table-column>
             <el-table-column prop="created_at" label="发布时间" width="160" />
-            <el-table-column label="操作" width="140" align="center">
+            <el-table-column label="操作" width="220" align="center">
               <template #default="{ row }">
                 <el-button size="small" @click="openAnnDialog(row)">编辑</el-button>
+                <el-button v-if="row.status!=='published'" size="small" type="success" plain @click="handleTogglePublish(row, 'publish')">发布</el-button>
+                <el-button v-else size="small" type="warning" plain @click="handleTogglePublish(row, 'unpublish')">下架</el-button>
                 <el-button size="small" type="danger" plain @click="handleDeleteAnn(row.id)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
         </div>
+      </el-tab-pane>
+
+      <!-- ====== 举报管理 Tab（v3.6.0） ====== -->
+      <el-tab-pane label="举报管理" name="reports">
+        <ReportManage />
+      </el-tab-pane>
+
+      <!-- ====== 留言管理 Tab（v3.6.0） ====== -->
+      <el-tab-pane label="留言管理" name="comments">
+        <CommentManage />
+      </el-tab-pane>
+
+      <!-- ====== 轮播图 Tab（v3.6.0） ====== -->
+      <el-tab-pane label="轮播图" name="banners">
+        <BannerManage />
+      </el-tab-pane>
+
+      <!-- ====== 分类管理 Tab（v3.6.0） ====== -->
+      <el-tab-pane label="分类管理" name="categories">
+        <CategoryManage />
       </el-tab-pane>
     </el-tabs>
 
@@ -260,7 +323,8 @@
       </el-form>
       <template #footer>
         <el-button @click="annDialogVisible=false">取消</el-button>
-        <el-button type="primary" @click="handleSaveAnn" :loading="annSaving">{{ editingAnn?.id ? '保存' : '发布' }}</el-button>
+        <el-button @click="handleSaveAnn('draft')" :loading="annSaving">保存草稿</el-button>
+        <el-button type="primary" @click="handleSaveAnn('published')" :loading="annSaving">发布</el-button>
       </template>
     </el-dialog>
 
@@ -297,10 +361,19 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getPendingItems, reviewItem, batchApprove, getUsers, updateUser, createUser, deleteUser, getAllItems, updateItemStatus, batchItems } from '@/api/admin'
-import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from '@/api/announcements'
+import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, unpublishAnnouncement } from '@/api/announcements'
 import { getImageUrl, ITEM_TYPE_MAP } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PictureFilled, Select, CloseBold, Plus, Edit, Search, Loading, ArrowDown, Remove, CircleCheck, Delete } from '@element-plus/icons-vue'
+import { PictureFilled, Select, CloseBold, Plus, Edit, Search, Loading, ArrowDown, Remove, CircleCheck, Delete, TrendCharts } from '@element-plus/icons-vue'
+import ReportManage from './admin/ReportManage.vue'
+import CommentManage from './admin/CommentManage.vue'
+import BannerManage from './admin/BannerManage.vue'
+import CategoryManage from './admin/CategoryManage.vue'
+
+// v3.6.0：审核通过对话框（含推荐位开关）
+const approveDialogVisible = ref(false)
+const approveId = ref(null)
+const approveRecommend = ref(false)
 
 const activeTab = ref('review')
 const items = ref([])
@@ -378,10 +451,18 @@ const handleBatch = async (action) => {
   } catch { } finally { batchLoading.value = false }
 }
 
-const approve = async (id) => {
+const approve = (id) => {
+  // v3.6.0：通过前弹窗选择是否设为首页推荐
+  approveId.value = id
+  approveRecommend.value = false
+  approveDialogVisible.value = true
+}
+
+const confirmApprove = async () => {
   try {
-    await reviewItem(id, { action: 'approved' })
+    await reviewItem(approveId.value, { action: 'approved', is_recommend: approveRecommend.value })
     ElMessage.success('审核通过，已自动匹配并通知相关用户')
+    approveDialogVisible.value = false
     loadItems()
   } catch {
     // 错误已在拦截器处理
@@ -535,20 +616,46 @@ const loadAnnouncements = async () => {
 
 const openAnnDialog = (row) => {
   editingAnn.value = row || null
-  annForm.value = row ? { title: row.title, content: row.content, is_pinned: !!row.is_pinned, target_role: row.target_role || 'all' } : { title: '', content: '', is_pinned: false, target_role: 'all' }
+  annForm.value = row
+    ? { title: row.title, content: row.content, is_pinned: !!row.is_pinned, target_role: row.target_role || 'all', status: row.status || 'draft' }
+    : { title: '', content: '', is_pinned: false, target_role: 'all', status: 'draft' }
   annDialogVisible.value = true
 }
 
-const handleSaveAnn = async () => {
+const handleSaveAnn = async (status) => {
   if (!annForm.value.title.trim() || !annForm.value.content.trim()) { ElMessage.warning('标题和内容为必填'); return }
   annSaving.value = true
   try {
-    const data = { title: annForm.value.title.trim(), content: annForm.value.content.trim(), is_pinned: annForm.value.is_pinned ? 1 : 0, target_role: annForm.value.target_role }
-    if (editingAnn.value?.id) { await updateAnnouncement(editingAnn.value.id, data) } else { await createAnnouncement(data) }
-    ElMessage.success(editingAnn.value?.id ? '已更新' : '已发布')
+    const data = {
+      title: annForm.value.title.trim(),
+      content: annForm.value.content.trim(),
+      is_pinned: annForm.value.is_pinned ? 1 : 0,
+      target_role: annForm.value.target_role,
+      status
+    }
+    if (editingAnn.value?.id) {
+      await updateAnnouncement(editingAnn.value.id, data)
+    } else {
+      await createAnnouncement(data)
+    }
+    ElMessage.success(status === 'published' ? '已发布' : '已保存为草稿')
     annDialogVisible.value = false
     loadAnnouncements()
   } catch { } finally { annSaving.value = false }
+}
+
+// v3.6.0：发布/下架流转
+const handleTogglePublish = async (row, action) => {
+  try {
+    if (action === 'publish') {
+      await publishAnnouncement(row.id)
+      ElMessage.success('已发布')
+    } else {
+      await unpublishAnnouncement(row.id)
+      ElMessage.success('已下架为草稿')
+    }
+    loadAnnouncements()
+  } catch { }
 }
 
 const handleDeleteAnn = async (id) => {

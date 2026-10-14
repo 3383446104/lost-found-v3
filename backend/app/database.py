@@ -67,7 +67,7 @@ def init_db():
                 color_vector TEXT,
                 contact TEXT,
                 location TEXT,
-                status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claimed', 'done', 'rejected', 'closed')),
+                status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claiming', 'claimed', 'done', 'rejected', 'closed')),
                 user_id INTEGER NOT NULL,
                 review_status TEXT DEFAULT 'pending' CHECK (review_status IN ('pending', 'approved', 'rejected')),
                 reviewer_id INTEGER,
@@ -142,6 +142,165 @@ def init_db():
             cursor.execute("ALTER TABLE items ADD COLUMN color_vector TEXT")
             logger.info("迁移成功：items 表已添加 color_vector 列")
 
+        # =====================================================================
+        # v3.6.0 融合迁移：认领/举报/留言/轮播/分类 五张新表
+        # =====================================================================
+
+        # ---- 认领申请表（替代旧「通知式认领」）----
+        # status: 0待审核 / 1已通过 / 2已拒绝 / 3已完成 / 4已撤销
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS claims (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                claimer_id INTEGER NOT NULL,
+                claim_reason TEXT,
+                feature_description TEXT,
+                proof_image TEXT,
+                contact_phone TEXT,
+                status INTEGER NOT NULL DEFAULT 0,
+                review_remark TEXT,
+                reviewed_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (item_id) REFERENCES items(id),
+                FOREIGN KEY (claimer_id) REFERENCES users(id)
+            )
+        ''')
+
+        # ---- 举报表 ----
+        # report_type: 1虚假信息 / 2不良内容 / 3联系方式异常 / 4重复发布 / 5其他
+        # handle_status: 0待处理 / 1已处理 / 2已驳回
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                reporter_id INTEGER NOT NULL,
+                report_type INTEGER NOT NULL DEFAULT 5,
+                report_reason TEXT NOT NULL,
+                report_image TEXT,
+                handle_status INTEGER NOT NULL DEFAULT 0,
+                handle_result TEXT,
+                handler_id INTEGER,
+                handle_time TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (item_id) REFERENCES items(id),
+                FOREIGN KEY (reporter_id) REFERENCES users(id)
+            )
+        ''')
+
+        # ---- 留言表（楼中楼：parent_id 为被回复留言 id，NULL=顶层）----
+        # status: 1正常 / 0隐藏（管理员）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                parent_id INTEGER,
+                content TEXT NOT NULL,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (item_id) REFERENCES items(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        ''')
+
+        # ---- 轮播图表 ----
+        # status: 1启用 / 0停用；sort_no 升序展示
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS banners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                image_path TEXT NOT NULL,
+                description TEXT,
+                link_url TEXT,
+                sort_no INTEGER NOT NULL DEFAULT 0,
+                status INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # ---- 物品分类表（表驱动，替代固定枚举；items.category 仍存 TEXT）----
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                sort_no INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # 种子：仅空表时写入现有常量 7 类（幂等）
+        cursor.execute("SELECT COUNT(*) FROM categories")
+        if cursor.fetchone()[0] == 0:
+            cursor.executemany(
+                "INSERT INTO categories (name, sort_no) VALUES (?, ?)",
+                [(c, i) for i, c in enumerate(CATEGORIES)]
+            )
+            logger.info("迁移成功：categories 表已写入种子分类")
+
+        # ---------- 迁移：items.status 枚举扩展（加入 'claiming'，需重建表）----------
+        # SQLite 的 CHECK 约束无法 ALTER：读建表 SQL 判是否已含 'claiming'，
+        # 未含则整体重建（本项目 FK 未开启，装饰性引用不受影响）；重建前需已备份。
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='items'")
+        items_ddl = cursor.fetchone()
+        if items_ddl and "'claiming'" not in items_ddl["sql"]:
+            logger.info("迁移：items 表重建以扩展 status 枚举（加入 claiming）")
+            cursor.execute('''
+                CREATE TABLE items_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL CHECK (type IN ('lost', 'found')),
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT,
+                    image_path TEXT,
+                    image_vector TEXT,
+                    text_vector TEXT,
+                    color_vector TEXT,
+                    contact TEXT,
+                    location TEXT,
+                    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claiming', 'claimed', 'done', 'rejected', 'closed')),
+                    user_id INTEGER NOT NULL,
+                    review_status TEXT DEFAULT 'pending' CHECK (review_status IN ('pending', 'approved', 'rejected')),
+                    reviewer_id INTEGER,
+                    review_time TIMESTAMP,
+                    reject_reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (reviewer_id) REFERENCES users(id)
+                )
+            ''')
+            # 显式列名对齐（**不可用 SELECT ***）：老表的 reject_reason / color_vector 是
+            # 历史 ALTER 追加在末尾的列，列序与新表定义不同，* 展开会错位丢数据/触发 CHECK。
+            # 显式插入 id 使 AUTOINCREMENT 序列自动追平（sqlite_sequence 随 DROP 清理、随 INSERT 重建）。
+            cursor.execute('''
+                INSERT INTO items_new (id, type, title, description, category, image_path,
+                                       image_vector, text_vector, color_vector, contact, location,
+                                       status, user_id, review_status, reviewer_id, review_time,
+                                       reject_reason, created_at, updated_at)
+                SELECT id, type, title, description, category, image_path,
+                       image_vector, text_vector, color_vector, contact, location,
+                       status, user_id, review_status, reviewer_id, review_time,
+                       reject_reason, created_at, updated_at
+                FROM items
+            ''')
+            cursor.execute("DROP TABLE items")
+            cursor.execute("ALTER TABLE items_new RENAME TO items")
+            logger.info("迁移成功：items 表已重建（status 枚举含 claiming）")
+
+        # ---------- 迁移：items 新增多图/推荐列（v3.6.0）----------
+        cursor.execute("PRAGMA table_info(items)")
+        item_cols_v360 = [row['name'] for row in cursor.fetchall()]
+        if 'cover_image' not in item_cols_v360:
+            cursor.execute("ALTER TABLE items ADD COLUMN cover_image TEXT")
+        if 'images' not in item_cols_v360:
+            cursor.execute("ALTER TABLE items ADD COLUMN images TEXT")
+        if 'is_recommend' not in item_cols_v360:
+            cursor.execute("ALTER TABLE items ADD COLUMN is_recommend INTEGER DEFAULT 0")
+        if not {'cover_image', 'images', 'is_recommend'} <= set(item_cols_v360):
+            logger.info("迁移成功：items 表已添加 cover_image / images / is_recommend 列")
+
         # ---- 统计计数表（持久化计数器，不受物品删除影响） ----
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stats_counters (
@@ -164,6 +323,7 @@ def init_db():
                 content TEXT NOT NULL,
                 is_pinned INTEGER DEFAULT 0,
                 target_role TEXT DEFAULT 'all',
+                status TEXT DEFAULT 'published',
                 admin_id INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (admin_id) REFERENCES users(id)
@@ -175,6 +335,13 @@ def init_db():
         if 'target_role' not in ann_cols:
             cursor.execute("ALTER TABLE announcements ADD COLUMN target_role TEXT DEFAULT 'all'")
             logger.info("迁移成功：announcements 表已添加 target_role 列")
+
+        # 迁移：公告草稿/发布分离（v3.6.0，draft / published）
+        cursor.execute("PRAGMA table_info(announcements)")
+        ann_cols_v360 = [r['name'] for r in cursor.fetchall()]
+        if 'status' not in ann_cols_v360:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN status TEXT DEFAULT 'published'")
+            logger.info("迁移成功：announcements 表已添加 status 列（草稿/发布分离）")
 
         # ---- 目录准备 ----
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
@@ -191,6 +358,12 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_lost_item ON matches(lost_item_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_found_item ON matches(found_item_id)')
+        # v3.6.0 新表索引
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_claims_item ON claims(item_id, status)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_claims_claimer ON claims(claimer_id, status)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(handle_status, created_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_item ON reports(item_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_item ON comments(item_id, status, created_at)')
         # 注意：不再需要单独 idx_notifications_user_id 和 idx_notifications_is_read，复合索引已覆盖
 
         logger.info("数据库初始化/迁移完成")

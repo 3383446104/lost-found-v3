@@ -57,6 +57,24 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/claims',
+    name: 'Claims',
+    component: () => import('@/views/ClaimsView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/reports/mine',
+    name: 'MyReports',
+    component: () => import('@/views/MyReportsView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin/stats',
+    name: 'AdminStats',
+    component: () => import('@/views/AdminStatsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
     path: '/',
     redirect: '/items'
   }

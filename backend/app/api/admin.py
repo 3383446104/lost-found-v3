@@ -35,6 +35,7 @@ class ReviewStatus(str, Enum):
 class ReviewAction(BaseModel):
     action: ReviewStatus
     reason: Optional[str] = Field(None, max_length=200, description="驳回理由（驳回时必填）")
+    is_recommend: Optional[bool] = Field(None, description="设为首页推荐（仅通过时生效；None=不改）")
 
     @model_validator(mode='after')
     def require_reason_for_reject(self):
@@ -211,6 +212,13 @@ async def review_item(
         if cursor.rowcount == 0:
             # 状态已被其他管理员修改
             raise HTTPException(409, "审核冲突，请刷新后重试")
+
+        # v3.6.0：推荐位开关（仅在审核请求显式携带时写入；通过/驳回均可调整）
+        if payload.is_recommend is not None:
+            cursor.execute(
+                "UPDATE items SET is_recommend = ? WHERE id = ?",
+                (1 if payload.is_recommend else 0, item_id),
+            )
 
         # 记录审计日志（在事务内）
         logger.info(
@@ -456,7 +464,7 @@ async def get_all_items(
 
         offset = (page - 1) * size
         cur.execute(
-            f"SELECT id, type, title, description, category, image_path, contact, location, status, review_status, user_id, created_at, review_time FROM items WHERE {w} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"SELECT id, type, title, description, category, image_path, images, cover_image, is_recommend, contact, location, status, review_status, user_id, created_at, review_time FROM items WHERE {w} ORDER BY created_at DESC LIMIT ? OFFSET ?",
             params + [size, offset]
         )
         items = [dict(r) for r in cur.fetchall()]
@@ -489,6 +497,13 @@ async def update_item_status(
             raise HTTPException(404, "物品不存在")
 
         old_status = item["status"]
+
+        # v3.6.0：推荐位开关（None=不改）
+        if payload.is_recommend is not None:
+            cur.execute(
+                "UPDATE items SET is_recommend = ? WHERE id = ?",
+                (1 if payload.is_recommend else 0, item_id),
+            )
 
         # pending→active：强制走审核流程
         if old_status == "pending" and new_status == "active":
@@ -559,9 +574,22 @@ async def batch_items(
             count = cur.rowcount
 
         elif action == "delete":
-            # 先取图片路径（事务提交后再删磁盘文件）
-            cur.execute(f"SELECT image_path FROM items WHERE id IN ({placeholders})", ids)
-            image_paths_to_remove = [r["image_path"] for r in cur.fetchall() if r["image_path"]]
+            # 先取图片路径（事务提交后再删磁盘文件；v3.6.0 多图全量清理）
+            cur.execute(f"SELECT image_path, images FROM items WHERE id IN ({placeholders})", ids)
+            image_paths_to_remove = []
+            import json as _json
+            for r in cur.fetchall():
+                names = []
+                if r["images"]:
+                    try:
+                        arr = _json.loads(r["images"])
+                        if isinstance(arr, list):
+                            names = [os.path.basename(s) for s in arr if s]
+                    except (ValueError, TypeError):
+                        pass
+                if not names and r["image_path"]:
+                    names = [os.path.basename(r["image_path"])]
+                image_paths_to_remove.extend(names)
             cur.execute(f"DELETE FROM items WHERE id IN ({placeholders})", ids)
             # count 取本分支 DELETE 的真实受影响行数
             count = cur.rowcount
@@ -569,7 +597,7 @@ async def batch_items(
     # 事务已提交，删除磁盘图片（单条失败记录日志，不静默吞掉）
     for p in image_paths_to_remove:
         try:
-            os.remove(p)
+            os.remove(os.path.join(settings.UPLOAD_FOLDER, p))
         except OSError as e:
             logger.warning(f"删除图片失败: {p}, 错误: {e}")
 

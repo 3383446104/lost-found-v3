@@ -41,6 +41,11 @@ from .api.admin import router as admin_router
 from .api.notifications import router as notifications_router
 from .api.stats import router as stats_router
 from .api.announcements import router as announcements_router
+from .api.claims import router as claims_router
+from .api.reports import router as reports_router
+from .api.comments import router as comments_router
+from .api.banners import router as banners_router
+from .api.categories import router as categories_router
 
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(items_router, prefix=settings.API_V1_STR)
@@ -48,6 +53,11 @@ app.include_router(admin_router, prefix=settings.API_V1_STR)
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
 app.include_router(stats_router, prefix=settings.API_V1_STR)
 app.include_router(announcements_router, prefix=settings.API_V1_STR)
+app.include_router(claims_router, prefix=settings.API_V1_STR)
+app.include_router(reports_router, prefix=settings.API_V1_STR)
+app.include_router(comments_router, prefix=settings.API_V1_STR)
+app.include_router(banners_router, prefix=settings.API_V1_STR)
+app.include_router(categories_router, prefix=settings.API_V1_STR)
 
 # ---- 全局异常处理 ----
 @app.exception_handler(Exception)

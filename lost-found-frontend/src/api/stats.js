@@ -1,0 +1,13 @@
+import request from '@/utils/request'
+
+// 首页数据看板（既有）
+export const getDashboard = () => request.get('/stats/dashboard')
+
+// v3.6.0：管理端统计
+export const adminOverview = () => request.get('/stats/admin/overview')
+
+export const adminRecovery = () => request.get('/stats/admin/recovery')
+
+export const adminPublishTrend = (days = 30) => request.get('/stats/admin/publish-trend', { params: { days } })
+
+export const adminCategoryPie = () => request.get('/stats/admin/category-pie')

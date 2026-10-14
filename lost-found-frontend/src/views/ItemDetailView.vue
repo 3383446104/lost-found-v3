@@ -6,15 +6,18 @@
     </div>
 
     <div v-if="item" class="detail-layout">
-      <!-- 左栏：图片 -->
+      <!-- 左栏：多图画廊 -->
       <div class="detail-left">
         <div class="img-card">
-          <img
-            v-if="item.image_path"
-            :src="getImageUrl(item.image_path)"
+          <el-image
+            v-if="images.length"
+            :src="getImageUrl(images[activeImg])"
             :alt="item.title"
             class="hero-img"
-            loading="lazy"
+            fit="cover"
+            :preview-src-list="previewList"
+            :initial-index="activeImg"
+            preview-teleported
           />
           <div v-else class="img-placeholder">
             <el-icon :size="48"><PictureFilled /></el-icon>
@@ -27,6 +30,21 @@
           >
             {{ ITEM_TYPE_MAP[item.type]?.label }}
           </span>
+          <!-- 图片数量角标 -->
+          <span v-if="images.length > 1" class="img-count-badge">{{ activeImg + 1 }} / {{ images.length }}</span>
+        </div>
+        <!-- 缩略图 -->
+        <div v-if="images.length > 1" class="thumb-row">
+          <div
+            v-for="(img, i) in images"
+            :key="img"
+            class="thumb"
+            :class="{ 'thumb--active': i === activeImg }"
+            @click="activeImg = i"
+          >
+            <img :src="getImageUrl(img)" :alt="`图${i + 1}`" loading="lazy" />
+            <span v-if="i === 0" class="cover-tag">封面</span>
+          </div>
         </div>
       </div>
 
@@ -85,44 +103,77 @@
           <p class="contact-text">{{ item.contact }}</p>
         </div>
 
-        <!-- 认领/归还按钮（非本人、物品活跃时） -->
-        <div class="claim-section" v-if="canClaim">
+        <!-- v3.6.0: 认领通过后展示发布者脱敏联系方式 -->
+        <div class="info-card" v-if="ownerContactMasked">
+          <h3 class="card-section-title">发布者联系方式（已通过申请）</h3>
+          <p class="contact-text">{{ ownerContactMasked }}</p>
+        </div>
+
+        <!-- 认领状态提示（已有申请时） -->
+        <div class="claim-section" v-if="canClaim && myClaim && [0, 1, 2, 3, 4].includes(myClaim.status)">
+          <div class="claim-card claim-card--status">
+            <div class="claim-body">
+              <span class="claim-text">
+                您的{{ actionWord }}申请状态：{{ CLAIM_STATUS_MAP[myClaim.status]?.label }}
+              </span>
+              <span class="claim-hint" v-if="myClaim.status === 2 && myClaim.review_remark">
+                拒绝理由：{{ myClaim.review_remark }}
+              </span>
+              <span class="claim-hint" v-else-if="myClaim.status === 0">请耐心等待发布者处理</span>
+              <span class="claim-hint" v-else-if="myClaim.status === 1">请查看上方联系方式，尽快与发布者完成交接</span>
+            </div>
+            <el-button
+              v-if="myClaim.status === 0"
+              type="warning"
+              plain
+              @click="handleCancelClaim"
+              :loading="cancelling"
+            >撤销申请</el-button>
+          </div>
+        </div>
+
+        <!-- 认领/归还按钮（非本人、物品活跃、无待处理申请时） -->
+        <div class="claim-section" v-if="canClaim && !myClaim">
           <div class="claim-card">
             <div class="claim-icon">
               <el-icon :size="20"><Promotion /></el-icon>
             </div>
             <div class="claim-body">
               <span class="claim-text">{{ item.type === 'lost' ? '这是您捡到的物品吗？' : '这是您丢失的物品吗？' }}</span>
-              <span class="claim-hint">点击下方按钮，系统将通知物品发布者</span>
+              <span class="claim-hint">填写物品特征描述可加快发布者核验，防止冒领</span>
             </div>
-            <el-button type="success" size="large" @click="handleClaim" :loading="claiming" class="claim-btn">
+            <el-button type="success" size="large" @click="openClaimDialog" class="claim-btn">
               {{ item.type === 'lost' ? '我要归还' : '我要认领' }}
             </el-button>
           </div>
         </div>
 
-        <!-- v3.3: 发布者自标记区域（本人 + 物品活跃 + 有待处理申请时突出提示） -->
-        <div class="claim-section" v-if="canEdit && item.status === 'active'">
+        <!-- 发布者视角：收到的申请 + 自标记 -->
+        <div class="claim-section" v-if="canEdit && (item.status === 'active' || item.status === 'claiming')">
           <div class="claim-card" :class="{ 'claim-card--pending': hasClaimNotification }">
             <div class="claim-icon">
-              <el-icon :size="20"><Checked /></el-icon>
+              <el-icon :size="20"><Bell /></el-icon>
             </div>
             <div class="claim-body">
               <span class="claim-text">
-                {{ item.type === 'lost' ? '物品已找回？' : '物品已归还？' }}
+                {{ hasClaimNotification ? `有用户申请处理该物品` : (item.type === 'lost' ? '物品已找回？' : '物品已归还？') }}
               </span>
-              <span class="claim-hint" v-if="hasClaimNotification">{{ claimNotificationText }}</span>
+              <span class="claim-hint" v-if="hasClaimNotification">点击「处理申请」同意或拒绝（同意后其他待审核申请将自动拒绝）</span>
               <span class="claim-hint" v-else>确认后物品将从列表移除，移入历史记录</span>
             </div>
-            <el-button
-              type="success"
-              size="large"
-              @click="handleMarkClaimed"
-              :loading="marking"
-              class="claim-btn"
-            >
-              {{ item.type === 'lost' ? '标记为已找回' : '标记为已归还' }}
-            </el-button>
+            <div class="claim-actions">
+              <el-button v-if="hasClaimNotification" type="primary" size="large" @click="goToReceived">
+                处理申请
+              </el-button>
+              <el-button
+                type="success"
+                size="large"
+                @click="handleMarkClaimed"
+                :loading="marking"
+              >
+                {{ item.type === 'lost' ? '标记为已找回' : '标记为已归还' }}
+              </el-button>
+            </div>
           </div>
         </div>
 
@@ -138,38 +189,203 @@
       </div>
     </div>
 
+    <!-- 相似推荐（v3.6.0，异步加载） -->
+    <div v-if="item" class="similar-section">
+      <h2 class="section-title">相似推荐</h2>
+      <p class="section-hint" v-if="similarLoading">正在进行图片智能匹配，推荐结果稍后呈现……</p>
+      <div v-else-if="similarItems.length" class="similar-grid">
+        <div
+          v-for="s in similarItems"
+          :key="s.id"
+          class="similar-card"
+          @click="router.push(`/items/${s.id}`)"
+        >
+          <img v-if="s.image_path" :src="getImageUrl(s.image_path)" :alt="s.title" loading="lazy" />
+          <div class="similar-card-body">
+            <div class="similar-title">{{ s.title }}</div>
+            <div class="similar-meta">
+              <span v-if="s.category">{{ s.category }}</span>
+              <span v-if="s.location">{{ s.location }}</span>
+            </div>
+            <div class="similar-score">
+              <el-tag :color="evidenceColor(s.level)" effect="plain" size="small" style="border:none;">
+                {{ EVIDENCE_LEVEL_MAP[s.level]?.label || '' }}
+              </el-tag>
+              <span class="score-num">{{ (s.similarity * 100).toFixed(1) }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <el-empty v-else-if="!similarLoading && similarLoaded" description="暂无相似物品" :image-size="64" />
+    </div>
+
+    <!-- 留言区（v3.6.0） -->
+    <div v-if="item" class="comments-section">
+      <h2 class="section-title">在线留言（{{ commentTree.length }}）</h2>
+
+      <!-- 发表留言 -->
+      <div class="comment-composer" v-if="authStore.token">
+        <el-input
+          v-model="commentDraft"
+          type="textarea"
+          :rows="2"
+          maxlength="500"
+          show-word-limit
+          placeholder="写下您的留言（如：我在附近见过这个物品）"
+        />
+        <el-button type="primary" @click="submitComment()" :loading="commentSubmitting">发表留言</el-button>
+      </div>
+      <div class="comment-composer--guest" v-else>
+        <el-button text type="primary" @click="router.push('/login')">登录后发表留言</el-button>
+      </div>
+
+      <!-- 留言树 -->
+      <div v-if="commentTree.length" class="comment-list">
+        <div v-for="c in commentTree" :key="c.id" class="comment-item">
+          <div class="comment-main">
+            <div class="comment-head">
+              <span class="comment-user">{{ c.username }}</span>
+              <span class="comment-time">{{ c.created_at }}</span>
+            </div>
+            <p class="comment-content">{{ c.content }}</p>
+            <div class="comment-actions">
+              <el-button text size="small" v-if="authStore.token" @click="toggleReply(c)">回复</el-button>
+              <el-button text size="small" type="danger" v-if="canDeleteComment(c)" @click="handleDeleteComment(c)">删除</el-button>
+              <el-button text size="small" type="warning" v-if="authStore.isAdmin" @click="handleToggleHide(c)">隐藏</el-button>
+            </div>
+            <!-- 回复输入框 -->
+            <div v-if="replyingTo === c.id" class="reply-box">
+              <el-input
+                v-model="replyDraft"
+                type="textarea"
+                :rows="2"
+                maxlength="500"
+                :placeholder="`回复 @${c.username}`"
+              />
+              <div class="reply-actions">
+                <el-button size="small" @click="replyingTo = null">取消</el-button>
+                <el-button size="small" type="primary" @click="submitComment(c)" :loading="commentSubmitting">回复</el-button>
+              </div>
+            </div>
+          </div>
+          <!-- 楼中楼子回复 -->
+          <div v-if="c.children && c.children.length" class="comment-children">
+            <div v-for="ch in c.children" :key="ch.id" class="comment-item comment-item--child">
+              <div class="comment-head">
+                <span class="comment-user">{{ ch.username }}</span>
+                <span class="comment-time">{{ ch.created_at }}</span>
+              </div>
+              <p class="comment-content">{{ ch.content }}</p>
+              <div class="comment-actions">
+                <el-button text size="small" type="danger" v-if="canDeleteComment(ch)" @click="handleDeleteComment(ch)">删除</el-button>
+                <el-button text size="small" type="warning" v-if="authStore.isAdmin" @click="handleToggleHide(ch)">隐藏</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <el-empty v-else description="还没有留言，来抢沙发" :image-size="64" />
+    </div>
+
+    <!-- 举报入口（v3.6.0） -->
+    <div v-if="item" class="report-row">
+      <el-button text type="danger" @click="reportVisible = true">
+        <el-icon><Warning /></el-icon>举报此信息
+      </el-button>
+    </div>
+
     <!-- 不存在 -->
     <div v-else-if="notFound" style="text-align:center;padding:80px 0;">
       <el-empty description="物品不存在" />
     </div>
+
+    <!-- 认领申请对话框（v3.6.0：特征描述 + 证明图） -->
+    <el-dialog v-model="claimVisible" :title="`申请${actionWord}`" width="480px">
+      <el-form label-position="top">
+        <el-form-item label="认领说明">
+          <el-input v-model="claimForm.claim_reason" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="选填：说明情况" />
+        </el-form-item>
+        <el-form-item label="物品特征描述（防冒领核验依据）" required>
+          <el-input v-model="claimForm.feature_description" maxlength="200" show-word-limit placeholder="如：黑色、左角有划痕、内有某证件" />
+        </el-form-item>
+        <el-form-item label="证明图片（选填，限 1 张）">
+          <el-upload
+            :auto-upload="false"
+            :limit="1"
+            list-type="picture-card"
+            accept="image/*"
+            :on-change="onProofChange"
+            :on-remove="onProofRemove"
+            v-model:file-list="proofFileList"
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+        </el-form-item>
+        <el-form-item label="联系电话">
+          <el-input v-model="claimForm.contact_phone" maxlength="20" placeholder="选填：默认使用您资料中的电话" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="claimVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitClaim" :loading="claimSubmitting">提交申请</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 举报对话框 -->
+    <el-dialog v-model="reportVisible" title="举报此信息" width="440px">
+      <el-form label-position="top">
+        <el-form-item label="举报类型" required>
+          <el-select v-model="reportForm.report_type" style="width: 100%">
+            <el-option v-for="(v, k) in REPORT_TYPE_MAP" :key="k" :label="v.label" :value="Number(k)" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="举报原因" required>
+          <el-input v-model="reportForm.report_reason" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="请描述具体情况" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="reportVisible = false">取消</el-button>
+        <el-button type="danger" @click="submitReport" :loading="reportSubmitting">提交举报</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getItem, deleteItem, claimItem, markClaimed } from '@/api/items'
+import { getItem, deleteItem, markClaimed, getSimilar } from '@/api/items'
 import { getUnreadList } from '@/api/notifications'
-import { getImageUrl, ITEM_TYPE_MAP, ITEM_STATUS_MAP, REVIEW_STATUS_MAP } from '@/utils/helpers'
+import { claimStatus, applyClaim, uploadProof, cancelClaim, getClaim } from '@/api/claims'
+import { listComments, postComment, deleteComment, adminSetCommentStatus } from '@/api/comments'
+import { submitReport as apiSubmitReport } from '@/api/reports'
+import {
+  getImageUrl, ITEM_TYPE_MAP, ITEM_STATUS_MAP, REVIEW_STATUS_MAP,
+  CLAIM_STATUS_MAP, REPORT_TYPE_MAP, EVIDENCE_LEVEL_MAP, parseItemImages
+} from '@/utils/helpers'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { ArrowLeft, PictureFilled, WarningFilled, Edit, Delete, Promotion, Bell, Checked } from '@element-plus/icons-vue'
+import { ArrowLeft, PictureFilled, WarningFilled, Edit, Delete, Promotion, Bell, Checked, Plus, Warning } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const item = ref(null)
 const notFound = ref(false)
-const claiming = ref(false)
-const confirming = ref(false)
+const marking = ref(false)
 const hasClaimNotification = ref(false)
-const claimNotificationText = ref('有人申请处理该物品')
-const claimerName = ref('')
+
+// ---- 多图画廊 ----
+const images = computed(() => parseItemImages(item.value))
+const activeImg = ref(0)
+const previewList = computed(() => images.value.map((f) => getImageUrl(f)))
 
 const canEdit = computed(() => {
   if (!item.value) return false
   return authStore.isAdmin || item.value.user_id === authStore.user?.id
 })
+
+const actionWord = computed(() => (item.value?.type === 'lost' ? '归还' : '认领'))
 
 const canClaim = computed(() => {
   if (!item.value) return false
@@ -178,12 +394,228 @@ const canClaim = computed(() => {
     && item.value.review_status === 'approved'
 })
 
+// ---- 认领闭环状态 ----
+const myClaim = ref(null)
+const ownerContactMasked = ref('')
+const claimVisible = ref(false)
+const claimSubmitting = ref(false)
+const cancelling = ref(false)
+const proofFileList = ref([])
+const claimForm = ref({ claim_reason: '', feature_description: '', contact_phone: '', proof_image: '' })
+
+const loadClaimState = async () => {
+  if (!canClaim.value) return
+  try {
+    const res = await claimStatus(route.params.id)
+    myClaim.value = res.claim || null
+    if (myClaim.value && [1, 3].includes(myClaim.value.status)) {
+      const detail = await getClaim(myClaim.value.id)
+      ownerContactMasked.value = detail.claim?.owner_contact_masked || ''
+    }
+  } catch {
+    // 静默失败：不影响详情浏览
+  }
+}
+
+const openClaimDialog = () => {
+  claimForm.value = {
+    claim_reason: '',
+    feature_description: '',
+    contact_phone: authStore.user?.phone || '',
+    proof_image: ''
+  }
+  proofFileList.value = []
+  claimVisible.value = true
+}
+
+const onProofChange = (file) => {
+  claimForm.value.proof_image = file?.name || ''
+}
+const onProofRemove = () => {
+  claimForm.value.proof_image = ''
+}
+
+const submitClaim = async () => {
+  if (!claimForm.value.feature_description.trim()) {
+    ElMessage.warning('请填写物品特征描述（防冒领核验依据）')
+    return
+  }
+  claimSubmitting.value = true
+  try {
+    // 先上传证明图（若有）
+    const rawFile = proofFileList.value[0]?.raw
+    if (rawFile) {
+      const up = await uploadProof(rawFile)
+      claimForm.value.proof_image = up.path
+    }
+    await applyClaim({
+      item_id: Number(route.params.id),
+      claim_reason: claimForm.value.claim_reason,
+      feature_description: claimForm.value.feature_description,
+      contact_phone: claimForm.value.contact_phone,
+      proof_image: claimForm.value.proof_image || null
+    })
+    ElMessage.success(`${actionWord.value}申请已发送，请等待发布者处理`)
+    claimVisible.value = false
+    await loadClaimState()
+  } catch (e) {
+    console.error('认领申请失败:', e)
+  } finally {
+    claimSubmitting.value = false
+  }
+}
+
+const handleCancelClaim = async () => {
+  try {
+    await ElMessageBox.confirm('确定撤销该申请吗？撤销后可重新申请。', '撤销申请', {
+      confirmButtonText: '撤销', cancelButtonText: '取消', type: 'warning'
+    })
+  } catch { return }
+  cancelling.value = true
+  try {
+    await cancelClaim(myClaim.value.id)
+    ElMessage.success('申请已撤销')
+    myClaim.value = null
+  } catch (e) {
+    console.error('撤销失败:', e)
+  } finally {
+    cancelling.value = false
+  }
+}
+
+// ---- 相似推荐 ----
+const similarItems = ref([])
+const similarLoading = ref(false)
+const similarLoaded = ref(false)
+const loadSimilar = async () => {
+  similarLoading.value = true
+  try {
+    const res = await getSimilar(route.params.id, { limit: 6 })
+    similarItems.value = res.items || []
+  } catch {
+    similarItems.value = []
+  } finally {
+    similarLoading.value = false
+    similarLoaded.value = true
+  }
+}
+const evidenceColor = (level) => EVIDENCE_LEVEL_MAP[level]?.color || '#9E9E9E'
+
+// ---- 留言 ----
+const commentFlat = ref([])
+const commentDraft = ref('')
+const commentSubmitting = ref(false)
+const replyingTo = ref(null)
+const replyDraft = ref('')
+
+const commentTree = computed(() => {
+  const tops = commentFlat.value.filter((c) => !c.parent_id)
+  return tops.map((t) => ({
+    ...t,
+    children: commentFlat.value.filter((c) => c.parent_id === t.id)
+  }))
+})
+
+const loadComments = async () => {
+  try {
+    const res = await listComments(route.params.id)
+    commentFlat.value = res.comments || []
+  } catch {
+    commentFlat.value = []
+  }
+}
+
+const submitComment = async (parent = null) => {
+  const content = parent ? replyDraft.value.trim() : commentDraft.value.trim()
+  if (!content) {
+    ElMessage.warning('留言内容不能为空')
+    return
+  }
+  commentSubmitting.value = true
+  try {
+    await postComment({ item_id: Number(route.params.id), content, parent_id: parent?.id || null })
+    if (parent) {
+      replyDraft.value = ''
+      replyingTo.value = null
+    } else {
+      commentDraft.value = ''
+    }
+    await loadComments()
+  } catch (e) {
+    console.error('留言失败:', e)
+  } finally {
+    commentSubmitting.value = false
+  }
+}
+
+const toggleReply = (c) => {
+  replyingTo.value = replyingTo.value === c.id ? null : c.id
+  replyDraft.value = ''
+}
+
+const canDeleteComment = (c) => c.is_mine || authStore.isAdmin
+
+const handleDeleteComment = async (c) => {
+  try {
+    await ElMessageBox.confirm('确定删除该留言吗？其下回复将一并删除。', '删除留言', {
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+    })
+  } catch { return }
+  try {
+    await deleteComment(c.id)
+    ElMessage.success('已删除')
+    await loadComments()
+  } catch (e) {
+    console.error('删除留言失败:', e)
+  }
+}
+
+const handleToggleHide = async (c) => {
+  try {
+    await adminSetCommentStatus(c.id, 0)
+    ElMessage.success('已隐藏')
+    await loadComments()
+  } catch (e) {
+    console.error('隐藏失败:', e)
+  }
+}
+
+// ---- 举报 ----
+const reportVisible = ref(false)
+const reportSubmitting = ref(false)
+const reportForm = ref({ report_type: 1, report_reason: '' })
+
+const submitReport = async () => {
+  if (!reportForm.value.report_reason.trim()) {
+    ElMessage.warning('请填写举报原因')
+    return
+  }
+  reportSubmitting.value = true
+  try {
+    await apiSubmitReport({
+      item_id: Number(route.params.id),
+      report_type: reportForm.value.report_type,
+      report_reason: reportForm.value.report_reason
+    })
+    ElMessage.success('举报已提交，管理员将尽快处理')
+    reportVisible.value = false
+  } catch (e) {
+    console.error('举报失败:', e)
+  } finally {
+    reportSubmitting.value = false
+  }
+}
+
+// ---- 原有逻辑 ----
 const loadItem = async () => {
   try {
     const res = await getItem(route.params.id)
     if (res.item) {
       item.value = res.item
-      // 检查是否有待处理的认领/归还通知
+      activeImg.value = 0
+      loadClaimState()
+      loadSimilar()
+      loadComments()
       if (canEdit.value) {
         checkClaimNotifications()
       }
@@ -200,19 +632,19 @@ const checkClaimNotifications = async () => {
     const res = await getUnreadList()
     const notifs = res.notifications || []
     const claimNotif = notifs.find(n =>
-      n.link === `/items/${route.params.id}` &&
+      (n.link === `/claims/received` || n.link === `/items/${route.params.id}`) &&
       (n.title.includes('认领') || n.title.includes('归还'))
     )
     if (claimNotif) {
       hasClaimNotification.value = true
-      claimNotificationText.value = claimNotif.title
-      // 从标题中提取申请人用户名
-      const match = claimNotif.title.match(/用户 '(.+?)'/)
-      if (match) claimerName.value = match[1]
     }
   } catch {
     // 静默失败
   }
+}
+
+const goToReceived = () => {
+  router.push({ path: '/claims', query: { tab: 'received' } })
 }
 
 const handleDelete = async () => {
@@ -234,33 +666,7 @@ const editItem = () => {
   router.push(`/publish?edit=${route.params.id}`)
 }
 
-const handleClaim = async () => {
-  // v3.3: 根据物品类型区分文案 — lost→归还, found→认领
-  const actionWord = item.value?.type === 'lost' ? '归还' : '认领'
-  try {
-    await ElMessageBox.confirm(
-      `确认申请${actionWord}该物品？系统将向发布者发送通知（含您的联系方式），请保持电话畅通。`,
-      `申请${actionWord}`,
-      { confirmButtonText: `确认${actionWord}`, cancelButtonText: '取消', type: 'info' }
-    )
-  } catch {
-    return  // 用户取消
-  }
-
-  claiming.value = true
-  try {
-    await claimItem(route.params.id)
-    ElMessage.success(`${actionWord}申请已发送，请等待发布者联系`)
-  } catch (e) {
-    console.error('认领申请失败:', e)
-    // axios 拦截器已显示错误
-  } finally {
-    claiming.value = false
-  }
-}
-
 // v3.3: 发布者自标记（替代原确认/拒绝）
-const marking = ref(false)
 const handleMarkClaimed = async () => {
   const actionLabel = item.value?.type === 'lost' ? '已找回' : '已归还'
   try {
@@ -280,7 +686,6 @@ const handleMarkClaimed = async () => {
     loadItem()
   } catch (e) {
     console.error('标记失败:', e)
-    // axios 拦截器已显示错误
   } finally {
     marking.value = false
   }
@@ -327,7 +732,6 @@ onMounted(loadItem)
 .hero-img {
   width: 100%;
   aspect-ratio: 4 / 3;
-  object-fit: cover;
   display: block;
 }
 
@@ -355,6 +759,59 @@ onMounted(loadItem)
   -webkit-backdrop-filter: blur(8px);
   box-shadow: var(--shadow-sm);
   letter-spacing: 0.02em;
+}
+
+.img-count-badge {
+  position: absolute;
+  bottom: var(--space-3);
+  right: var(--space-3);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: var(--text-xs);
+}
+
+/* 缩略图行 */
+.thumb-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  position: relative;
+  opacity: 0.75;
+  transition: all 0.2s ease;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb--active {
+  border-color: var(--el-color-primary);
+  opacity: 1;
+}
+
+.cover-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+  padding: 1px 0;
 }
 
 /* ========================================
@@ -386,6 +843,13 @@ onMounted(loadItem)
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+.status-tag {
+  padding: 3px 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 
 /* ---- 信息卡片 ---- */
@@ -456,6 +920,19 @@ onMounted(loadItem)
   margin: 0;
 }
 
+/* ---- 驳回提示 ---- */
+.reject-box {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: #FFEBEE;
+  border: 1px solid #FFCDD2;
+  border-radius: var(--radius-md);
+  color: #C62828;
+  font-size: var(--text-sm);
+}
+
 /* ---- 认领卡片 ---- */
 .claim-section {
   /* wrapper for spacing */
@@ -475,6 +952,11 @@ onMounted(loadItem)
 .claim-card--pending {
   background: #FFF8E1;
   border-color: #FFE082;
+}
+
+.claim-card--status {
+  background: #F5F7FA;
+  border-color: var(--border-light);
 }
 
 .claim-icon {
@@ -507,7 +989,7 @@ onMounted(loadItem)
   color: var(--el-color-primary);
 }
 
-.claim-text--pending {
+.claim-card--pending .claim-text {
   color: #E65100;
 }
 
@@ -531,6 +1013,187 @@ onMounted(loadItem)
   display: flex;
   gap: var(--space-3);
   padding-top: var(--space-2);
+}
+
+/* ========================================
+   全宽区块：相似推荐 / 留言 / 举报
+   ======================================== */
+.similar-section,
+.comments-section {
+  margin-top: var(--space-10);
+}
+
+.section-title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+}
+
+.section-hint {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.similar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+
+.similar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.similar-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.similar-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+}
+
+.similar-card-body {
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.similar-title {
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.similar-meta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.similar-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.score-num {
+  font-weight: 700;
+  color: var(--el-color-primary);
+  font-size: var(--text-sm);
+}
+
+/* ---- 留言 ---- */
+.comment-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.comment-composer--guest {
+  margin-bottom: var(--space-6);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.comment-item {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.comment-main {
+  padding: var(--space-4);
+}
+
+.comment-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.comment-user {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.comment-time {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.comment-content {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.comment-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.reply-box {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.comment-children {
+  border-top: 1px dashed var(--border-light);
+  background: var(--neutral-50);
+}
+
+.comment-item--child {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-8);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.comment-item--child:last-child {
+  border-bottom: none;
+}
+
+/* ---- 举报行 ---- */
+.report-row {
+  margin-top: var(--space-8);
+  text-align: right;
 }
 
 /* ========================================

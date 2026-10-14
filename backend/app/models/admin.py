@@ -44,3 +44,4 @@ class BatchItemsRequest(BaseModel):
 class ItemStatusUpdate(BaseModel):
     """管理员修改物品状态请求（``PUT /admin/items/{item_id}/status``）。"""
     status: str = ""
+    is_recommend: Optional[bool] = None  # v3.6.0 推荐位开关（None=不改）

@@ -4,6 +4,49 @@
 
 ---
 
+## V3.6.0 — 融合参考项目八大设计：社区化与运营闭环 (2026-10-14)
+
+### 迭代目标
+对照参考项目 campus-lost-and-found-ai 的功能面，补齐社区类业务功能（认领闭环/举报/留言/多图/统计看板/内容运营），并让证据链在前端可见——同时**零破坏**既有匹配口径（三检索模式/阈值标定/229 项契约测试）。
+
+### 1. 认领闭环升级 ✅
+- 新增 claims 表（status 0待审核/1已通过/2已拒绝/3已完成/4已撤销），`backend/app/api/claims.py` 全套端点
+- 防冒领：申请需物品特征描述 + 可选证明图（proof_ 前缀持久文件，独立于 temp_ 清理）
+- 互斥审批：同意时同一事务内自动拒绝同物品其他待审核申请，物品置「认领中」（items.status 枚举新增 claiming，SQLite CHECK 表重建迁移）
+- 隐私：联系方式脱敏（138\*\*\*\*1234），仅申请通过后对申请人可见
+- 兼容：`POST /items/{id}/claim` 保留为薄包装、`mark-claimed` 联动已完成申请且计数器不重复计数（v3.5 契约不破）
+
+### 2. 举报体系 ✅
+- reports 表（5 类举报 + handle_status 0/1/2 处理留痕：结论/处理人/时间），`backend/app/api/reports.py`
+- 举报人「我的举报」进度卡片；管理端并排详情（举报内容 × 被举报物品快照）
+
+### 3. 留言互动 ✅
+- comments 表（parent_id 楼中楼、公开可见/登录可发/本人可删/管理员隐藏、删除父留言级联删回复），`backend/app/api/comments.py`
+
+### 4. 多图上传与多图综合评分 ✅
+- items 新增 cover_image/images（JSON 有序列表）/is_recommend；发布/编辑支持 1-3 张、首图封面、拖拽排序（原生 HTML5）
+- **仅封面参与向量检索**（匹配口径零改动）；多图匹配聚合 = 各图向量 L2 归一化 → 均值 → 再归一化（查询侧向量层面）
+
+### 5. 管理端统计看板 ✅
+- `/stats/admin/overview|recovery|publish-trend|category-pie` 四端点（找回率仪表盘/近30天趋势/分类占比，北京时间口径复用）
+- 前端 AdminStatsView（指标卡 + gauge + 折线 + 环形图），图表色板经 dataviz 验证器校验
+
+### 6. 相似推荐与首页推荐位 ✅
+- `GET /items/{id}/similar`：复用 compute_match_detail 同口径打分，失物推招领/招领推失物
+- `GET /items/recommend` + 审核端「设为推荐」开关，首页「为你推荐」板块
+
+### 7. 证据链可视化 ✅
+- 匹配结果展示证据等级徽章（高度确定/高度疑似/可能相关/仅供参考）+ 命中依据文案（与后端 LEVEL_TEXT/BASIS_TEXT 对齐），后端零改动（CHANGELOG §14 遗留项）
+
+### 8. 内容运营模块 ✅
+- 轮播图（排序/启停/跳转）、分类表化（种子 7 类 + 使用中删除保护 + 排序）、公告草稿/发布分离（status 列 + publish/unpublish）
+
+### 测试与质量
+- 新增 9 个测试文件共 75 例（claims/reports/comments/banners/categories/stats_admin/multi_image/similar_recommend/announcement_draft），全套 **302 passed / 2 skipped**
+- 真实库迁移实测：9 行数据完整保留、幂等可重复执行（迁移前备份 `backend/lost_found.db.bak-20261014-105411`）
+
+---
+
 ## V3.1 — 体验增强迭代 (2026-06-29)
 
 ### 迭代目标

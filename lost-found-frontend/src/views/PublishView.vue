@@ -64,34 +64,40 @@
           </el-form-item>
         </div>
 
-        <!-- 图片上传 -->
+        <!-- 图片上传（v3.6.0：1-3 张，拖拽排序，首图为封面） -->
         <el-form-item label="物品图片">
-          <div class="upload-area" @click="triggerUpload">
-            <input
-              ref="fileInput"
-              type="file"
-              accept=".jpg,.jpeg,.png,.gif,.webp"
-              @change="handleFileChange"
-              style="display:none"
-            />
-            <template v-if="previewImageUrl">
-              <img :src="previewImageUrl" class="upload-preview" />
-              <div class="upload-overlay">
-                <el-button text type="primary" @click.stop="clearPreview" size="small">重新选择</el-button>
-              </div>
-            </template>
-            <template v-else-if="currentImageUrl">
-              <img :src="currentImageUrl" class="upload-preview" />
-              <div class="upload-overlay">
-                <el-button text type="primary" @click.stop="triggerUpload" size="small">更换图片</el-button>
-              </div>
-            </template>
-            <template v-else>
-              <el-icon :size="40"><UploadFilled /></el-icon>
-              <span class="upload-text">点击上传图片</span>
-              <span class="upload-hint">支持 JPG、PNG、GIF、WebP，最大 5MB</span>
-            </template>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".jpg,.jpeg,.png,.gif,.webp"
+            @change="handleFileChange"
+            style="display:none"
+          />
+          <div class="images-grid">
+            <div
+              v-for="(img, i) in imageList"
+              :key="img.key"
+              class="image-cell"
+              :class="{ 'image-cell--dragging': dragIndex === i }"
+              draggable="true"
+              @dragstart="onDragStart(i, $event)"
+              @dragover.prevent
+              @drop="onDrop(i)"
+              @dragend="dragIndex = null"
+            >
+              <img :src="img.previewUrl" class="image-cell-img" />
+              <span v-if="i === 0" class="cover-tag">封面</span>
+              <span class="image-index">{{ i + 1 }}</span>
+              <el-button class="image-remove" circle size="small" type="danger" @click="removeImage(i)">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+            <div v-if="imageList.length < 3" class="image-add" @click="triggerUpload">
+              <el-icon :size="24"><Plus /></el-icon>
+              <span>添加图片</span>
+            </div>
           </div>
+          <p class="field-hint">最多 3 张，支持拖拽排序；第一张将作为封面（也是 AI 匹配的主图）。信息越完整，找回概率越高。</p>
         </el-form-item>
 
         <el-form-item>
@@ -108,9 +114,9 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createItem, updateItem, getItem, getCategories } from '@/api/items'
-import { getImageUrl } from '@/utils/helpers'
+import { getImageUrl, parseItemImages } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
-import { QuestionFilled, CircleCheckFilled, UploadFilled, WarningFilled } from '@element-plus/icons-vue'
+import { QuestionFilled, CircleCheckFilled, UploadFilled, WarningFilled, Plus, Close } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -129,19 +135,16 @@ const form = ref({
   location: ''
 })
 
-const file = ref(null)
-const previewImageUrl = ref('')
-const existingImagePath = ref('')
+// v3.6.0：多图状态 [{ key, name(已存文件名|null), file(新文件|null), previewUrl }]
+const imageList = ref([])
+const dragIndex = ref(null)
 const existingStatus = ref('')
+let imgSeq = 0
 
 // 模型文本塔可用窗口（汉字）：物品文本向量由「标题 + ' ' + 描述」编码，
 // 超出窗口的部分被**静默截断**，故仅提示、绝不拦截/截断用户输入。
 const TEXT_TOWER_WINDOW = 50
 const descCharCount = computed(() => (form.value.description || '').length)
-
-const currentImageUrl = computed(() => {
-  return existingImagePath.value ? getImageUrl(existingImagePath.value) : ''
-})
 
 const triggerUpload = () => {
   fileInput.value?.click()
@@ -150,20 +153,42 @@ const triggerUpload = () => {
 const handleFileChange = (e) => {
   const selected = e.target.files[0]
   if (!selected) return
-  if (previewImageUrl.value) URL.revokeObjectURL(previewImageUrl.value)
-  file.value = selected
-  previewImageUrl.value = URL.createObjectURL(selected)
-}
-
-const clearPreview = () => {
-  if (previewImageUrl.value) URL.revokeObjectURL(previewImageUrl.value)
-  previewImageUrl.value = ''
-  file.value = null
+  if (imageList.value.length >= 3) {
+    ElMessage.warning('最多上传 3 张图片')
+    if (fileInput.value) fileInput.value.value = ''
+    return
+  }
+  imageList.value.push({
+    key: `new-${imgSeq++}`,
+    name: null,
+    file: selected,
+    previewUrl: URL.createObjectURL(selected)
+  })
   if (fileInput.value) fileInput.value.value = ''
 }
 
+const removeImage = (index) => {
+  const [removed] = imageList.value.splice(index, 1)
+  if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+}
+
+// 原生 HTML5 拖拽排序（零依赖）
+const onDragStart = (index, e) => {
+  dragIndex.value = index
+  e.dataTransfer.effectAllowed = 'move'
+  try { e.dataTransfer.setData('text/plain', String(index)) } catch { /* 部分浏览器只读 */ }
+}
+
+const onDrop = (targetIndex) => {
+  const from = dragIndex.value
+  if (from === null || from === targetIndex) return
+  const [moved] = imageList.value.splice(from, 1)
+  imageList.value.splice(targetIndex, 0, moved)
+  dragIndex.value = null
+}
+
 onUnmounted(() => {
-  if (previewImageUrl.value) URL.revokeObjectURL(previewImageUrl.value)
+  imageList.value.forEach((img) => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl) })
 })
 
 const rules = {
@@ -191,7 +216,13 @@ const submit = async () => {
           formData.append(key, form.value[key])
         }
       })
-      if (file.value) formData.append('image', file.value)
+      // v3.6.0：多图提交——保留的旧图（新顺序）走 keep，新图逐个走 images 字段
+      const keptNames = imageList.value.filter((i) => i.name).map((i) => i.name)
+      const newFiles = imageList.value.filter((i) => i.file).map((i) => i.file)
+      if (isEdit.value && keptNames.length) {
+        formData.append('keep', JSON.stringify(keptNames))
+      }
+      newFiles.forEach((f) => formData.append('images', f))
 
       if (isEdit.value) {
         await updateItem(route.query.edit, formData)
@@ -227,7 +258,15 @@ onMounted(async () => {
           contact: data.item.contact || '',
           location: data.item.location || ''
         }
-        existingImagePath.value = data.item.image_path || ''
+        // 加载已有图片列表（保持顺序，首图为封面）
+        const existing = parseItemImages(data.item)
+        imageList.value = existing.map((name, i) => ({
+          key: `old-${name}`,
+          name,
+          file: null,
+          previewUrl: getImageUrl(name)
+        }))
+        imgSeq = existing.length
         existingStatus.value = data.item.status || ''
       }
     } catch {
@@ -345,6 +384,85 @@ onMounted(async () => {
 
 .upload-overlay {
   margin-top: var(--space-3);
+}
+
+/* v3.6.0：多图网格 + 拖拽排序 */
+.images-grid {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.image-cell {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  cursor: grab;
+  background: var(--neutral-100);
+}
+
+.image-cell--dragging {
+  opacity: 0.5;
+  border-color: var(--el-color-primary);
+}
+
+.image-cell-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+  padding: 1px 0;
+}
+
+.image-index {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+}
+
+.image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.image-add {
+  width: 110px;
+  height: 110px;
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  transition: all var(--transition-base);
+}
+
+.image-add:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 
 @media (max-width: 640px) {
