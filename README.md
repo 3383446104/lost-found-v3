@@ -1,6 +1,6 @@
 # 校园失物检索平台
 
-> 基于 CLIP 多模态匹配的智能失物招领平台 | Vue 3 + FastAPI + AI
+> 基于加权融合相似度算法的校园失物检索系统 | Vue 3 + FastAPI + AI
 >
 > **当前版本：v3.6.0** | 更新日期：2026-10-14 | 文档索引见 [`docs/README.md`](docs/README.md)
 

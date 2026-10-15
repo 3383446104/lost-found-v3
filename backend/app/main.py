@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
 # ---- 创建应用 ----
 app = FastAPI(
     title="校园失物检索平台 API",
-    description="基于 CLIP 多模态匹配的校园失物检索平台",
+    description="基于加权融合相似度算法的校园失物检索系统",
     version=settings.APP_VERSION,
     lifespan=lifespan
 )

@@ -1,5 +1,10 @@
-# Vue 3 + Vite
+# lost-found-frontend
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+校园失物检索平台前端（Vue 3 + Element Plus + ECharts + Pinia + Vite）。
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+```bash
+npm install
+npm run dev    # → http://localhost:5173
+```
+
+后端启动见仓库根 [`../README.md`](../README.md)；前端依赖统一在 `package.json` 声明，不在仓库根声明任何依赖。
