@@ -10,11 +10,6 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
-class BatchApproveRequest(BaseModel):
-    """批量审核通过请求（``POST /admin/reviews/batch-approve``）。"""
-    item_ids: List[int] = []
-
-
 class UserUpdateRequest(BaseModel):
     """用户状态/角色更新请求（``PUT /admin/users/{user_id}``）。
 

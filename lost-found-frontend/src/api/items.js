@@ -35,9 +35,6 @@ export const tempUpload = (file) => {
 // 获取类别
 export const getCategories = () => request.get('/items/categories')
 
-// 认领物品
-export const claimItem = (id) => request.post(`/items/${id}/claim`)
-
 // 发布者标记已找回/已认领
 export const markClaimed = (id) => request.put(`/items/${id}/mark-claimed`)
 

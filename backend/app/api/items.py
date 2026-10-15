@@ -6,7 +6,7 @@ import asyncio
 import functools
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import FileResponse
 import numpy as np
 from ..config import settings
@@ -925,109 +925,6 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
         delete_file_if_exists(p)
 
     return {"matches": results[:20], "legend": resolve_legend()}
-
-
-@router.post("/{item_id:int}/claim")
-async def claim_item(
-    item_id: int,
-    background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_current_user)
-):
-    """申请认领/归还物品（兼容端点：内部落 claims 表，响应结构保持 v3.5 契约不变）
-
-    v3.6.0 起认领数据源从「通知表查重」迁移到 claims 表（双向审批闭环），
-    本端点保留为薄包装：无特征描述/证明图的快速申请入口，与 POST /claims 等价。
-    """
-    user_id = current_user['user_id']
-
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT id, user_id, title, status, review_status, type FROM items WHERE id = ?',
-            (item_id,)
-        )
-        item = cursor.fetchone()
-
-        if not item:
-            raise HTTPException(404, "物品不存在")
-        if item['user_id'] == user_id:
-            raise HTTPException(400, "不能操作自己的物品")
-        if item['status'] != 'active' or item['review_status'] != 'approved':
-            raise HTTPException(400, "该物品当前不可操作")
-
-        # 防重：同一申请人同一物品已有待审核/已通过的申请（claims 表口径）
-        cursor.execute(
-            "SELECT id FROM claims WHERE claimer_id = ? AND item_id = ? AND status IN (0, 1)",
-            (user_id, item_id)
-        )
-        if cursor.fetchone():
-            raise HTTPException(400, "已发送申请，请等待回复")
-
-        # 获取申请人信息（含手机号）
-        cursor.execute(
-            'SELECT username, phone FROM users WHERE id = ?', (user_id,)
-        )
-        claimer = cursor.fetchone()
-        claimer_phone = claimer['phone'] or '未填写'
-
-        # 获取物品发布者信息（用于邮件通知）
-        cursor.execute(
-            'SELECT username, email FROM users WHERE id = ?', (item['user_id'],)
-        )
-        owner = cursor.fetchone()
-
-        # 根据物品类型生成不同的通知文案
-        # lost=失物(发布者丢了东西) → 别人捡到要"归还"给发布者
-        # found=拾物(发布者捡了东西) → 别人来"认领"自己丢的东西
-        if item['type'] == 'lost':
-            action_word = '归还'
-        else:
-            action_word = '认领'
-
-        # 落 claims 表（无特征描述的快速申请）
-        cursor.execute(
-            """INSERT INTO claims (item_id, claimer_id, claim_reason, feature_description,
-                                   proof_image, contact_phone, status)
-               VALUES (?, ?, NULL, NULL, NULL, ?, 0)""",
-            (item_id, user_id, claimer['phone']),
-        )
-
-        title = f"[{action_word}申请] 用户 '{claimer['username']}' 想要{action_word}您的物品"
-        content = f"物品 '{item['title']}' 收到{action_word}申请。申请人联系方式：{claimer_phone}。请及时联系确认。"
-        link = f"/claims/received"
-
-        cursor.execute(
-            'INSERT INTO notifications (user_id, title, content, link) VALUES (?, ?, ?, ?)',
-            (item['user_id'], title, content, link)
-        )
-
-    # 发送邮件通知（后台任务，不阻塞事件循环；同步 send_email 会自动进线程池）
-    if owner and owner['email']:
-        try:
-            from ..utils.email_utils import send_email
-            subject = f"【校园失物检索】您的物品 '{item['title']}' 有新的{action_word}申请"
-            body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f7fc;">
-                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-                    <h2 style="color: #2c3e50;">校园失物检索平台</h2>
-                    <p style="font-size: 16px; color: #333;">亲爱的 <strong>{owner['username']}</strong>：</p>
-                    <p style="font-size: 15px; color: #444;">用户 <strong>{claimer['username']}</strong> 想要{action_word}您发布的物品 <strong>"{item['title']}"</strong>。</p>
-                    <p style="font-size: 14px; color: #666;">📞 申请人联系方式：<strong>{claimer_phone}</strong></p>
-                    <p style="margin: 24px 0;">
-                        <a href="{settings.BASE_URL}/items/{item_id}" style="display: inline-block; padding: 10px 24px; background: #1B4D3E; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 500;">查看详情</a>
-                    </p>
-                    <hr style="border: none; border-top: 1px solid #eaeef2; margin: 24px 0;">
-                    <p style="font-size: 12px; color: #999;">—— 校园失物检索平台 · 自动通知 ——</p>
-                </div>
-            </body>
-            </html>
-            """
-            background_tasks.add_task(send_email, owner['email'], subject, body, True)
-        except Exception as e:
-            logger.warning(f"发送认领邮件失败: {e}")
-
-    return {"success": True, "message": f"{action_word}申请已发送，请等待物品发布者确认"}
 
 
 @router.post("/temp-upload")

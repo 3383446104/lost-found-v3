@@ -1,6 +1,4 @@
 # app/api/auth.py
-import os
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
 from ..models.user import UserRegister, UserLogin, ProfileUpdate

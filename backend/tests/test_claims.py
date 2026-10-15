@@ -5,7 +5,7 @@
 - 审批流：同意（互斥拒绝其他待审核 + 物品 claiming）/ 拒绝（理由必填）/ 完成（claimed + 计数器）/ 撤销
 - 权限矩阵：非发布者审批 403 / 非本人撤销 403
 - 隐私：申请人仅在已通过/完成后可见**脱敏**联系方式
-- 兼容契约：POST /api/items/{id}/claim 与 mark-claimed 行为不变（v3.5 契约）
+- 闭环联动：mark-claimed 与已通过申请联动（claims 表口径）
 """
 from app import database as db_module
 
@@ -283,29 +283,8 @@ def test_mine_and_received_lists(client, make_user, create_item, approve_item):
 
 
 # --------------------------------------------------------------------------- #
-# v3.5 兼容契约：POST /items/{id}/claim 与 mark-claimed
+# mark-claimed 与认领闭环联动
 # --------------------------------------------------------------------------- #
-def test_legacy_claim_writes_claims_table(client, make_user, create_item, approve_item):
-    owner = make_user(username="lg_owner")
-    other = make_user(username="lg_other")
-    item_id = create_item(owner["headers"])
-    approve_item(item_id)
-
-    resp = client.post(f"/api/items/{item_id}/claim", headers=other["headers"])
-    assert resp.status_code == 200
-
-    with db_module.get_db_connection() as conn:
-        row = conn.execute(
-            "SELECT status FROM claims WHERE item_id=? AND claimer_id=?",
-            (item_id, other["id"]),
-        ).fetchone()
-    assert row is not None and row["status"] == 0
-
-    # 新接口防重对旧接口同样生效
-    resp2 = client.post(f"/api/items/{item_id}/claim", headers=other["headers"])
-    assert resp2.status_code == 400
-
-
 def test_mark_claimed_links_approved_claim(client, make_user, create_item, approve_item):
     owner = make_user(username="mk_owner")
     claimer = make_user(username="mk_claimer")

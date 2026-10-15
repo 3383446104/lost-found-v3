@@ -145,7 +145,6 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | POST | `/api/items/match` | 智能匹配（需登录，支持多图 `image_paths`） |
 | GET | `/api/items/recommend` | 首页推荐位（管理员设为推荐） |
 | GET | `/api/items/{id}/similar` | 详情页相似物品推荐 |
-| POST | `/api/items/{id}/claim` | 申请认领/归还（兼容薄包装） |
 | PUT | `/api/items/{id}/mark-claimed` | 自标记找回/归还 |
 
 ### 认领闭环 & 社区
@@ -162,7 +161,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 ### 管理 & 通知
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/PUT | `/api/admin/reviews` | 审核列表/操作（含设为推荐） |
+| PUT | `/api/admin/reviews/{id}` | 单条审核（通过/驳回，含设为推荐） |
 | GET/PUT/POST/DELETE | `/api/admin/users` | 用户管理 |
 | GET/PUT | `/api/admin/items` | 物品管理 |
 | POST | `/api/admin/items/batch` | 批量操作 |

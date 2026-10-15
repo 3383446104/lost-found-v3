@@ -5,7 +5,7 @@
 # - report_type: 1虚假信息 / 2不良内容 / 3联系方式异常 / 4重复发布 / 5其他
 # - handle_status: 0待处理 / 1已处理 / 2已驳回
 # - 处理时必填结论，记录处理人 + 时间；举报人可在「我的举报」跟踪进度
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -131,7 +131,7 @@ async def admin_reports(
 ):
     """管理端举报列表（分页 + 筛选）"""
     where = ["1=1"]
-    params: List = []
+    params: list = []
     if keyword:
         where.append("(i.title LIKE ? OR r.report_reason LIKE ? OR u.username LIKE ?)")
         params.extend([f"%{keyword}%"] * 3)

@@ -1,14 +1,14 @@
 """管理员审核与用户管理回归测试。
 
-覆盖：权限门禁、审核通过/重复审核（并发安全）、驳回必填理由、批量审核上限、
+覆盖：权限门禁、审核通过/重复审核（并发安全）、驳回必填理由、
 管理员不能删除自己。
 """
 from app import database as db_module
 
 
-def test_normal_user_cannot_access_reviews(client, make_user):
+def test_normal_user_cannot_access_users(client, make_user):
     user = make_user(username="plain_user")
-    resp = client.get("/api/admin/reviews", headers=user["headers"])
+    resp = client.get("/api/admin/users", headers=user["headers"])
     assert resp.status_code == 403
 
 
@@ -58,37 +58,6 @@ def test_reject_without_reason_is_rejected(client, make_user, make_admin, create
         f"/api/admin/reviews/{item_id}", json={"action": "rejected"}, headers=admin["headers"]
     )
     assert resp.status_code in (400, 422)
-
-
-def test_batch_approve_over_limit_400(client, make_admin):
-    admin = make_admin(username="batch_over_admin")
-    resp = client.post(
-        "/api/admin/reviews/batch-approve",
-        json={"item_ids": list(range(1, 52))},  # 51 条 > 上限 50
-        headers=admin["headers"],
-    )
-    assert resp.status_code == 400
-
-
-def test_batch_approve_normal_count(client, make_user, make_admin, create_item):
-    user = make_user(username="batch_user")
-    admin = make_admin(username="batch_admin")
-    ids = [create_item(user["headers"], title=f"批量物品{i}") for i in range(3)]
-
-    resp = client.post(
-        "/api/admin/reviews/batch-approve",
-        json={"item_ids": ids},
-        headers=admin["headers"],
-    )
-    assert resp.status_code == 200
-    assert resp.json()["approved_count"] == 3
-
-    with db_module.get_db_connection() as conn:
-        placeholders = ",".join("?" * len(ids))
-        rows = conn.execute(
-            f"SELECT review_status, status FROM items WHERE id IN ({placeholders})", ids
-        ).fetchall()
-    assert all(r["review_status"] == "approved" and r["status"] == "active" for r in rows)
 
 
 def test_admin_cannot_delete_self_400(client, make_admin):

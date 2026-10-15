@@ -360,7 +360,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getPendingItems, reviewItem, batchApprove, getUsers, updateUser, createUser, deleteUser, getAllItems, updateItemStatus, batchItems } from '@/api/admin'
+import { reviewItem, getUsers, updateUser, createUser, deleteUser, getAllItems, updateItemStatus, batchItems } from '@/api/admin'
 import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, unpublishAnnouncement } from '@/api/announcements'
 import { getImageUrl, ITEM_TYPE_MAP } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -493,40 +493,9 @@ const confirmReject = async () => {
   }
 }
 
-// v3.3: 批量审核
+// v3.3: 批量选择（批量操作走 handleBatch → /admin/items/batch）
 const handleSelectionChange = (val) => {
   selectedIds.value = val.map(v => v.id)
-}
-
-const handleBatchApprove = async () => {
-  if (selectedIds.value.length === 0) { ElMessage.warning('请至少选择一条'); return }
-  try {
-    await ElMessageBox.confirm(
-      `即将通过 ${selectedIds.value.length} 件物品的审核，通过后将自动进行智能匹配并通知相关用户。`,
-      '确认批量审核',
-      { confirmButtonText: `确认通过 ${selectedIds.value.length} 件`, cancelButtonText: '取消', type: 'success' }
-    )
-  } catch {
-    return  // 用户取消，直接返回
-  }
-
-  batchLoading.value = true
-  try {
-    const res = await batchApprove(selectedIds.value)
-    const failedCount = res.failed_ids?.length || 0
-    if (failedCount > 0) {
-      ElMessage.warning(`已通过 ${res.approved_count} 件，${failedCount} 件失败（可能已被他人审核）`)
-    } else {
-      ElMessage.success(`已批量通过 ${res.approved_count} 件物品，匹配通知已发送`)
-    }
-    selectedIds.value = []
-    loadItems()
-  } catch (e) {
-    console.error('批量审核失败:', e)
-    // axios 拦截器已显示错误消息，此处仅做清理
-  } finally {
-    batchLoading.value = false
-  }
 }
 
 const onUserSearch = () => {

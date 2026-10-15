@@ -155,9 +155,6 @@ import { getImageUrl, EVIDENCE_LEVEL_MAP, basisToText } from '@/utils/helpers'
 import { ElMessage } from 'element-plus'
 import { Search, UploadFilled, Connection, PictureFilled, LocationFilled, Opportunity, WarningFilled, Plus, Close, DocumentChecked } from '@element-plus/icons-vue'
 
-// 图例本地回落常量：后端未升级（无 legend）时保证不炸
-const LEGEND_FALLBACK = { high: 0.75, mid: 0.5 }
-
 // 模型文本塔可用窗口（汉字）：context_length 52 − [CLS] − [SEP] = 50。
 // 超长输入会被**静默截断**，故仅提示、绝不拦截/截断用户输入。
 const TEXT_TOWER_WINDOW = 50
@@ -177,7 +174,8 @@ const fileInput = ref(null)
 const results = ref([])
 const matching = ref(false)
 const searched = ref(false)
-const legend = ref({ ...LEGEND_FALLBACK })
+// 图例初值仅用于首帧渲染，命中后以后端 legend 为准（v3.5.0 起后端恒返回）
+const legend = ref({ high: 0.75, mid: 0.5 })
 let autoRan = false
 
 // 已输入字符数（与 el-input show-word-limit / 模型窗口同口径：中文一字一字符）
@@ -255,15 +253,8 @@ const doMatch = async () => {
   try {
     const res = await matchItems(payload)
     results.value = res.matches || []
-    // 图例以后端 legend 为单一数据源；缺失时回落本地常量（后端未升级也不炸）
-    if (res.legend && typeof res.legend === 'object') {
-      legend.value = {
-        high: typeof res.legend.high === 'number' ? res.legend.high : LEGEND_FALLBACK.high,
-        mid: typeof res.legend.mid === 'number' ? res.legend.mid : LEGEND_FALLBACK.mid
-      }
-    } else {
-      legend.value = { ...LEGEND_FALLBACK }
-    }
+    // 图例以后端 legend 为单一数据源
+    legend.value = { high: res.legend.high, mid: res.legend.mid }
     if (results.value.length === 0) ElMessage.info('未找到匹配物品')
   } catch (error) {
     if (error.response?.status === 404) { ElMessage.error('图片已过期，请重新上传'); clearAllImages() }

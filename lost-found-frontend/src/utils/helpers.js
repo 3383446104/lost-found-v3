@@ -97,12 +97,6 @@ export function parseItemImages(item) {
   return []
 }
 
-// 格式化时间（后端已返回北京时间字符串，直接使用）
-export function formatTime(timeStr) {
-  if (!timeStr) return ''
-  return timeStr
-}
-
 // 截断文本
 export function truncate(text, maxLen = 60) {
   if (!text) return ''

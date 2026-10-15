@@ -5,7 +5,7 @@
 # - parent_id 指向被回复留言（楼中楼一层），NULL=顶层留言
 # - 公开可看（仅 status=1 正常留言）、登录可发、本人可删、管理员可隐藏/恢复
 # - 删除父留言时级联删除子回复（语义简单，避免孤儿回复）
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -182,7 +182,7 @@ async def admin_comments(
 ):
     """管理端留言列表（分页 + 筛选）"""
     where = ["1=1"]
-    params: List = []
+    params: list = []
     if keyword:
         where.append("(c.content LIKE ? OR u.username LIKE ?)")
         params.extend([f"%{keyword}%"] * 2)

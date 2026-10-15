@@ -191,30 +191,8 @@ def test_match_with_invalid_token_401(client):
 
 
 # --------------------------------------------------------------------------- #
-# 认领 / 标记已找回
+# 标记已找回
 # --------------------------------------------------------------------------- #
-def test_claim_own_item_400(client, make_user, create_item, approve_item):
-    owner = make_user(username="claim_owner")
-    item_id = create_item(owner["headers"])
-    approve_item(item_id)
-
-    resp = client.post(f"/api/items/{item_id}/claim", headers=owner["headers"])
-    assert resp.status_code == 400
-
-
-def test_claim_same_item_twice_400(client, make_user, create_item, approve_item):
-    owner = make_user(username="claim_owner2")
-    other = make_user(username="claim_other")
-    item_id = create_item(owner["headers"])
-    approve_item(item_id)
-
-    first = client.post(f"/api/items/{item_id}/claim", headers=other["headers"])
-    assert first.status_code == 200
-
-    second = client.post(f"/api/items/{item_id}/claim", headers=other["headers"])
-    assert second.status_code == 400
-
-
 def test_mark_claimed_by_owner(client, make_user, create_item, approve_item):
     owner = make_user(username="mark_owner")
     other = make_user(username="mark_other")

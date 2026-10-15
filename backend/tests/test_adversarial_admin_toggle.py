@@ -24,7 +24,7 @@ def test_toggle_status_preserves_admin_role(client, make_admin):
     actor = make_admin(username="actor_admin")
 
     # 前置：目标管理员禁用前可访问管理端
-    assert client.get("/api/admin/reviews", headers=target["headers"]).status_code == 200
+    assert client.get("/api/admin/users", headers=target["headers"]).status_code == 200
 
     # 1) 禁用目标管理员
     r1 = client.put(
@@ -40,7 +40,7 @@ def test_toggle_status_preserves_admin_role(client, make_admin):
         f"C2 回归：禁用管理员后 role 被改动（实得 {role_after_disable}），应保留 'admin'"
     )
     # 被禁用后旧 token 无法再访问管理端（R1 修复生效）
-    assert client.get("/api/admin/reviews", headers=target["headers"]).status_code == 403
+    assert client.get("/api/admin/users", headers=target["headers"]).status_code == 403
 
     # 2) 重新启用
     r2 = client.put(
@@ -57,4 +57,4 @@ def test_toggle_status_preserves_admin_role(client, make_admin):
     )
     # 旧 token 恢复可用，且仍具管理员权限
     assert client.get("/api/me", headers=target["headers"]).status_code == 200
-    assert client.get("/api/admin/reviews", headers=target["headers"]).status_code == 200
+    assert client.get("/api/admin/users", headers=target["headers"]).status_code == 200

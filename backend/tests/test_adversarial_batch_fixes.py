@@ -97,7 +97,7 @@ def test_o2_admin_cannot_toggle_own_status_400(client, make_admin):
     assert status == "active", "自锁保护失效：自己的 status 被改动"
 
     # 自己仍可正常访问管理端
-    assert client.get("/api/admin/reviews", headers=admin["headers"]).status_code == 200
+    assert client.get("/api/admin/users", headers=admin["headers"]).status_code == 200
 
 
 def test_o2_admin_cannot_delete_self_400(client, make_admin):
@@ -129,7 +129,7 @@ def test_o2_admin_can_disable_other_admin_200(client, make_admin):
     role, status = _role_status(target["id"])
     assert status == "disabled"
     assert role == "admin", "C2：禁用其他管理员不应改动其 role"
-    assert client.get("/api/admin/reviews", headers=target["headers"]).status_code == 403
+    assert client.get("/api/admin/users", headers=target["headers"]).status_code == 403
 
 
 # --------------------------------------------------------------------------- #
@@ -297,20 +297,6 @@ def test_r6_non_int_admin_user_id_404_not_422(client, make_admin):
     assert resp.status_code == 404, f"期望 404，实得 {resp.status_code}"
 
 
-def test_r6_batch_approve_static_route_reachable(client, make_admin):
-    """静态路由 POST /admin/reviews/batch-approve 可达（未被 PUT /reviews/{item_id:int} 遮蔽）。
-
-    空列表由 handler 判 400 —— 关键是「确实到达了 handler」；若被遮蔽/未匹配会是 404/405。
-    """
-    admin = make_admin(username="r6_batch_admin")
-    resp = client.post(
-        "/api/admin/reviews/batch-approve",
-        json={"item_ids": []},
-        headers=admin["headers"],
-    )
-    assert resp.status_code == 400, f"期望到达 handler 返回 400，实得 {resp.status_code}"
-
-
 def test_r6_review_non_int_id_404_not_422(client, make_admin):
     """PUT /admin/reviews/{item_id:int} 对非数字 id → 404（而非 422/500）。"""
     admin = make_admin(username="r6_review_admin")
@@ -386,17 +372,6 @@ def test_r9_admin_item_status_bad_value_400_not_422(client, make_admin):
     resp = client.put(
         "/api/admin/items/1/status",
         json={"status": "bogus"},
-        headers=admin["headers"],
-    )
-    assert resp.status_code == 400, f"期望 400，实得 {resp.status_code}"
-
-
-def test_r9_batch_approve_empty_list_400_not_422(client, make_admin):
-    """POST /admin/reviews/batch-approve 空列表 → 400，不是 422。"""
-    admin = make_admin(username="r9_admin5")
-    resp = client.post(
-        "/api/admin/reviews/batch-approve",
-        json={"item_ids": []},
         headers=admin["headers"],
     )
     assert resp.status_code == 400, f"期望 400，实得 {resp.status_code}"

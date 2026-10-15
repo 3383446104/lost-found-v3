@@ -16,12 +16,12 @@ def test_disabled_admin_old_token_403_not_500(client, make_admin):
     """
     admin = make_admin(username="adv_admin")
     # 前置：禁用前该 token 可访问管理端
-    assert client.get("/api/admin/reviews", headers=admin["headers"]).status_code == 200
+    assert client.get("/api/admin/users", headers=admin["headers"]).status_code == 200
 
     with db_module.get_db_connection() as conn:
         conn.execute("UPDATE users SET role='disabled' WHERE id=?", (admin["id"],))
 
-    resp = client.get("/api/admin/reviews", headers=admin["headers"])
+    resp = client.get("/api/admin/users", headers=admin["headers"])
     assert resp.status_code == 403, f"期望 403，实得 {resp.status_code}"
     assert resp.status_code != 500
 
@@ -37,7 +37,7 @@ def test_disabled_admin_true_status_403_not_500(client, make_admin):
         ).fetchone()
     assert row["role"] == "admin" and row["status"] == "disabled"
 
-    resp = client.get("/api/admin/reviews", headers=admin["headers"])
+    resp = client.get("/api/admin/users", headers=admin["headers"])
     assert resp.status_code == 403, f"期望 403，实得 {resp.status_code}"
     assert resp.status_code != 500
 

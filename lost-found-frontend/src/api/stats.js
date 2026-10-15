@@ -1,8 +1,5 @@
 import request from '@/utils/request'
 
-// 首页数据看板（既有）
-export const getDashboard = () => request.get('/stats/dashboard')
-
 // v3.6.0：管理端统计
 export const adminOverview = () => request.get('/stats/admin/overview')
 

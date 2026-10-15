@@ -151,11 +151,11 @@ router.afterEach:
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
-| FR-ADMIN-01 | 待审核列表（分页） | `GET /api/admin/reviews?page=&size=` — 返回 review_status=pending 的物品 |
+| FR-ADMIN-01 | 待审核列表（分页） | `GET /api/admin/items?review=pending` — 物品管理 Tab 内嵌待审核列表（review_status=pending，分页） |
 | FR-ADMIN-02 | 审核通过 | `PUT /api/admin/reviews/{id}` action=approved → status=active, review_status=approved。BackgroundTasks 异步触发自动匹配 |
 | FR-ADMIN-03 | 审核驳回 | action=rejected → status=rejected, review_status=rejected。发送站内通知（含驳回理由）+ HTML 邮件（含重新编辑链接） |
 | FR-ADMIN-04 | 自动匹配推送 | 审核通过后异步匹配异类物品（失物↔拾物），**维度预检**通过后逐对打分；**判定用内容分 ≥ 0.733952**（`MATCH_THRESHOLD_AUTO`，与标定同尺度；2026-09-21 尺度修正），双向推送通知 + 邮件（含匹配等级与命中依据） |
-| FR-ADMIN-05 | 批量审核通过 | `POST /api/admin/reviews/batch-approve` — 多选物品 → 一键批量通过（最多 50 条/次）。驳回不支持批量（需逐一填写理由+站内通知） |
+| FR-ADMIN-05 | 批量审核通过 | `POST /api/admin/items/batch` action=approve — 多选物品 → 一键批量通过（同端点支持 close/delete）。驳回不支持批量（需逐一填写理由+站内通知） |
 | FR-ADMIN-06 | 防止重复审核 | SQL `WHERE review_status='pending'` 条件更新 + rowcount 检查（单条+批量均适用） |
 | FR-ADMIN-07 | 用户管理 | `GET /api/admin/users` — 用户列表（分页）；支持逻辑删除用户（`status` → `deleted`） |
 | FR-ADMIN-08 | 用户角色/状态变更 | `PUT /api/admin/users/{id}` — 设角色（user/admin）/ 切换账号状态（active↔disabled）。**v3.4.0：禁用/启用只改 `status` 并保留 `role`** |
@@ -179,7 +179,7 @@ router.afterEach:
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
-| FR-CLAIM-01 | 申请认领/归还 | `POST /api/items/{id}/claim` — lost物品→"我要归还"(我捡到了)，found物品→"我要认领"(我丢失了)。通知 + 邮件中含申请人手机号（从用户账户获取） |
+| FR-CLAIM-01 | 申请认领/归还 | `POST /api/claims` — lost物品→"我要归还"(我捡到了)，found物品→"我要认领"(我丢失了)。通知 + 邮件中含申请人手机号（从用户账户获取） |
 | FR-CLAIM-02 | 防重复申请 | 同物品+同用户已有未读申请通知时拒绝，返回 400 "已发送申请，请等待回复" |
 | FR-CLAIM-03 | 发布者自标记 | `PUT /api/items/{id}/mark-claimed` — 发布者对自己的物品点击"已找回"(lost)/"已认领"(found)→ status 变为 claimed。物品从列表消失，转至个人中心历史记录 |
 | FR-CLAIM-04 | 总计找回计数 | 每次标记 claimed 后，总计找回数自动 +1（持久化计数器） |
@@ -193,7 +193,7 @@ router.afterEach:
 
 > ⚠️ **v3.3 变更**：删除原有的"确认/拒绝"两步流程（`PUT /api/items/{id}/claim/confirm`），改为发布者自行标记。线下联系通过通知中附带的手机号进行。
 >
-> **v3.6.0 升级为认领闭环**：新表 `claims` 取代通知式认领（status：0 待审核 / 1 已通过 / 2 已拒绝 / 3 已完成 / 4 已撤销）；`POST /items/{id}/claim` 保留为**薄包装**（响应结构不变），`mark-claimed` 允许 active/claiming 两态并联动已完成申请（**计数器不重复计数**）。
+> **v3.6.0 升级为认领闭环**：新表 `claims` 取代通知式认领（status：0 待审核 / 1 已通过 / 2 已拒绝 / 3 已完成 / 4 已撤销）；`mark-claimed` 允许 active/claiming 两态并联动已完成申请（**计数器不重复计数**）。
 
 ### 3.7 社区互动模块 (FR-COMMUNITY) — v3.6.0
 
@@ -328,7 +328,6 @@ router.afterEach:
 | POST | `/api/items/temp-upload` | ✅ | 临时上传匹配图片 |
 | PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；多图 `keep` + 新图） |
 | DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员；清理全部图片） |
-| POST | `/api/items/{id}/claim` | ✅ | 申请认领/归还（v3.6.0 起为 claims 薄包装，响应结构不变） |
 | PUT | `/api/items/{id}/mark-claimed` | ✅ | 发布者标记物品已找回/已认领（允许 active/claiming，联动已完成申请） |
 
 > ⚠️ **v3.3 变更**：删除 `PUT /api/items/{id}/claim/confirm`（确认/拒绝认领）。新增 `PUT /api/items/{id}/mark-claimed`（发布者自标记）。
@@ -345,9 +344,7 @@ router.afterEach:
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|:--:|------|
-| GET | `/api/admin/reviews` | Admin | 待审核列表（分页） |
-| PUT | `/api/admin/reviews/{id}` | Admin | 审核操作（通过/驳回） |
-| POST | `/api/admin/reviews/batch-approve` | Admin | 批量审核通过 |
+| PUT | `/api/admin/reviews/{id}` | Admin | 审核操作（通过/驳回，可设推荐） |
 | GET | `/api/admin/users` | Admin | 用户列表（分页） |
 | PUT | `/api/admin/users/{id}` | Admin | 用户管理（设角色 / 切换状态） |
 | POST | `/api/admin/users` | Admin | 新增用户 |
@@ -654,7 +651,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 
 > ⚠️ **v3.3 变更**：删除发布者"确认/拒绝"两步流程（原 `PUT /api/items/{id}/claim/confirm`），改为发布者**自行标记**（`PUT /api/items/{id}/mark-claimed`）。
 >
-> **v3.6.0**：认领升级为**审批制闭环**（claims 表 + 互斥 + 脱敏 + 撤销）；`POST /items/{id}/claim` 与 `mark-claimed` 保留（兼容薄包装，计数器不重复计数）。
+> **v3.6.0**：认领升级为**审批制闭环**（claims 表 + 互斥 + 脱敏 + 撤销）；`mark-claimed` 保留为快捷入口（联动已通过申请，计数器不重复计数）。
 
 ---
 

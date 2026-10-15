@@ -208,11 +208,11 @@ lost-found-v3/
 
 | 编号 | 需求 | 后端 | 前端 | 状态 |
 |------|------|:----:|:----:|:----:|
-| FR-ADMIN-01 | 待审核列表（分页） | ✅ GET /api/admin/reviews | ✅ AdminView | ✅ |
+| FR-ADMIN-01 | 待审核列表（分页，物品管理 Tab 内嵌） | ✅ GET /api/admin/items?review=pending | ✅ AdminView | ✅ |
 | FR-ADMIN-02 | 审核通过（→active，触发匹配） | ✅ PUT /api/admin/reviews/{id} | ✅ AdminView | ✅ |
 | FR-ADMIN-03 | 审核驳回（→rejected + 理由+通知+邮件） | ✅ 驳回理由必填验证 | ✅ 驳回 Dialog | ✅ |
 | FR-ADMIN-04 | 自动匹配推送（内容分 ≥0.733952；通知/邮件含匹配等级与命中依据） | ✅ BackgroundTasks 异步 | — | ✅ |
-| FR-ADMIN-05 | 批量审核通过 | ✅ POST batch-approve | ✅ 多选+工具栏 | ✅ |
+| FR-ADMIN-05 | 批量审核通过（同端点支持批量关闭/删除） | ✅ POST /api/admin/items/batch | ✅ 多选+工具栏 | ✅ |
 | FR-ADMIN-06 | 审核设推荐（`is_recommend`，首页推荐位数据源） | ✅ review_item / admin items | ✅ AdminView 审核对话框开关 | ✅ |
 
 ### 3.5 消息通知模块 (FR-NOTIFY)
@@ -237,7 +237,7 @@ lost-found-v3/
 | FR-CLAIM-03 | 发布者审批（同意时**同事务互斥**自动拒绝其他待审申请，物品转 `claiming`） | ✅ POST /api/claims/{id}/approve | ✅ ClaimsView（含互斥提示） | ✅ |
 | FR-CLAIM-04 | 拒绝必填理由 / 申请人可撤销 / 确认完成（物品转 `claimed` + 计数器 +1） | ✅ reject / cancel / complete | ✅ ClaimsView 三操作 | ✅ |
 | FR-CLAIM-05 | 隐私：联系方式脱敏（138\*\*\*\*1234），仅申请通过后对申请人可见 | ✅ GET /api/claims/{id} | ✅ 详情页脱敏展示 | ✅ |
-| FR-CLAIM-06 | 兼容：`POST /items/{id}/claim` 薄包装 + `mark-claimed` 联动已完成申请（计数器不重复计数） | ✅ items.py | — | ✅ |
+| FR-CLAIM-06 | `mark-claimed` 快捷标记联动已完成申请（计数器不重复计数） | ✅ items.py | — | ✅ |
 
 ### 3.7 社区互动模块 (FR-COMMUNITY) — v3.6.0
 
@@ -480,7 +480,6 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 | GET | `/api/items/recommend` | ❌ | 首页推荐位（`is_recommend=1` + active + approved） |
 | GET | `/api/items/{id}/similar` | ❌ | 详情页相似物品（反类型 + 复用匹配口径打分，按展示分排序） |
 | POST | `/api/items/temp-upload` | ✅ | 临时上传图片 |
-| POST | `/api/items/{id}/claim` | ✅ | 申请认领/归还（v3.6.0 起为 claims 表薄包装，响应结构不变） |
 | PUT | `/api/items/{id}/mark-claimed` | ✅ | 发布者标记已找回/已认领（允许 active/claiming，联动已完成申请） |
 | GET | `/api/items/categories` | ❌ | 类别列表（公开；v3.6.0 表驱动，空表回退常量） |
 | GET | `/api/items/uploads/{filename}` | ❌ | 访问图片（公开） |
@@ -491,7 +490,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 >
 > **v3.5.0**：`POST /api/items/match` 结果项**新增 `match_source`**（∈ `text` / `image` / `mixed`），响应顶层**新增 `legend: {high, mid}`**——`legend.high` 默认派生自 `MATCH_THRESHOLD_AUTO`、`legend.mid` 默认派生自 `MATCH_THRESHOLD_MANUAL`（可由 `MATCH_LEGEND_HIGH` / `MATCH_LEGEND_MID` 覆盖），彻底消除前端硬编码图例（见 `resolve_legend()`）。**未新增任何端点**。
 >
-> **v3.6.0**：新增 `GET /items/recommend`（置于 `/{item_id:int}` 之前避免路由吞噬）与 `GET /items/{id}/similar`；`POST /items/` 与 `PUT /items/{id}` 支持多图（1-3 张，**仅封面参与向量检索**，打分口径零改动）；`/match` 请求新增 `image_paths`（≤3，**仅查询侧聚合**）；`claim` 保留为薄包装、`mark-claimed` 允许 `active`/`claiming` 两态——**既有响应结构全部冻结不变**。
+> **v3.6.0**：新增 `GET /items/recommend`（置于 `/{item_id:int}` 之前避免路由吞噬）与 `GET /items/{id}/similar`；`POST /items/` 与 `PUT /items/{id}` 支持多图（1-3 张，**仅封面参与向量检索**，打分口径零改动）；`/match` 请求新增 `image_paths`（≤3，**仅查询侧聚合**）；`mark-claimed` 允许 `active`/`claiming` 两态——**既有响应结构全部冻结不变**。
 
 **列表查询参数：** `type`, `category`, `keyword`, `user_id`, `limit`, `offset`
 
@@ -532,9 +531,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|:----:|------|
-| GET | `/api/admin/reviews` | Admin | 待审核列表（分页） |
-| PUT | `/api/admin/reviews/{id}` | Admin | 审核操作（通过/驳回+通知+邮件） |
-| POST | `/api/admin/reviews/batch-approve` | Admin | 批量审核通过 |
+| PUT | `/api/admin/reviews/{id}` | Admin | 审核操作（通过/驳回+通知+邮件，可设推荐） |
 | GET | `/api/admin/users` | Admin | 用户列表（分页） |
 | PUT | `/api/admin/users/{id}` | Admin | 用户管理（设角色/启禁用） |
 | POST | `/api/admin/users` | Admin | 新增用户 |

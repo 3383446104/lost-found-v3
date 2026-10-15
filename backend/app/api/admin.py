@@ -10,10 +10,8 @@ from pydantic import BaseModel, Field, model_validator
 from ..database import get_db_connection
 from ..dependencies.auth import get_current_admin
 from ..services.match_service import auto_match_and_notify
-from ..utils.time_utils import format_beijing_time
 from ..config import settings
 from ..models.admin import (
-    BatchApproveRequest,
     UserUpdateRequest,
     AdminCreateUserRequest,
     BatchItemsRequest,
@@ -51,105 +49,6 @@ class ReviewResponse(BaseModel):
 
 
 # ---------- 接口实现 ----------
-@router.get("/reviews")
-async def get_pending_items(
-    page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(20, ge=1, le=100, description="每页条数"),
-    current_admin: dict = Depends(get_current_admin),
-):
-    """分页获取待审核物品列表（仅返回必要字段，隐藏联系方式等敏感信息）"""
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        offset = (page - 1) * size
-
-        # 查询总数
-        cursor.execute(
-            "SELECT COUNT(*) AS total FROM items WHERE review_status = ?",
-            (ReviewStatus.PENDING.value,),
-        )
-        total = cursor.fetchone()["total"]
-
-        # 分页查询（不返回 contact 和 user_id）
-        cursor.execute(
-            """
-            SELECT id, type, title, description, category, image_path,
-                   location, created_at
-            FROM items
-            WHERE review_status = ?
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
-            """,
-            (ReviewStatus.PENDING.value, size, offset),
-        )
-        items = [dict(row) for row in cursor.fetchall()]
-
-    # 时间格式化
-    for item in items:
-        item["created_at"] = format_beijing_time(item.get("created_at"))
-
-    # 返回分页数据
-    return {"total": total, "page": page, "size": size, "items": items}
-
-
-# ---------- 批量审核 ----------
-@router.post("/reviews/batch-approve")
-async def batch_approve_items(
-    payload: BatchApproveRequest,
-    background_tasks: BackgroundTasks,
-    current_admin: dict = Depends(get_current_admin),
-):
-    """批量审核通过（驳回不支持批量，需逐一填写理由）"""
-    item_ids = payload.item_ids
-    if not item_ids:
-        raise HTTPException(400, "请提供要审核的物品 ID 列表")
-    if len(item_ids) > 50:
-        raise HTTPException(400, "单次最多批量审核 50 条")
-
-    approved = 0
-    failed = []
-
-    for item_id in item_ids:
-        try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT type, review_status FROM items WHERE id = ?", (item_id,)
-                )
-                row = cursor.fetchone()
-                if not row or row["review_status"] != "pending":
-                    failed.append(item_id)
-                    continue
-
-                cursor.execute(
-                    """UPDATE items
-                       SET review_status = 'approved',
-                           reviewer_id = ?,
-                           review_time = CURRENT_TIMESTAMP,
-                           status = 'active'
-                       WHERE id = ? AND review_status = 'pending'""",
-                    (current_admin["user_id"], item_id),
-                )
-
-                if cursor.rowcount == 0:
-                    failed.append(item_id)
-                    continue
-
-                approved += 1
-                background_tasks.add_task(auto_match_and_notify, item_id, row["type"])
-        except Exception:
-            failed.append(item_id)
-
-    logger.info(
-        f"管理员 {current_admin['user_id']} 批量审核通过 {approved} 件，失败 {len(failed)} 件"
-    )
-    return {
-        "success": True,
-        "message": f"已批量通过 {approved} 件物品",
-        "approved_count": approved,
-        "failed_ids": failed,
-    }
-
-
 @router.put("/reviews/{item_id:int}")
 async def review_item(
     item_id: int,

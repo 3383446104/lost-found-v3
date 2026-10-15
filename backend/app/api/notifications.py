@@ -1,5 +1,5 @@
 # app/api/notifications.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from ..database import get_db_connection, get_unread_count, get_unread_notifications, mark_notification_read
 from ..dependencies.auth import get_current_user
 from ..utils.time_utils import format_beijing_time
