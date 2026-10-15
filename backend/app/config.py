@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     # ===================================================================== #
     MATCH_EVIDENCE_CONFIRM_SELF: float = 0.95   # 同模态（图-图 或 文-文）≥ 此值 → 确定为同一物品
     MATCH_EVIDENCE_TEXT_MIN: float = 0.606      # 文-文 ≥ 此值 → 高度疑似（实测：召回 100% / 误报 33%）
+    MATCH_EVIDENCE_IMG_MIN: float = 0.606       # 图-图 ≥ 此值 → 计入「高度疑似」命中依据（同模态余弦与文-文同尺度；初值与 TEXT_MIN 对齐，待图像通道标定后复核）
     MATCH_EVIDENCE_CROSS_MIN: float = 0.513     # 跨模态（映射后）≥ 此值 → 高度疑似（对应原始余弦 0.247）
     MATCH_EVIDENCE_CROSS_WEAK: float = 0.15     # 跨模态（映射后）≥ 此值 → 相关（仅召回）
 

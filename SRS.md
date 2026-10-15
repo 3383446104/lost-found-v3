@@ -618,7 +618,8 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
               cc = min(可用跨模态方向)；只降权、对 cc 单调，因子 ∈ [0.5, 1.0]；CROSS_PENALTY_ENABLED 可关闭
 
 三分数分离: content_score（阈值判定，与标定同尺度）/ match_score（排序，含衰减）/ reference_score（展示，最强证据通道）
-证据链: level（confirmed/high_suspect/related/reference）+ basis（命中依据）+ channels（各通道原始值）
+证据链: level（confirmed/high_suspect/related/reference）+ basis（命中依据）+ channels（各通道原始值）；
+  basis 每条依据须通过各自阈值（图-图/文-文 0.606、跨模态映射后 0.513；2026-10-15 起，图-图通道「存在但低」不再进依据）
 ```
 
 > ⚠️ **颜色通道已于 2026-09-16 废弃**（不参与打分）；`items.color_vector` 字段与 v3.4.0 的持久化逻辑保留但不再被匹配读取。
@@ -704,4 +705,4 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 >
 > **v3.5.0 中文化模型 + 跨模态检索**：新增 `app/clip_backend.py` 双后端抽象（默认 `cn_clip` Chinese-CLIP ViT-H-14 **1024 维** / 回滚 `open_clip` ViT-B-32 **512 维**，未知值抛 `RuntimeError`）| 启用 img·text **跨模态四通道**打分（图-图 0.35 / 跨模态 0.35 / 文-文 0.15 / 色 0.15）| 阶段5 升级为**真跨模态一致性惩罚**（`cc=min(可用跨模态方向)`，≥0.55 触发，只降权 ≤×0.5，可开关）| 阈值重设（手动 0.35 / 自动 0.55 / 邮件 0.70，初值）| `/match` 新增 `match_source` + `legend`（**403/401 契约冻结不变，不新增端点**）| 新增三脚本（`reembed_all_vectors.py` / `calibrate_thresholds.py` / `backfill_color_vectors.py`）| 评测集 **84 对**（42 正 / 42 负，有效 36 正 / 42 负 n=78）| 维度错配运行期防线（编码断言 + 打分前预检 → HTTP 500）| 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**。⚠️ **真实权重已下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 评测集扩充轮（84 对，n=78）复标后 Precision 上界仅 0.6889，`AUTO`/`EMAIL` **结构性无解**（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）。✅ **生产库已完成全量重嵌入（2026-09-14，冷备 + `_exit_code` 守卫，6 条全部 1024 维）**，`/match` 实测恢复 HTTP 200（后续于 v3.6.0 完成阈值标定并开启自动推送，见下）
 >
-> **v3.6.0 打分口径重构 + 社区化融合**：按查询形态**三种检索模式**（文字/图片/图文混合）| 权重「主证据 0.75 + 辅助证据 0.25」| 跨模态尺度映射（0.194→0.298）| 证据链 + 三分数分离（`content_score` 判定 / `match_score` 排序 / `reference_score` 展示）| 时间衰减失效修复并调温和（240 天 / 0.6）| **三档阈值首次标定成功**（MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069，内容分尺度）| 自动匹配尺度修正（判定改 `content_score`）| 新增 5 表（claims / reports / comments / banners / categories）+ items 3 列（cover_image / images / is_recommend）+ status 枚举新增 `claiming`（表重建迁移）| 认领闭环 / 举报 / 留言 / 多图 / 管理端统计看板 / 相似推荐 / 内容运营 上线 | 自动化测试 **304 用例（302 通过 / 2 门控跳过）**
+> **v3.6.0 打分口径重构 + 社区化融合**：按查询形态**三种检索模式**（文字/图片/图文混合）| 权重「主证据 0.75 + 辅助证据 0.25」| 跨模态尺度映射（0.194→0.298）| 证据链 + 三分数分离（`content_score` 判定 / `match_score` 排序 / `reference_score` 展示）| 时间衰减失效修复并调温和（240 天 / 0.6）| **三档阈值首次标定成功**（MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069，内容分尺度）| 自动匹配尺度修正（判定改 `content_score`）| 新增 5 表（claims / reports / comments / banners / categories）+ items 3 列（cover_image / images / is_recommend）+ status 枚举新增 `claiming`（表重建迁移）| 认领闭环 / 举报 / 留言 / 多图 / 管理端统计看板 / 相似推荐 / 内容运营 上线 | 自动化测试 **313 用例（311 通过 / 2 门控跳过）**

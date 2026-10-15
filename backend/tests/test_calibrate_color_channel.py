@@ -226,6 +226,24 @@ def test_evidence_empty_channels_is_reference():
     assert ev["reference_score"] == 0.0
 
 
+def test_evidence_high_suspect_basis_excludes_low_image():
+    """图-图 低（< MATCH_EVIDENCE_IMG_MIN）→ 依据**不得**含 image_match（2026-10-15 修复）。
+
+    修复前 image_match 是「通道存在即进依据」：文-文 0.70 高、图-图 0.2 低时，
+    用户会看到「文字描述高度吻合、图像高度一致」——后半句与事实相反。
+    """
+    ev = clip_service.build_evidence(0.2, 0.70, 0.21)
+    assert ev["level"] == "high_suspect"
+    assert ev["basis"] == ["text_match"]
+
+
+def test_evidence_high_suspect_basis_includes_high_image():
+    """图-图 高（≥ MATCH_EVIDENCE_IMG_MIN）→ 依据同时含 image_match 与 text_match。"""
+    ev = clip_service.build_evidence(0.80, 0.65, 0.238)
+    assert ev["level"] == "high_suspect"
+    assert ev["basis"] == ["image_match", "text_match"]
+
+
 # --------------------------------------------------------------------------- #
 # F. 标定层与线上同口径
 # --------------------------------------------------------------------------- #

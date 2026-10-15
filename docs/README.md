@@ -29,6 +29,7 @@
 | **v3.5.0 增量架构设计** | [`review/v3.5.0-incremental-design.md`](review/v3.5.0-incremental-design.md) | v3.5.0 中文化模型替换 + 图文跨模态检索的架构设计与任务分解（T01–T05） | ⑨ |
 | **v3.5.0 QA 回归报告** | [`review/qa-v3.5.0-regression-2026-09-13.md`](review/qa-v3.5.0-regression-2026-09-13.md) | v3.5.0 回归 + 跨模态新功能测试：维度错配（D1）等发现与修复验证；V1–V5 **全部已转「已用真实模型验证」**（重嵌入完成、`/match` 三模式实测恢复；V4 截断实验已闭环：关键信息被截掉 → 相对损失 ~22.5%） | ⑩ |
 | **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | 报告快照（2026-09-14 扩充轮）：84 对 / 有效 36 正 42 负 + 真实 `Recall@3=1.0`；报告时点 `AUTO`/`EMAIL` 尚无解（Precision 上界 0.6889）。**✅ 2026-09-21 打分口径重构（三检索模式 + 跨模态尺度映射）后首次标定成功**：MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069（详见 CHANGELOG V3.5.0 §14；`EMAIL` 召回 19.4%，建议灰度观察） | — |
+| **v3.5.0 通道消融实验报告** | [`review/ablation-study-v3.5.0.md`](review/ablation-study-v3.5.0.md) | 论文算法章证据（2026-10-15 真实模型跑出）：单通道 vs 融合对照——自动口径（P≥0.9）下单通道 R 仅 0.1111 或直接无解，融合 0.5556；融合 Recall@3=1.0 不劣于任何单通道；跨模态尺度映射锚点实测复验 0.1939/0.2975 ≈ config 0.194/0.298 ✅ | — |
 | **v3.5.0 增量 PRD（现行）** | [`product/PRD-v3.5.0-incremental.md`](product/PRD-v3.5.0-incremental.md) | v3.5.0 增量需求（中文化模型 + 图文跨模态检索）：产品目标 / 用户故事 / 需求池 / 验收标准（**现行**，非 C 组历史快照） | — |
 
 ## C. 产品设计（历史快照，v3.3 阶段）

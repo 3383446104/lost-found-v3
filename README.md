@@ -112,7 +112,7 @@ with get_db_connection() as conn:
 
 ### 运行测试
 
-项目自带自动化测试套件（pytest，**304 用例：302 通过 / 2 门控跳过**〔数值随套件演进，以 `--junitxml` 为准〕），无需下载 CLIP 模型即可运行（测试内以确定性假向量桩替换特征提取，并使用临时数据库；2 个 skip 是 `test_real_clip_smoke.py` 的真实权重门控用例——权重已在本机下载，设 `RUN_REAL_CLIP=1` 时这 2 例转通过）：
+项目自带自动化测试套件（pytest，**313 用例：311 通过 / 2 门控跳过**〔数值随套件演进，以 `--junitxml` 为准〕），无需下载 CLIP 模型即可运行（测试内以确定性假向量桩替换特征提取，并使用临时数据库；2 个 skip 是 `test_real_clip_smoke.py` 的真实权重门控用例——权重已在本机下载，设 `RUN_REAL_CLIP=1` 时这 2 例转通过）：
 
 ```bash
 cd backend

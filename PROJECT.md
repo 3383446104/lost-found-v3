@@ -105,7 +105,7 @@ lost-found-v3/
 │   ├── pytest.ini          ← pytest 配置
 │   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定 / backfill_color_vectors.py 颜色向量回填）
 │   ├── eval/               ← 评测集（eval_set_v3.5.0.json，84 对构造样本）
-│   ├── tests/              ← 自动化测试套件（304 用例）
+│   ├── tests/              ← 自动化测试套件（313 用例）
 │   │   ├── conftest.py
 │   │   ├── test_auth.py / test_items.py / test_admin.py / test_stats.py
 │   │   ├── test_claims.py / test_reports.py / test_comments.py / test_banners.py / test_categories.py
@@ -930,7 +930,7 @@ with get_db_connection() as conn:
 
 ### 10.2 自动化测试（v3.3.3 新增，v3.5.0 / v3.6.0 扩容）
 
-仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 304 用例（302 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
+仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 313 用例（311 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
 
 **A. v3.4.1 基线（72 用例）**
 
@@ -1113,7 +1113,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 - [x] **自动匹配尺度修正**：判定改 `content_score`、排序 `match_score`、展示 `reference_score`；通知/邮件含等级与依据；开关开启
 - [x] **融合参考项目八大设计**：认领闭环 / 举报体系 / 留言互动 / 多图上传（1-3 张）/ 管理端统计看板 / 相似推荐与推荐位 / 证据链前端可视化 / 内容运营（轮播图·分类管理·公告草稿）
 - [x] **DB 迁移**：items 表重建扩展 status 枚举（新增 `claiming`，显式列名对齐防 `SELECT *` 错位）+ 5 张新表（claims / reports / comments / banners / categories）+ items 3 列（cover_image / images / is_recommend）
-- [x] 自动化测试扩至 **304 用例（302 通过 / 2 门控跳过）**
+- [x] 自动化测试扩至 **313 用例（311 通过 / 2 门控跳过）**
 - [x] `APP_VERSION` → `3.6.0`；PROJECT / SRS / README / docs 索引同步
 
 #### V3.5 — 体验飞升（计划中）

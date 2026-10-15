@@ -333,7 +333,9 @@ class CLIPService:
 
         - ``level``：confirmed（确定为同一物品）/ high_suspect（高度疑似）/
           related（相关）/ reference（参考）
-        - ``basis``：命中依据列表（image_match / text_match / cross_modal）
+        - ``basis``：命中依据列表（image_match / text_match / cross_modal），
+          每条依据须通过各自阈值（IMG_MIN / TEXT_MIN / CROSS_MIN），
+          通道「存在但数值低」不得进依据（2026-10-15 起）。
         - ``reference_score``：展示分 —— 取**最强证据通道**（映射到可读尺度后），
           用于界面与邮件给用户参考（不再被弱通道稀释）
         """
@@ -361,10 +363,13 @@ class CLIPService:
         elif (sim_tt is not None and sim_tt >= settings.MATCH_EVIDENCE_TEXT_MIN) or \
              (cross_mapped is not None and cross_mapped >= settings.MATCH_EVIDENCE_CROSS_MIN):
             level = "high_suspect"
+            # 2026-10-15 修复：image_match 原为「通道存在即进依据」，不看数值 ——
+            # 文-文 高而图-图 低（如 0.2）时，用户会看到「文字描述高度吻合、图像高度一致」，
+            # 后半句与事实相反。现改为图-图 ≥ MATCH_EVIDENCE_IMG_MIN 才计入依据。
             basis = [n for n, v in usable if (
                 (n == "text_match" and v >= settings.MATCH_EVIDENCE_TEXT_MIN)
                 or (n == "cross_modal" and v >= settings.MATCH_EVIDENCE_CROSS_MIN)
-                or n == "image_match"
+                or (n == "image_match" and v >= settings.MATCH_EVIDENCE_IMG_MIN)
             )]
         elif cross_mapped is not None and cross_mapped >= settings.MATCH_EVIDENCE_CROSS_WEAK:
             level = "related"
