@@ -1,4 +1,6 @@
 # app/services/match_service.py
+from typing import Optional
+
 from ..database import get_db_connection, json_to_vector, add_notification
 from ..clip_service import clip_service
 from ..utils.email_utils import send_match_notification
@@ -29,6 +31,24 @@ def _basis_text(basis) -> str:
     return "、".join(BASIS_TEXT.get(b, b) for b in basis)
 
 
+def find_dim_mismatch(query_dim: Optional[int], rows) -> Optional[int]:
+    """R2 维度预检：``rows`` 中任一非空向量维度 ≠ ``query_dim`` → 返回该不匹配维度。
+
+    动机：打分循环的 ``except → continue`` 会把「未重嵌入导致的 ``np.dot`` 维度不符」
+    静默吞成「匹配为空」，与「真的没找到」外观一致。预检在**逐条打分前**把该情形
+    暴露出来（调用方自行决定抛 500 / 记 ERROR 跳过）。``query_dim`` 为 ``None`` → 直接
+    ``None``；``rows`` 为行字典可迭代（需含 ``image_vector`` / ``text_vector`` 两列）。
+    """
+    if query_dim is None:
+        return None
+    for row in rows:
+        for col in ("image_vector", "text_vector"):
+            vec = json_to_vector(row[col]) if row[col] else None
+            if vec is not None and len(vec) != query_dim:
+                return len(vec)
+    return None
+
+
 def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
     """
     新物品审核通过后自动匹配并推送通知
@@ -44,7 +64,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT user_id, title, category, location, created_at, image_vector, text_vector, color_vector, image_path
+                SELECT user_id, title, category, location, created_at, image_vector, text_vector, image_path
                 FROM items WHERE id = ?
             ''', (new_item_id,))
             new_item = cursor.fetchone()
@@ -57,7 +77,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
 
             # 3. 查询所有已审核且状态为 active 的目标物品
             cursor.execute('''
-                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, color_vector, image_path
+                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, image_path
                 FROM items
                 WHERE type = ? AND status = 'active' AND review_status = 'approved'
             ''', (target_type,))
@@ -67,11 +87,10 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             logger.info(f"新物品 {new_item_id} 没有可匹配的目标物品")
             return
 
-        # 4. 计算相似度（五阶段+颜色优化）
+        # 4. 计算相似度（五阶段）
         new_img_vec = json_to_vector(new_item['image_vector']) if new_item['image_vector'] else None
         new_text_vec = json_to_vector(new_item['text_vector']) if new_item['text_vector'] else None
         now = datetime.now(timezone.utc)
-        # 【已废弃 2026-09-16】颜色通道不再参与打分：不再读取/计算 color_vector。
 
         # R2 维度预检：新物品向量维度 ≠ 库中目标向量维度 → 记 ERROR 并跳过。
         # 否则「切模型未重嵌入」会在后台被静默吞成「未找到高相似度匹配」，与真实无命中混淆。
@@ -80,27 +99,19 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             new_dim = len(new_img_vec)
         elif new_text_vec is not None:
             new_dim = len(new_text_vec)
-        if new_dim is not None:
-            for target in target_items:
-                mismatch_dim = None
-                for col in ("image_vector", "text_vector"):
-                    vec = json_to_vector(target[col]) if target[col] else None
-                    if vec is not None and len(vec) != new_dim:
-                        mismatch_dim = len(vec)
-                        break
-                if mismatch_dim is not None:
-                    logger.error(
-                        f"自动匹配跳过（物品 {new_item_id}）：向量维度不匹配"
-                        f"（库中 {mismatch_dim} 维 / 当前模型 {new_dim} 维），"
-                        "请先运行 scripts/reembed_all_vectors.py 重嵌入"
-                    )
-                    return
+        mismatch_dim = find_dim_mismatch(new_dim, target_items)
+        if mismatch_dim is not None:
+            logger.error(
+                f"自动匹配跳过（物品 {new_item_id}）：向量维度不匹配"
+                f"（库中 {mismatch_dim} 维 / 当前模型 {new_dim} 维），"
+                "请先运行 scripts/reembed_all_vectors.py 重嵌入"
+            )
+            return
 
         matches = []
         for target in target_items:
             target_img_vec = json_to_vector(target['image_vector']) if target['image_vector'] else None
             target_text_vec = json_to_vector(target['text_vector']) if target['text_vector'] else None
-            # 【已废弃 2026-09-16】颜色通道不再参与打分：不再读取/计算 color_vector。
 
             # 计算目标物品已发布天数（时间衰减）—— 统一走 days_since_utc，
             # 修正 naive/aware 相减抛 TypeError 被吞导致衰减静默失效的缺陷（2026-09-21）

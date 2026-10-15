@@ -5,14 +5,13 @@ v3.5.0 起 ``CLIPService`` 不再直接持有具体模型，而是作为**兼容
 :class:`~app.clip_backend.ClipBackend`（``open_clip`` / ``cn_clip`` 二选一）。
 
 **公开方法名与签名冻结**（工程铁律 3）：``_initialize`` / ``get_image_feature`` /
-``get_text_feature`` / ``get_color_histogram`` / ``compute_color_similarity`` /
-``compute_weighted_similarity``——``tests/conftest.py`` 依赖 monkeypatch 这些方法名来
-阻断真实模型加载，**改名即测试全红**。``clip_service`` 仍是模块级单例名。
+``get_text_feature`` / ``compute_weighted_similarity``——``tests/conftest.py`` 依赖
+monkeypatch 这些方法名来阻断真实模型加载，**改名即测试全红**。
+``clip_service`` 仍是模块级单例名。
 """
 from typing import Optional
 
 import numpy as np
-from PIL import Image
 
 from .clip_backend import ClipBackend, get_backend
 from .config import settings
@@ -65,36 +64,6 @@ class CLIPService:
         return self._backend.encode_text(text)
 
     # ------------------------------------------------------------------ #
-    # 颜色直方图（与模型无关，逻辑自 v3.4.1 保持不变）
-    # ------------------------------------------------------------------ #
-    def get_color_histogram(self, image_path: str) -> np.ndarray:
-        """提取 27 维归一化颜色直方图（RGB 各 3 级量化）。"""
-        try:
-            img = Image.open(image_path).convert('RGB').resize((64, 64))
-            pixels = np.array(img).reshape(-1, 3) // 86    # 0-85→0, 86-171→1, 172-255→2
-            hist = np.zeros((3, 3, 3), dtype=np.float32)
-            for p in pixels:
-                hist[min(p[0], 2)][min(p[1], 2)][min(p[2], 2)] += 1.0
-            hist = hist.flatten()
-            hist = hist / (hist.sum() + 1e-8)
-            return hist
-        except FileNotFoundError:
-            logger.warning(f"颜色直方图提取失败: 文件不存在 {image_path}")
-            return None
-        except OSError as e:
-            logger.warning(f"颜色直方图提取失败: 图片无法打开 {image_path}: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"颜色直方图提取失败: 未知错误 {image_path}: {e}")
-            return None
-
-    def compute_color_similarity(self, hist1: np.ndarray, hist2: np.ndarray) -> float:
-        """颜色直方图余弦相似度。"""
-        if hist1 is None or hist2 is None:
-            return 0.0
-        return float(np.dot(hist1, hist2) / (np.linalg.norm(hist1) * np.linalg.norm(hist2) + 1e-8))
-
-    # ------------------------------------------------------------------ #
     # 打分（跨模态 + 五阶段）
     # ------------------------------------------------------------------ #
     def compute_weighted_similarity(
@@ -110,9 +79,6 @@ class CLIPService:
         days_old: int = 0,
         img_weight: Optional[float] = None,
         text_weight: Optional[float] = None,
-        color_weight: Optional[float] = None,
-        color1: np.ndarray = None,
-        color2: np.ndarray = None,
         *,
         cross_weight: Optional[float] = None,
         w_cross_t2i: Optional[float] = None,
@@ -134,15 +100,10 @@ class CLIPService:
           缺通道**动态归一化**（不可用通道从分母剔除，权重和恒为 1）；全缺 → ``0.0``；
         - 阶段1 类别/位置；阶段2 时间衰减；阶段5 **跨模态一致性惩罚（只降权，≤×0.5）**。
 
-        ⚠️ **颜色通道已废弃**（2026-09-16）：``color1`` / ``color2`` / ``color_weight``
-        形参及 ``compute_color_similarity`` / ``get_color_histogram`` 方法仅为**兼容既有
-        调用点与冻结接口**保留，**不参与任何打分**。
-
         权重参数默认 ``None`` → 回落 ``settings.*``（config 驱动，代码内不硬编码）。
         ``cross_weight`` / ``w_cross_t2i`` / ``w_cross_i2t`` 位于 ``*`` 之后，为关键字专用。
         """
         # ---- 权重：None → 回落 config（三通道等权，默认均为 1.0）----
-        # 注：color_weight 形参已废弃（颜色不参与打分），仅为兼容旧调用点保留。
         w_ii = settings.MATCH_W_IMG_IMG if img_weight is None else img_weight
         w_tt = settings.MATCH_W_TEXT_TEXT if text_weight is None else text_weight
         w_cross = settings.MATCH_W_CROSS if cross_weight is None else cross_weight
@@ -155,8 +116,6 @@ class CLIPService:
         has_t2i = text1 is not None and img2 is not None      # 查询文字 × 目标图片
         has_i2t = img1 is not None and text2 is not None      # 查询图片 × 目标文字
         has_cc = has_t2i or has_i2t
-        # 【已废弃 2026-09-16】颜色通道不再参与打分；color1/color2/color_weight
-        # 形参仅为兼容既有调用点与冻结接口而保留，内部一律忽略。
 
         # ---- 逐通道取值（None 表示不可用）----
         sim_ii = float(np.dot(img1, img2)) if has_ii else None

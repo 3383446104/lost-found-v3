@@ -3,13 +3,12 @@
 目标：独立证明预检在**逐条打分之前**把「库中向量维度 ≠ 当前模型维度」变成**响亮错误**
 （HTTP 500），而不是被逐条 ``except → continue`` 吞成「未找到」。逐个核验边界：
 维度一致放行、库中维度混杂拦截、``query_dim=None`` 跳过、全目标异常 vs 真无命中的区分、
-自动匹配路径不掉队、以及 ``color_vector`` 未纳入预检的后果。
+自动匹配路径不掉队。
 
 作者：yan-qa（本文件归 yan-qa 维护）。
 """
 import json
 import logging
-import os
 
 import numpy as np
 import pytest
@@ -21,28 +20,21 @@ from app.config import settings
 from app.services.match_service import auto_match_and_notify
 from app.api.items import _assert_vector_dims_match
 
-PNG_1X1 = (
-    b"\x89PNG\r\n\x1a\n"
-    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
-    b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
-    b"\x00\x00\x00\x00IEND\xaeB`\x82"
-)
-
 
 def _j(dim):
     return json.dumps([0.01] * dim) if dim else None
 
 
-def _insert_item(user_id, type_="found", iv_dim=None, tv_dim=None, cv_dim=None,
+def _insert_item(user_id, type_="found", iv_dim=None, tv_dim=None,
                  status="active", review_status="approved"):
     with db_module.get_db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO items (type,title,description,category,location,status,user_id,"
-            "review_status,image_path,image_vector,text_vector,color_vector) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "review_status,image_path,image_vector,text_vector) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (type_, "QA预检", "d", "其他", "图书馆", status, user_id, review_status,
-             None, _j(iv_dim), _j(tv_dim), _j(cv_dim)),
+             None, _j(iv_dim), _j(tv_dim)),
         )
         return cur.lastrowid
 
@@ -243,31 +235,3 @@ def test_auto_match_happy_path_inserts_when_dims_match(client, make_user, monkey
 
     assert "向量维度不匹配" not in _errors(caplog)
     assert _count("matches") == 1, "维度一致且高分时应正常落库"
-
-
-# --------------------------------------------------------------------------- #
-# 4) 【低】预检不覆盖 color_vector：颜色维度异常仍会「静默空集 + 误导性 ERROR」
-# --------------------------------------------------------------------------- #
-def test_color_dim_mismatch_not_covered_by_precheck(client, make_user, monkeypatch, caplog):
-    caplog.set_level(logging.ERROR)
-    user = make_user(username="qa_color_hole")
-    # image/text 均为 512（预检通过），但 color_vector 被污染为 5 维（正常应 27）
-    _insert_item(user["id"], iv_dim=512, tv_dim=512, cv_dim=5)
-
-    monkeypatch.setattr(clip_service, "get_image_feature", lambda _p: _unit(512))
-    monkeypatch.setattr(clip_service, "get_color_histogram", lambda _p: _unit(27))
-
-    img_name = "temp_qa_color.png"
-    with open(os.path.join(settings.UPLOAD_FOLDER, img_name), "wb") as f:
-        f.write(PNG_1X1)
-
-    resp = client.post(
-        "/api/items/match", json={"image_path": img_name, "target_type": "found"}, headers=user["headers"]
-    )
-    # 2026-09-16 修订：颜色通道已废弃 → 损坏的 color_vector（5 维）**不再被读取**，
-    # 因此不再有「颜色维度错配被静默吞掉」的问题，也不再产生误导性的维度 ERROR。
-    assert resp.status_code == 200
-    text = _errors(caplog)
-    assert "color" not in text.lower(), (
-        "颜色通道已废弃，但日志中仍出现 color 相关报错 —— 废弃不彻底"
-    )

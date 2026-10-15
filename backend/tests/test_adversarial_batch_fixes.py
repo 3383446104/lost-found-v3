@@ -3,82 +3,26 @@
 覆盖团队长 #8 清单中在本轮新落的对抗用例：
 - O2 自锁保护（管理员不得禁用/删除自己；可禁用其他管理员）
 - C1 补充（deleted 用户经公开接口按匿名对待）
-- R4 颜色向量持久化（create 入库 / update 保留或重算 / match 读库免回退）
 - R6 路由顺序（静态路径不被 :int 参数路由吞；非数字 id → 404 而非 500/422）
 - R9 请求模型错误码契约（宽松模型不把 400 变成 422）
 - 迁移幂等（init_db 连跑两次无副作用 + PRAGMA 列存在 + 旧库 role→status 映射）
 
 仅断言行为，不依赖实现细节；不修改 ``app/`` 任何产品代码。
 """
-import json
 import sqlite3
 
-import numpy as np
-
 from app import database as db_module
-
-# 最小合法 1x1 PNG（imghdr 识别为 png，供「带图发布」使用）
-PNG_1X1 = (
-    b"\x89PNG\r\n\x1a\n"
-    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
-    b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
-    b"\x00\x00\x00\x00IEND\xaeB`\x82"
-)
 
 
 # --------------------------------------------------------------------------- #
 # 辅助
 # --------------------------------------------------------------------------- #
-def _create_item_with_image(client, headers, type="lost", title="带图物品",
-                            description="有图描述", category="其他",
-                            contact="", location="图书馆"):
-    """带图片发布物品（触发 color_vector 计算与持久化），返回物品 id。"""
-    resp = client.post(
-        "/api/items/",
-        data={
-            "type": type,
-            "title": title,
-            "description": description,
-            "category": category,
-            "contact": contact,
-            "location": location,
-        },
-        files={"image": ("pic.png", PNG_1X1, "image/png")},
-        headers=headers,
-    )
-    assert resp.status_code == 201, f"带图发布失败: {resp.status_code} {resp.text}"
-    return resp.json()["id"]
-
-
-def _color_vector_of(item_id):
-    with db_module.get_db_connection() as conn:
-        row = conn.execute(
-            "SELECT color_vector FROM items WHERE id=?", (item_id,)
-        ).fetchone()
-    return row["color_vector"]
-
-
 def _role_status(user_id):
     with db_module.get_db_connection() as conn:
         row = conn.execute(
             "SELECT role, status FROM users WHERE id=?", (user_id,)
         ).fetchone()
     return row["role"], row["status"]
-
-
-def _spy_color_histogram(monkeypatch):
-    """把 clip_service.get_color_histogram 换成记录调用的桩，返回调用记录列表。"""
-    from app.clip_service import clip_service
-
-    calls = []
-
-    def _spy(image_path):
-        calls.append(image_path)
-        vec = np.ones(27, dtype=np.float32)
-        return vec / np.linalg.norm(vec)
-
-    monkeypatch.setattr(clip_service, "get_color_histogram", _spy)
-    return calls
 
 
 # --------------------------------------------------------------------------- #
@@ -162,112 +106,6 @@ def test_c1_deleted_user_public_endpoints_treated_as_anonymous(
         f"C1 未生效：deleted 用户仍以属主身份看到自己的物品（实得 {detail_resp.status_code}）"
     )
     assert detail_resp.status_code != 500
-
-
-# --------------------------------------------------------------------------- #
-# R4：颜色向量持久化
-# --------------------------------------------------------------------------- #
-def test_r4_create_with_image_persists_27dim_color_vector(client, make_user):
-    """带图发布后，库中 items.color_vector 非空且为 27 维。"""
-    user = make_user(username="r4_creator")
-    item_id = _create_item_with_image(client, user["headers"])
-
-    cv = _color_vector_of(item_id)
-    assert cv, "items.color_vector 未持久化（应为非空 JSON）"
-    vec = json.loads(cv)
-    assert isinstance(vec, list) and len(vec) == 27, (
-        f"color_vector 维度应为 27，实得 {len(vec) if isinstance(vec, list) else vec}"
-    )
-
-
-def test_r4_update_without_image_preserves_color_vector(client, make_user):
-    """编辑但**不换图**：color_vector 必须保留库中原值（不丢失/不置空）。"""
-    user = make_user(username="r4_preserve")
-    item_id = _create_item_with_image(client, user["headers"])
-
-    sentinel = json.dumps([0.5] * 27)
-    with db_module.get_db_connection() as conn:
-        conn.execute("UPDATE items SET color_vector=? WHERE id=?", (sentinel, item_id))
-
-    resp = client.put(
-        f"/api/items/{item_id}",
-        data={"title": "改名后的物品", "description": "d", "category": "其他",
-              "contact": "", "location": ""},
-        headers=user["headers"],
-    )
-    assert resp.status_code == 200
-    assert _color_vector_of(item_id) == sentinel, "未换图时 color_vector 应原样保留"
-
-
-def test_r4_update_with_image_recomputes_color_vector(client, make_user):
-    """编辑且**换图**：color_vector 必须被重算（不再是占位旧值）。"""
-    user = make_user(username="r4_recompute")
-    item_id = _create_item_with_image(client, user["headers"])
-
-    sentinel = json.dumps([0.0] * 27)
-    with db_module.get_db_connection() as conn:
-        conn.execute("UPDATE items SET color_vector=? WHERE id=?", (sentinel, item_id))
-
-    resp = client.put(
-        f"/api/items/{item_id}",
-        data={"title": "换图后的物品", "description": "d", "category": "其他",
-              "contact": "", "location": ""},
-        files={"image": ("new.png", PNG_1X1, "image/png")},
-        headers=user["headers"],
-    )
-    assert resp.status_code == 200
-    cv = _color_vector_of(item_id)
-    assert cv != sentinel, "换图时 color_vector 应被重算"
-    assert len(json.loads(cv)) == 27
-
-
-def test_r4_match_uses_persisted_color_vector_no_disk_fallback(
-    client, make_user, approve_item, monkeypatch
-):
-    """R4 核心：库中已有 color_vector 时，匹配不得再去算颜色直方图（免重复磁盘 IO）。"""
-    owner = make_user(username="r4_match_persisted")
-    target_id = _create_item_with_image(
-        client, owner["headers"], type="found", title="已入库颜色向量"
-    )
-    approve_item(target_id)
-
-    calls = _spy_color_histogram(monkeypatch)
-    resp = client.post(
-        "/api/items/match",
-        json={"text": "黑色钱包", "target_type": "found"},
-        headers=owner["headers"],
-    )
-    assert resp.status_code == 200
-    assert "matches" in resp.json()
-    assert calls == [], f"库中已有 color_vector，匹配不应回退磁盘计算，实得调用 {calls}"
-
-
-def test_r4_match_falls_back_when_color_vector_null(
-    client, make_user, approve_item, monkeypatch
-):
-    """2026-09-16 修订：颜色通道已废弃 → **不再**实时计算颜色直方图（零颜色开销）。
-
-    原契约（v3.4.0 R4）为「color_vector 为 NULL 时回退实时计算」；颜色通道整体移除后
-    该回退路径不再需要，本用例方向反转为「不得调用 get_color_histogram」。
-    """
-    owner = make_user(username="r4_match_null")
-    target_id = _create_item_with_image(
-        client, owner["headers"], type="found", title="颜色向量置空"
-    )
-    approve_item(target_id)
-    with db_module.get_db_connection() as conn:
-        conn.execute("UPDATE items SET color_vector=NULL WHERE id=?", (target_id,))
-
-    calls = _spy_color_histogram(monkeypatch)
-    resp = client.post(
-        "/api/items/match",
-        json={"text": "黑色钱包", "target_type": "found"},
-        headers=owner["headers"],
-    )
-    assert resp.status_code == 200
-    assert not calls, (
-        "颜色通道已废弃，不应再调用 get_color_histogram（颜色回退契约已作废）"
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -400,13 +238,11 @@ def test_migration_init_db_twice_no_side_effects(client, make_user, create_item)
     assert before == after, "init_db 重复执行改动了数据（迁移非幂等）"
 
 
-def test_migration_schema_has_new_columns(client):
-    """PRAGMA 校验：users 含 status、items 含 color_vector。"""
+def test_migration_schema_has_status_column(client):
+    """PRAGMA 校验：users 含 status。"""
     with db_module.get_db_connection() as conn:
         users_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
-        items_cols = [r["name"] for r in conn.execute("PRAGMA table_info(items)").fetchall()]
     assert "status" in users_cols, f"users 缺 status 列：{users_cols}"
-    assert "color_vector" in items_cols, f"items 缺 color_vector 列：{items_cols}"
 
 
 def test_migration_legacy_role_values_mapped_to_status(tmp_path, monkeypatch):

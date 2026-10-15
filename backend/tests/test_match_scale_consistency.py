@@ -40,10 +40,10 @@ def _insert_item(user_id, type_="found", iv_dim=512, tv_dim=512):
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO items (type,title,description,category,location,status,user_id,"
-            "review_status,image_path,image_vector,text_vector,color_vector) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "review_status,image_path,image_vector,text_vector) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (type_, "尺度守卫", "d", "电子产品", "图书馆", "active", user_id,
-             "approved", None, _j(iv_dim), _j(tv_dim), None),
+             "approved", None, _j(iv_dim), _j(tv_dim)),
         )
         return cur.lastrowid
 

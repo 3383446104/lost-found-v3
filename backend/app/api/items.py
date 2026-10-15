@@ -2,12 +2,10 @@
 import os
 import json
 import uuid
-import asyncio
-import functools
-from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 import numpy as np
 from ..config import settings
 from ..database import get_db_connection, vector_to_json, json_to_vector, CATEGORIES
@@ -18,6 +16,7 @@ from ..clip_service import clip_service
 from ..validators import validate_item_title, validate_contact
 from ..logger import logger
 from ..models.match import MatchRequest
+from ..services.match_service import find_dim_mismatch
 
 
 router = APIRouter(prefix="/items", tags=["物品"])
@@ -81,31 +80,21 @@ def _assert_vector_dims_match(query_dim: Optional[int], target_items) -> None:
     动机：打分循环的 ``except → continue`` 会把「未重嵌入导致的 ``np.dot`` 维度不符」
     **静默**吞成「匹配为空」（HTTP 200 + ``matches: []``），与「真的没找到」外观一致
     → 全站匹配静默失效。此预检在**逐条打分前**把该情形变成**明确错误**，
-    提示先运行重嵌入脚本。
+    提示先运行重嵌入脚本。检测逻辑复用 ``match_service.find_dim_mismatch``。
     """
-    if query_dim is None:
-        return
-    for item in target_items:
-        for col in ("image_vector", "text_vector"):
-            vec = json_to_vector(item[col]) if item[col] else None
-            if vec is not None and len(vec) != query_dim:
-                raise HTTPException(
-                    500,
-                    f"向量维度不匹配（库中 {len(vec)} 维 / 当前模型 {query_dim} 维），"
-                    "请先运行 scripts/reembed_all_vectors.py 重嵌入",
-                )
+    mismatch_dim = find_dim_mismatch(query_dim, target_items)
+    if mismatch_dim is not None:
+        raise HTTPException(
+            500,
+            f"向量维度不匹配（库中 {mismatch_dim} 维 / 当前模型 {query_dim} 维），"
+            "请先运行 scripts/reembed_all_vectors.py 重嵌入",
+        )
 
 
 def is_safe_path(base_dir: str, target_path: str) -> bool:
     base = os.path.abspath(base_dir)
     target = os.path.abspath(os.path.join(base, os.path.basename(target_path)))
     return os.path.commonpath([base, target]) == base
-
-async def run_in_threadpool(func, *args, **kwargs):
-    loop = asyncio.get_running_loop()
-    if kwargs:
-        func = functools.partial(func, **kwargs)
-    return await loop.run_in_executor(None, func, *args)
 
 def delete_file_if_exists(file_path: str):
     if file_path and os.path.exists(file_path):
@@ -211,7 +200,6 @@ async def create_item(
     saved_paths: List[str] = []
     image_path = None
     image_vector = None
-    color_vector = None
     try:
         for i, f in enumerate(files):
             p = await _save_upload(f)
@@ -221,8 +209,6 @@ async def create_item(
         if image_path:
             # 仅封面参与向量检索（匹配口径不变）
             image_vector = await run_in_threadpool(clip_service.get_image_feature, image_path)
-            # R4：同步计算 27 维颜色直方图并随物品持久化，匹配时免重复磁盘 IO
-            color_vector = await run_in_threadpool(clip_service.get_color_histogram, image_path)
     except HTTPException:
         for p in saved_paths:
             delete_file_if_exists(p)
@@ -252,12 +238,12 @@ async def create_item(
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO items (type, title, description, category, image_path,
-                                   images, cover_image, image_vector, text_vector, color_vector,
+                                   images, cover_image, image_vector, text_vector,
                                    contact, location, status, user_id, review_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (type, title, description, category, image_path,
                   images_json, cover_name,
-                  vector_to_json(image_vector), vector_to_json(text_vector), vector_to_json(color_vector),
+                  vector_to_json(image_vector), vector_to_json(text_vector),
                   contact, location, 'pending', current_user['user_id'], 'pending'))
             item_id = cursor.lastrowid
     except Exception as e:
@@ -402,7 +388,14 @@ async def get_item(item_id: int, request: Request):
     """获取物品详情（公开，未审核物品仅限发布者/管理员查看）"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM items WHERE id = ?', (item_id,))
+        # 显式列清单：不 SELECT *，避免把内部向量列泄露给客户端
+        cursor.execute('''
+            SELECT id, type, title, description, category, image_path,
+                   image_vector, text_vector, contact, location, status,
+                   user_id, review_status, reviewer_id, review_time, reject_reason,
+                   is_recommend, created_at, updated_at, cover_image, images
+            FROM items WHERE id = ?
+        ''', (item_id,))
         item = cursor.fetchone()
         if not item:
             raise HTTPException(404, "物品不存在")
@@ -669,7 +662,6 @@ async def update_item(
     cover_changed = new_cover != old_cover
 
     image_vector = None
-    color_vector = None
     if cover_changed:
         cover_path = os.path.join(settings.UPLOAD_FOLDER, new_cover)
         if not os.path.exists(cover_path):
@@ -678,8 +670,6 @@ async def update_item(
             raise HTTPException(400, "封面图片文件不存在")
         try:
             image_vector = await run_in_threadpool(clip_service.get_image_feature, cover_path)
-            # R4：换封面时必须同步更新颜色直方图，否则留下脏数据
-            color_vector = await run_in_threadpool(clip_service.get_color_histogram, cover_path)
         except Exception as e:
             for p in saved_new:
                 delete_file_if_exists(p)
@@ -698,8 +688,6 @@ async def update_item(
             raise HTTPException(500, "文本特征提取失败")
 
     image_vector_json = vector_to_json(image_vector) if image_vector is not None else item['image_vector']
-    # R4：换封面时 color_vector 已重算；未换图时保留库中原值（避免脏数据 / 丢特征）
-    color_vector_json = vector_to_json(color_vector) if color_vector is not None else item['color_vector']
     review_status = item['review_status']
     status = item['status']
     reviewer_id = None
@@ -716,7 +704,7 @@ async def update_item(
                 title = ?, description = ?, category = ?,
                 contact = ?, location = ?, image_path = ?,
                 images = ?, cover_image = ?,
-                image_vector = ?, text_vector = ?, color_vector = ?,
+                image_vector = ?, text_vector = ?,
                 review_status = ?, status = ?,
                 reviewer_id = ?, review_time = ?, reject_reason = ?
             WHERE id = ?
@@ -724,7 +712,7 @@ async def update_item(
               os.path.join(settings.UPLOAD_FOLDER, new_cover) if new_cover else None,
               json.dumps(final_names) if final_names else None, new_cover,
               image_vector_json,
-              vector_to_json(text_vector), color_vector_json, review_status, status,
+              vector_to_json(text_vector), review_status, status,
               reviewer_id, review_time, reject_reason, item_id))
 
     # 删除已不再属于该物品的旧图文件（不在 final_names 中的 stored 文件）
@@ -831,7 +819,7 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, title, description, image_vector, text_vector, color_vector, image_path, category, location, created_at
+            SELECT id, title, description, image_vector, text_vector, image_path, category, location, created_at
             FROM items
             WHERE type = ? AND status = 'active' AND review_status = 'approved'
         ''', (req.target_type,))
@@ -855,7 +843,6 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
     for item in target_items:
         target_img_vec = json_to_vector(item['image_vector'])
         target_text_vec = json_to_vector(item['text_vector'])
-        # 【已废弃 2026-09-16】颜色通道不再参与打分：不再读取/计算 color_vector。
         # 时间衰减（统一走 days_since_utc：修正 naive/aware 相减导致衰减静默失效的缺陷）
         days_old = days_since_utc(item['created_at'])
         try:

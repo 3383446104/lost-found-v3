@@ -64,7 +64,6 @@ def init_db():
                 image_path TEXT,
                 image_vector TEXT,
                 text_vector TEXT,
-                color_vector TEXT,
                 contact TEXT,
                 location TEXT,
                 status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claiming', 'claimed', 'done', 'rejected', 'closed')),
@@ -134,13 +133,6 @@ def init_db():
             cursor.execute("UPDATE users SET status='deleted',  role='user' WHERE role='deleted'")
             cursor.execute("UPDATE users SET status='active'                  WHERE status IS NULL")
             logger.info("迁移成功：users 表已添加 status 列并完成一次性数据映射")
-
-        # ---------- 迁移：items 新增 color_vector（R4 颜色向量持久化）----------
-        cursor.execute("PRAGMA table_info(items)")
-        item_columns = [row['name'] for row in cursor.fetchall()]
-        if 'color_vector' not in item_columns:
-            cursor.execute("ALTER TABLE items ADD COLUMN color_vector TEXT")
-            logger.info("迁移成功：items 表已添加 color_vector 列")
 
         # =====================================================================
         # v3.6.0 融合迁移：认领/举报/留言/轮播/分类 五张新表
@@ -364,7 +356,6 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(handle_status, created_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_item ON reports(item_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_item ON comments(item_id, status, created_at)')
-        # 注意：不再需要单独 idx_notifications_user_id 和 idx_notifications_is_read，复合索引已覆盖
 
         logger.info("数据库初始化/迁移完成")
 

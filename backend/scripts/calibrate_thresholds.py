@@ -394,10 +394,7 @@ def penalty_enabled(enabled: bool):
 
 
 def _weights_kwargs(weights: Optional[Dict[str, float]]) -> Dict[str, float]:
-    """把三通道权重 dict 转成 ``compute_weighted_similarity`` 关键字参数。
-
-    2026-09-16：颜色通道已废弃 → 不再传 ``color_weight``；仅三个通道可调。
-    """
+    """把三通道权重 dict 转成 ``compute_weighted_similarity`` 关键字参数。"""
     if not weights:
         return {}
     return {
@@ -419,11 +416,6 @@ def score_pair(
     三通道口径（2026-09-16 修订）
     ----------------------------
     打分只含 ①文-文 ②图文跨模态 ③图-图 三个通道；线上默认**等权**（各 1.0）。
-    **颜色通道已废弃**：不再计算/传入 ``color1``/``color2``——``compute_weighted_similarity``
-    仍保留这两个形参（冻结接口兼容），但内部一律忽略。
-
-    历史注记（已随废弃而失效）：v3.5.0 期间本函数曾因「不传 ``color1/color2``」导致
-    ``W_COLOR`` 在标定里**数学上完全惰性**，与线上口径不符；颜色通道整体移除后该坑不再适用。
     """
     query = pair.get("query", {})
     target = pair.get("target", {})
@@ -660,8 +652,7 @@ def evaluate(
 def iter_weight_grid(step: float = 0.05) -> Iterable[Dict[str, float]]:
     """枚举三通道 ``{text_text, cross, img_img}`` 和为 1.0、步长 ``step`` 的粗网格。
 
-    ⚠️ 2026-09-16：颜色通道已废弃，网格不再含 ``color`` 维度；线上默认三通道等权
-    （各 1.0），本网格仅供「若需重新分配通道权重」的探索使用。
+    线上默认三通道等权（各 1.0），本网格仅供「若需重新分配通道权重」的探索使用。
     """
     n = round(1.0 / step)
     for c in range(n + 1):

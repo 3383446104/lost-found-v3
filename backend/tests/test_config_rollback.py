@@ -85,5 +85,4 @@ def test_weights_read_from_config(monkeypatch):
     monkeypatch.setattr(settings, "MATCH_W_IMG_IMG", 1.0)
     monkeypatch.setattr(settings, "MATCH_W_CROSS", 0.0)
     monkeypatch.setattr(settings, "MATCH_W_TEXT_TEXT", 0.0)
-    monkeypatch.setattr(settings, "MATCH_W_COLOR", 0.0)
     assert clip_service.compute_weighted_similarity(q, None, t, None) == pytest.approx(1.0, abs=1e-6)

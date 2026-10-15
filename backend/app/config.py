@@ -56,7 +56,6 @@ class Settings(BaseSettings):
     MATCH_W_TEXT_TEXT: float = 0.75         # 主证据：文-文（同模态，判别力强）
     MATCH_W_IMG_IMG: float = 0.75           # 主证据：图-图（同模态，判别力强）
     MATCH_W_CROSS: float = 0.25             # 辅助：跨模态（保留「仅有图片/仅有描述」的召回能力）
-    MATCH_W_COLOR: float = 0.0              # 【已废弃】恒 0：颜色不参与打分
     MATCH_W_CROSS_T2I: float = 0.5          # 跨模态内：查询文字 × 目标图片
     MATCH_W_CROSS_I2T: float = 0.5          # 跨模态内：查询图片 × 目标文字
 

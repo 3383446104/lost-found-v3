@@ -20,7 +20,7 @@
 3. **跨模态一致性惩罚的触发条件收窄**：仅当「文-文高 **且** 图-图不高」时触发
    （真正的「文本撞车」场景）。图-图同样高说明图像证据独立支持，不再误伤。
 
-另锁死「颜色通道已废弃」与「证据链（等级/依据/展示分）」语义。
+另锁死「证据链（等级/依据/展示分）」语义。
 
 作者：team-lead（齐活林）—— 口径变更自留守卫。
 """
@@ -135,21 +135,7 @@ def test_cross_mapping_affects_outer_weighting(no_penalty):
 
 
 # --------------------------------------------------------------------------- #
-# C. 颜色通道废弃（沿用既有守卫）
-# --------------------------------------------------------------------------- #
-def test_color_vectors_ignored_after_deprecation(no_penalty):
-    """传入颜色向量且 color_weight 拉满，得分必须**完全不变**。"""
-    cq = np.array([1.0, 0.0], dtype=np.float32)
-    ct = np.array([0.0, 1.0], dtype=np.float32)
-    s_without = clip_service.compute_weighted_similarity(_IMG, _TEXT, _IMG, _TEXT)
-    s_with = clip_service.compute_weighted_similarity(
-        _IMG, _TEXT, _IMG, _TEXT, color1=cq, color2=ct, color_weight=0.9,
-    )
-    assert s_without == s_with == pytest.approx(1.5 / 1.75, abs=1e-6)
-
-
-# --------------------------------------------------------------------------- #
-# D. 跨模态一致性惩罚的触发条件（2026-09-21 收窄）
+# C. 跨模态一致性惩罚的触发条件（2026-09-21 收窄）
 # --------------------------------------------------------------------------- #
 def test_penalty_triggers_when_text_high_but_image_low():
     """真·文本撞车：文-文高 + 图-图低 → 惩罚生效（触底 ×0.5）。
@@ -194,7 +180,7 @@ def test_penalty_disabled_returns_one():
 
 
 # --------------------------------------------------------------------------- #
-# E. 证据链（等级 / 依据 / 展示分）
+# D. 证据链（等级 / 依据 / 展示分）
 # --------------------------------------------------------------------------- #
 def test_evidence_confirmed_on_identical_image():
     """图-图 = 1.0 → 等级「确定为同一物品」，展示分 1.0，依据 image_match。"""
@@ -245,7 +231,7 @@ def test_evidence_high_suspect_basis_includes_high_image():
 
 
 # --------------------------------------------------------------------------- #
-# F. 标定层与线上同口径
+# E. 标定层与线上同口径
 # --------------------------------------------------------------------------- #
 def test_score_pair_matches_main_aux_semantics(no_penalty):
     cache = _EncoderCache(_OrthoEncoder())

@@ -13,7 +13,6 @@ from app.clip_service import clip_service
 from app.config import settings
 
 DIM = 512
-CDIM = 27
 
 
 # --------------------------------------------------------------------------- #
@@ -97,29 +96,6 @@ def test_A_single_channel_equals_its_own_similarity(no_penalty):
     assert clip_service.compute_weighted_similarity(q_img, None, t_img, None) == pytest.approx(0.8, abs=1e-6)
 
 
-def test_A_single_channel_only_color(no_penalty):
-    """只通颜色通道 → **0.0**（2026-09-16：颜色通道已废弃，不产生任何得分）。
-
-    原断言为「恰为颜色余弦（0.5）」；废弃后方向反转，守卫颜色不得参与打分。
-    """
-    score = clip_service.compute_weighted_similarity(color1=_e(0, CDIM), color2=_mix(0, 1, 0.5, CDIM))
-    assert score == pytest.approx(0.0, abs=1e-6)
-
-
-def test_A_cross_not_diluted_after_color_deprecation(no_penalty):
-    """纯文 × 仅图目标且**颜色向量传入**：颜色已废弃 → 不得稀释跨模态得分。
-
-    2026-09-16 修订：原用例断言颜色把 t2i 稀释到 (0.35/0.5)=0.7；颜色通道废弃后
-    只剩 cross 一个可用通道 → 得分恰为 t2i = 1.0。
-    """
-    q_text, t_img = _e(0), _e(0)
-    col_a, col_b = _e(0, CDIM), _e(1, CDIM)  # 颜色向量传入但应被完全忽略
-    score = clip_service.compute_weighted_similarity(
-        None, q_text, t_img, None, color1=col_a, color2=col_b
-    )
-    assert score == pytest.approx(1.0, abs=1e-6)
-
-
 # --------------------------------------------------------------------------- #
 # A. 权重来源：None→settings / 传参覆盖 / 跨模态内权重
 # --------------------------------------------------------------------------- #
@@ -137,7 +113,7 @@ def test_A_weights_default_from_settings_then_override(no_penalty):
 
     heavy = clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
-        img_weight=1.0, text_weight=0.0, color_weight=0.0, cross_weight=0.0,
+        img_weight=1.0, text_weight=0.0, cross_weight=0.0,
     )
     assert heavy == pytest.approx(1.0, abs=1e-6)
 
@@ -156,7 +132,7 @@ def test_A_cross_inner_default_weights_are_arithmetic_mean(no_penalty):
     t_text = _mix(0, 1, 0.8)  # i2t = q_img·t_text = 0.8
     score = clip_service.compute_weighted_similarity(
         q_img, q_text, t_img, t_text,
-        img_weight=0.0, text_weight=0.0, color_weight=0.0, cross_weight=1.0,
+        img_weight=0.0, text_weight=0.0, cross_weight=1.0,
     )
     assert score == pytest.approx(1.0, abs=1e-6)
 
@@ -168,7 +144,7 @@ def test_A_cross_inner_weights_override(no_penalty):
     """
     score = clip_service.compute_weighted_similarity(
         _e(1), _e(0), _e(0), _e(0),
-        img_weight=0.0, text_weight=0.0, color_weight=0.0, cross_weight=1.0,
+        img_weight=0.0, text_weight=0.0, cross_weight=1.0,
         w_cross_t2i=0.7, w_cross_i2t=0.3,
     )
     assert score == pytest.approx(1.0, abs=1e-6)
@@ -293,8 +269,8 @@ def test_B_integration_halves_inconsistent_pair(monkeypatch):
 def test_A_cross_weights_are_keyword_only():
     """新增跨模态权重必须是关键字专用（位置参数不得错位）。
 
-    位置形参共 14 个（img1..color2）；多传第 15 个位置实参必须触发 TypeError。
+    位置形参共 11 个（img1..text_weight）；多传第 12 个位置实参必须触发 TypeError。
     """
-    over_limit = [None] * 14 + [0.5]  # 15 个位置实参
+    over_limit = [None] * 11 + [0.5]  # 12 个位置实参
     with pytest.raises(TypeError):
         clip_service.compute_weighted_similarity(*over_limit)

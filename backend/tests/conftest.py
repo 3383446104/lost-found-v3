@@ -96,42 +96,34 @@ def _fake_text_feature(text):
 # --------------------------------------------------------------------------- #
 @pytest.fixture(autouse=True)
 def stub_clip(monkeypatch):
-    """把 CLIP 特征提取替换为确定性、可区分的桩（图像/文本 config 维度、颜色 27 维）。
+    """把 CLIP 特征提取替换为确定性、可区分的桩（图像/文本 config 维度）。
 
     图像/文本桩**由入参派生**（见 :func:`_derive_vector`），故：
     - 同一入参恒同向量 → 测试可重复；
     - 不同入参近似正交 → 不再有「相似度恒为 1.0」的假绿；
     - 图/文命名空间隔离 → 四个相似度通道（ii / tt / t2i / i2t）真实可区分。
-
-    颜色桩 ``_fake_color_histogram`` 保持 27 维不变（与模型无关）。
     """
 
-    def _fake_color_histogram(image_path):
-        vec = np.ones(27, dtype=np.float32)
-        return vec / np.linalg.norm(vec)
-
     # 双保险：既 patch 实例方法，也阻断懒加载入口。
-    # 方法名（_initialize / get_image_feature / get_text_feature / get_color_histogram）
+    # 方法名（_initialize / get_image_feature / get_text_feature）
     # 是**冻结契约**（app/clip_service.py 靠这些名字被桩掉），不得更名。
     monkeypatch.setattr(clip_service, "_initialize", lambda *a, **k: None)
     monkeypatch.setattr(clip_service, "get_image_feature", _fake_image_feature)
     monkeypatch.setattr(clip_service, "get_text_feature", _fake_text_feature)
-    monkeypatch.setattr(clip_service, "get_color_histogram", _fake_color_histogram)
 
 
 @pytest.fixture(autouse=True)
 def stub_email(monkeypatch):
-    """阻断真实 SMTP 发送，避免测试触碰网络。"""
+    """阻断真实 SMTP 发送，避免测试触碰网络。
+
+    match_service 在模块级 import 了 send_match_notification（持自有引用），
+    只桩 email_utils 对 match_service 无效，必须直接桩 match_service 的引用。
+    """
     import app.utils.email_utils as email_utils
+    import app.services.match_service as match_service
 
     monkeypatch.setattr(email_utils, "send_email", lambda *a, **k: True)
-    monkeypatch.setattr(email_utils, "send_match_notification", lambda *a, **k: True)
-    try:
-        import app.services.match_service as match_service
-
-        monkeypatch.setattr(match_service, "send_match_notification", lambda *a, **k: True)
-    except Exception:  # pragma: no cover - 防御性
-        pass
+    monkeypatch.setattr(match_service, "send_match_notification", lambda *a, **k: True)
 
 
 @pytest.fixture(autouse=True)
