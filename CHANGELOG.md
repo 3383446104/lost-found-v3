@@ -610,7 +610,7 @@ git checkout HEAD~1
 ### 迭代目标
 在交付答辩前的架构评审基础上，补齐仓库首个自动化回归测试套件，修复评审确认的 3 项 P0 缺陷，并将全部文档与代码对齐。
 
-> 依据：[架构评审报告](docs/review/architecture-review-2026-09-12.md)（共识别 P0×3 / P1×4 / P2×4，本轮处理 P0 三项）。
+> 依据：[架构评审报告](docs/archive/architecture-review-2026-09-12.md)（共识别 P0×3 / P1×4 / P2×4，本轮处理 P0 三项）。
 
 ### 1. 自动化测试套件（仓库首个）✅
 - ➕ `backend/tests/`：pytest + FastAPI TestClient，**45 用例全绿**
@@ -630,7 +630,7 @@ git checkout HEAD~1
 ### 3. 文档与代码对齐 ✅
 - `PROJECT.md`：§2 目录树 / §3.3 匹配权重与阈值 / §3.4 自动匹配阈值 / §3.6 轮询说明 / §4 补公告与计数表 / §5 补公告端点与端点总数 36 / §8.4 环境变量 / §9 算法公式 / §10 增自动化测试 / §11 版本演进
 - `README.md`：移除已删除的 `POST /api/me/avatar`、补 `GET /api/me/history`、补迭代路线 V3.3.1–V3.3.3、新增「运行测试」
-- 逐条对照见 [docs/review/doc-sync-2026-09-12.md](docs/review/doc-sync-2026-09-12.md)
+- 逐条对照见 [docs/archive/doc-sync-2026-09-12.md](docs/archive/doc-sync-2026-09-12.md)
 
 ### 文档勘误
 - 早期 V3.3 条目记载「❌ 移除分类占比和累计活跃」，但**代码实际仍保留分类占比**（`api/stats.py` 仍返回 `categories`，`views/HomeView.vue` 仍用 ECharts 渲染饼图）。历史条目按惯例保留原文，此处注明其与现状不符。
@@ -642,9 +642,9 @@ git checkout HEAD~1
 ## V3.4.0 — 语义与性能加固 (2026-09-12)
 
 ### 迭代目标
-在架构评审（P0 三项已随 V3.3.3 修复）基础上，落地增量修复设计 [docs/review/design-fix-batch-2026-09-12.md](docs/review/design-fix-batch-2026-09-12.md) 中确认的 **C1 / C2 / R4 / R5 / R6 / R7 / R9 / R10 / O2** 整改项，重点是**账户状态语义拆分**、**颜色特征持久化**、**匹配性能与异步化**、**路由与契约健壮化**，并将回归测试扩充至 **70 用例**。
+在架构评审（P0 三项已随 V3.3.3 修复）基础上，落地增量修复设计 [docs/archive/design-fix-batch-2026-09-12.md](docs/archive/design-fix-batch-2026-09-12.md) 中确认的 **C1 / C2 / R4 / R5 / R6 / R7 / R9 / R10 / O2** 整改项，重点是**账户状态语义拆分**、**颜色特征持久化**、**匹配性能与异步化**、**路由与契约健壮化**，并将回归测试扩充至 **70 用例**。
 
-> 依据：[架构评审报告](docs/review/architecture-review-2026-09-12.md)、[增量修复设计](docs/review/design-fix-batch-2026-09-12.md)。本轮以**后端 schema / 语义 / 契约**为主，前端除路由守卫状态字段外无改动；文档同步见 [变更总结](docs/review/v3.4.0-change-summary-2026-09-12.md)。
+> 依据：[架构评审报告](docs/archive/architecture-review-2026-09-12.md)、[增量修复设计](docs/archive/design-fix-batch-2026-09-12.md)。本轮以**后端 schema / 语义 / 契约**为主，前端除路由守卫状态字段外无改动；文档同步见 [变更总结](docs/archive/v3.4.0-change-summary-2026-09-12.md)。
 
 ### 1. 数据结构变更（S1）✅
 | 变更 | 说明 |
@@ -735,7 +735,7 @@ git checkout HEAD~1
 ### 迭代目标
 把「以文搜图」从**名不副实**变为**真能力**：默认模型由英文预训练的 `open_clip ViT-B-32` 换为中文图文跨模态的 **Chinese-CLIP ViT-H-14**（OFA-Sys `cn_clip`），并**启用 img·text 跨模态通道**（此前系统只比两个自相似度、从不计算图文对齐）；同时把阈值/权重 config 化、可回滚、可标定，并加装维度错配的运行期防线。保留 `open_clip` 作为**可一键回滚**后端。
 
-> 依据：增量 PRD [docs/product/PRD-v3.5.0-incremental.md](docs/product/PRD-v3.5.0-incremental.md)、架构设计 [docs/review/v3.5.0-incremental-design.md](docs/review/v3.5.0-incremental-design.md)、QA 回归 [docs/review/qa-v3.5.0-regression-2026-09-13.md](docs/review/qa-v3.5.0-regression-2026-09-13.md)。
+> 依据：增量 PRD [docs/product/PRD-v3.5.0-incremental.md](docs/product/PRD-v3.5.0-incremental.md)、架构设计 [docs/archive/v3.5.0-incremental-design.md](docs/archive/v3.5.0-incremental-design.md)、QA 回归 [docs/review/qa-v3.5.0-regression-2026-09-13.md](docs/review/qa-v3.5.0-regression-2026-09-13.md)。
 
 ### 1. 模型双后端抽象（D1）✅
 - ➕ `backend/app/clip_backend.py`：新增 `ClipBackend` **协议**（`encode_image` / `encode_text` / `embed_dim` / `is_available`）+ `OpenClipBackend`（回滚，行为等价 v3.4.1）+ `ChineseClipBackend`（默认）+ `get_backend()` **工厂**（按 `settings.CLIP_BACKEND` 选择）。

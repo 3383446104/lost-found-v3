@@ -15,22 +15,18 @@
 | 项目总纲 | [`../PROJECT.md`](../PROJECT.md) | 架构、目录树、覆盖矩阵、数据库、API、算法、测试、版本演进 | ① |
 | 快速上手 | [`../README.md`](../README.md) | 环境依赖、启动步骤、功能与接口概览 | ② |
 | 软件需求规格说明书 | [`../SRS.md`](../SRS.md) | v3.6.0 功能性/非功能性需求、接口与数据需求 | ③ |
-| 迭代日志 | [`../CHANGELOG.md`](../CHANGELOG.md) | 各版本迭代记录（含最新 V3.6.0；V3.5.0 条目含 §12–§15 打分口径重构/尺度修正） | ⑧ |
+| 迭代日志 | [`../CHANGELOG.md`](../CHANGELOG.md) | 各版本迭代记录（含最新 V3.6.0；V3.5.0 条目含 §12–§15 打分口径重构/尺度修正） | ④ |
 
 ## B. 质量与整改（现行）
 
 | 文档 | 路径 | 一句话说明 | 阅读顺序 |
 |------|------|-----------|:--:|
-| 架构评审报告 | [`review/architecture-review-2026-09-12.md`](review/architecture-review-2026-09-12.md) | 交付前架构评审：P0×3 / P1×4 / P2×4 及整改结论 | ④ |
-| 文档与代码同步说明 | [`review/doc-sync-2026-09-12.md`](review/doc-sync-2026-09-12.md) | V3.3.3 文档与代码逐条对齐记录（D1–D11） | ⑤ |
-| 增量修复设计 | [`review/design-fix-batch-2026-09-12.md`](review/design-fix-batch-2026-09-12.md) | v3.4.0 批量修复项（C1/C2/R4–R10/O2）的设计与任务分解 | ⑥ |
-| 本轮变更总结 | [`review/v3.4.0-change-summary-2026-09-12.md`](review/v3.4.0-change-summary-2026-09-12.md) | v3.4.0 代码 + 文档落地总结 | ⑦ |
-| 文档资源盘点与整合映射 | [`review/doc-consolidation-map-2026-09-12.md`](review/doc-consolidation-map-2026-09-12.md) | 全仓文档盘点、整合决策与目标目录结构 | — |
-| **v3.5.0 增量架构设计** | [`review/v3.5.0-incremental-design.md`](review/v3.5.0-incremental-design.md) | v3.5.0 中文化模型替换 + 图文跨模态检索的架构设计与任务分解（T01–T05） | ⑨ |
-| **v3.5.0 QA 回归报告** | [`review/qa-v3.5.0-regression-2026-09-13.md`](review/qa-v3.5.0-regression-2026-09-13.md) | v3.5.0 回归 + 跨模态新功能测试：维度错配（D1）等发现与修复验证；V1–V5 **全部已转「已用真实模型验证」**（重嵌入完成、`/match` 三模式实测恢复；V4 截断实验已闭环：关键信息被截掉 → 相对损失 ~22.5%） | ⑩ |
-| **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | 报告快照（2026-09-14 扩充轮）：84 对 / 有效 36 正 42 负 + 真实 `Recall@3=1.0`；报告时点 `AUTO`/`EMAIL` 尚无解（Precision 上界 0.6889）。**✅ 2026-09-21 打分口径重构（三检索模式 + 跨模态尺度映射）后首次标定成功**：MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069（详见 CHANGELOG V3.5.0 §14；`EMAIL` 召回 19.4%，建议灰度观察） | — |
-| **v3.5.0 通道消融实验报告** | [`review/ablation-study-v3.5.0.md`](review/ablation-study-v3.5.0.md) | 论文算法章证据（2026-10-15 真实模型跑出）：单通道 vs 融合对照——自动口径（P≥0.9）下单通道 R 仅 0.1111 或直接无解，融合 0.5556；融合 Recall@3=1.0 不劣于任何单通道；跨模态尺度映射锚点实测复验 0.1939/0.2975 ≈ config 0.194/0.298 ✅ | — |
-| **v3.5.0 增量 PRD（现行）** | [`product/PRD-v3.5.0-incremental.md`](product/PRD-v3.5.0-incremental.md) | v3.5.0 增量需求（中文化模型 + 图文跨模态检索）：产品目标 / 用户故事 / 需求池 / 验收标准（**现行**，非 C 组历史快照） | — |
+| **v3.5.0 QA 回归报告** | [`review/qa-v3.5.0-regression-2026-09-13.md`](review/qa-v3.5.0-regression-2026-09-13.md) | v3.5.0 回归 + 跨模态新功能测试：维度错配（D1）等发现与修复验证；V1–V5 **全部已转「已用真实模型验证」**（重嵌入完成、`/match` 三模式实测恢复；V4 截断实验已闭环：关键信息被截掉 → 相对损失 ~22.5%） | ⑤ |
+| **v3.5.0 阈值标定报告** | [`review/threshold-calibration-v3.5.0.md`](review/threshold-calibration-v3.5.0.md) | 报告快照（2026-09-14 扩充轮）：84 对 / 有效 36 正 42 负 + 真实 `Recall@3=1.0`；报告时点 `AUTO`/`EMAIL` 尚无解（Precision 上界 0.6889）。**✅ 2026-09-21 打分口径重构（三检索模式 + 跨模态尺度映射）后首次标定成功**：MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069（详见 CHANGELOG V3.5.0 §14；`EMAIL` 召回 19.4%，建议灰度观察） | ⑥ |
+| v3.5.0 标定数据（CSV） | [`review/threshold-calibration-v3.5.0.csv`](review/threshold-calibration-v3.5.0.csv) | 84 对标定明细数据（报告配套） | — |
+| **v3.5.0 通道消融实验报告** | [`review/ablation-study-v3.5.0.md`](review/ablation-study-v3.5.0.md) | 论文算法章证据（2026-10-15 真实模型跑出）：单通道 vs 融合对照——自动口径（P≥0.9）下单通道 R 仅 0.1111 或直接无解，融合 0.5556；融合 Recall@3=1.0 不劣于任何单通道；跨模态尺度映射锚点实测复验 0.1939/0.2975 ≈ config 0.194/0.298 ✅ | ⑦ |
+| **v3.5.0 增量 PRD（现行）** | [`product/PRD-v3.5.0-incremental.md`](product/PRD-v3.5.0-incremental.md) | v3.5.0 增量需求（中文化模型 + 图文跨模态检索）：产品目标 / 用户故事 / 需求池 / 验收标准（**现行**，非 C 组历史快照） | ⑧ |
+| 历史归档索引 | [`archive/README.md`](archive/README.md) | 2026-09-12 五连文档与 v3.5.0 旧设计稿的归档索引（**正文不维护**） | — |
 
 ## C. 产品设计（历史快照，v3.3 阶段）
 
@@ -50,12 +46,12 @@
 
 | 图件 | 路径 | 说明 |
 |------|------|------|
-| 关键流程时序图 | [`diagrams/sequence-diagram.mermaid`](diagrams/sequence-diagram.mermaid) | 关键操作调用时序（Mermaid sequenceDiagram） |
-| 数据模型与服务类图 | [`diagrams/class-diagram.mermaid`](diagrams/class-diagram.mermaid) | 数据模型与服务类结构（Mermaid classDiagram） |
+| 关键流程时序图 | [`diagrams/sequence-diagram.mermaid`](diagrams/sequence-diagram.mermaid) | 关键操作调用时序（Mermaid sequenceDiagram；v3.3 版，**已被下方 v3.5.0 匹配时序图取代**） |
+| 数据模型与服务类图 | [`diagrams/class-diagram.mermaid`](diagrams/class-diagram.mermaid) | 数据模型与服务类结构（Mermaid classDiagram；v3.3 版，**已被下方 v3.5.0 后端抽象层类图取代**） |
 | **v3.5.0 后端抽象层类图** | [`diagrams/class-diagram-v3.5.0.mermaid`](diagrams/class-diagram-v3.5.0.mermaid) | `ClipBackend` 双后端 + 跨模态通道 + match 契约（Mermaid classDiagram） |
 | **v3.5.0 匹配时序图** | [`diagrams/sequence-diagram-v3.5.0-match.mermaid`](diagrams/sequence-diagram-v3.5.0-match.mermaid) | `POST /api/items/match` 跨模态匹配（Mermaid sequenceDiagram） |
 | **v3.5.0 重嵌入时序图** | [`diagrams/sequence-diagram-v3.5.0-reembed.mermaid`](diagrams/sequence-diagram-v3.5.0-reembed.mermaid) | 冷备→干跑→重嵌入→标定→启用/回滚（Mermaid sequenceDiagram） |
 
 ---
 
-> **维护约定**：`A`、`B`、`D` 组为**现行文档**，随代码演进同步更新；`C` 组为**历史快照**，仅追加「实现以代码为准」性质的横幅/脚注，不重写正文。
+> **维护约定**：`A`、`B`、`D` 组为**现行文档**，随代码演进同步更新；`C` 组为**历史快照**，仅追加「实现以代码为准」性质的横幅/脚注，不重写正文。`docs/archive/` 为**历史归档**（2026-09-12 五连文档与 v3.5.0 旧设计稿），正文不维护，索引见 `archive/README.md`。

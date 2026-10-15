@@ -121,13 +121,13 @@ router.afterEach:
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
-| FR-ITEM-01 | 发布物品 | `POST /api/items/` — FormData: type(lost/found)、title(2-50字符)、description(≤500字)、category、contact、location、image(≤16MB)。自动提取 CLIP 图像+文本特征（维度随后端：`cn_clip` 1024 / `open_clip` 512），并计算 27维颜色直方图（`color_vector`）。初始状态 review_status=pending, status=pending |
+| FR-ITEM-01 | 发布物品 | `POST /api/items/` — FormData: type(lost/found)、title(2-50字符)、description(≤500字)、category、contact、location、image(≤16MB)。自动提取 CLIP 图像+文本特征（维度随后端：`cn_clip` 1024 / `open_clip` 512）。初始状态 review_status=pending, status=pending |
 | FR-ITEM-02 | 物品列表（分页+筛选） | `GET /api/items/` — 参数: type/category/keyword/user_id/limit/offset。管理员看全部；普通用户看 (approved+active) OR 自己物品；匿名仅看已审核+活跃物品 |
 | FR-ITEM-03 | 分类筛选 | 全部/失物/拾物/仅我的 |
 | FR-ITEM-04 | 类别筛选 | 7 类别：电子产品/证件卡片/包袋箱包/书籍文具/服装配饰/钥匙门禁/其他 |
 | FR-ITEM-05 | 关键词搜索 | title 或 description LIKE 模糊匹配 |
 | FR-ITEM-06 | 物品详情 | `GET /api/items/{id}` — 公开访问，未审核物品仅限发布者/管理员可见。返回全部字段（不含向量） |
-| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征+重算 `color_vector`）。非管理员编辑后 review_status 重置为 pending |
+| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）。非管理员编辑后 review_status 重置为 pending |
 | FR-ITEM-08 | 删除物品 | `DELETE /api/items/{id}` — 仅本人/管理员。同时删除图片文件 |
 | FR-ITEM-09 | 图片访问 | `GET /api/items/uploads/{filename}` — 公开，路径遍历防护 |
 | FR-ITEM-10 | 多图上传（v3.6.0） | 1-3 张，首图封面（`images` 有序 JSON）；**仅封面参与向量检索**；编辑用 `keep`（保留文件新顺序）+ 新图，封面变更才重算向量、移除的文件同步删除 |
@@ -263,7 +263,7 @@ router.afterEach:
 | NFR-PERF-02 | 列表接口响应时间 | < 500ms |
 | NFR-PERF-03 | 图片上传限制 | ≤ 16MB/张（物品图片）；v3.3 已移除头像功能 |
 | NFR-PERF-04 | CLIP 模型 | 默认 **Chinese-CLIP ViT-H-14**（权重约 3.83GB），输出 L2 归一化 **1024 维**联合投影向量；回滚 **open_clip ViT-B-32**（约 600MB），输出 **512 维** |
-| NFR-PERF-05 | 颜色特征复用 | ⚠️ **已失效**：颜色通道 2026-09-16 废弃；`color_vector` 列与持久化逻辑保留但不再被匹配读取（v3.4.0 / R4 的历史口径） |
+| NFR-PERF-05 | 颜色通道（已移除） | 颜色通道 **2026-10-16 整体移除**（2026-09-16 起已不参与打分）：不再计算/存储/读取任何颜色特征 |
 | NFR-PERF-06 | 多图上传限制（v3.6.0） | 每物品 1-3 张，单张 ≤ 16MB；**仅封面编码向量**（录入成本不随图数增长） |
 
 > ⚠️ **旧 `NFR-PERF-01`「匹配 < 3s」在 v3.5.0 作废**（口径偏旧、未按路径拆分），以本表的 `NFR-PERF-01 / 01b / 01c` 为准。
@@ -472,7 +472,6 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 | is_recommend | INTEGER | DEFAULT 0 | 首页推荐位标记（v3.6.0） |
 | image_vector | TEXT | | CLIP 图像特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
 | text_vector | TEXT | | CLIP 文本特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
-| color_vector | TEXT | | 27维 RGB 颜色直方图特征 (JSON)（⚠️ v3.4.0 新增，用于颜色相似度增强） |
 | contact | TEXT | | 联系方式 |
 | location | TEXT | | 地点 |
 | status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming 为 v3.6.0 新增「认领中」，经表重建迁移） |
@@ -619,7 +618,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
   basis 每条依据须通过各自阈值（图-图/文-文 0.606、跨模态映射后 0.513；2026-10-15 起，图-图通道「存在但低」不再进依据）
 ```
 
-> ⚠️ **颜色通道已于 2026-09-16 废弃**（不参与打分）；`items.color_vector` 字段与 v3.4.0 的持久化逻辑保留但不再被匹配读取。
+> ⚠️ **颜色通道已于 2026-10-16 整体移除**（2026-09-16 起已不参与打分）：无颜色向量列、无颜色计算代码。
 >
 > ✅ **三档阈值已标定成功**（2026-09-21 打分口径重构后，扭转此前「AUTO/EMAIL 结构性无解」）；样本量仍小，建议灰度观察（`EMAIL` 召回 19.4%）。旧「阶段5 交叉验证（图文矛盾降权 50%~75%）」已被真跨模态惩罚取代。
 
@@ -694,7 +693,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 
 ---
 
-> **文档维护者**：开发团队 | **最后更新**：2026-10-14 | **基于源码版本**：v3.6.0
+> **文档维护者**：开发团队 | **最后更新**：2026-10-16 | **基于源码版本**：v3.6.0
 >
 > **v3.4.0 核心变更摘要**：账户状态语义拆分（C2：`role` 收敛为 user/admin，新增 `status`） | 公开接口账号状态校验（C1：`resolve_optional_viewer`） | 颜色特征持久化（R4：`items.color_vector`） | 邮件异步化（R5）| 路由 `:int` 健壮化（R6）| 去静默异常（R7）| 请求体 Pydantic 化（R9）| 依赖与版本清理（R10）| 自动化测试 70 用例全通过
 >

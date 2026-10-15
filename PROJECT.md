@@ -103,9 +103,9 @@ lost-found-v3/
 │   ├── requirements.txt    ← 运行依赖
 │   ├── requirements-dev.txt← 测试依赖（pytest / httpx）
 │   ├── pytest.ini          ← pytest 配置
-│   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定 / backfill_color_vectors.py 颜色向量回填）
+│   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定）
 │   ├── eval/               ← 评测集（eval_set_v3.5.0.json，84 对构造样本）
-│   ├── tests/              ← 自动化测试套件（313 用例）
+│   ├── tests/              ← 自动化测试套件（296 用例）
 │   │   ├── conftest.py
 │   │   ├── test_auth.py / test_items.py / test_admin.py / test_stats.py
 │   │   ├── test_claims.py / test_reports.py / test_comments.py / test_banners.py / test_categories.py
@@ -333,7 +333,6 @@ lost-found-v3/
 | is_recommend | INTEGER | DEFAULT 0 | 首页推荐位标记（**v3.6.0 新增**） |
 | image_vector | TEXT | | CLIP 图像特征 (JSON) |
 | text_vector | TEXT | | CLIP 文本特征 (JSON) |
-| color_vector | TEXT | | 27 维颜色直方图 (JSON，L1 归一化)（**v3.4.0 新增**，评审 R4） |
 | contact | TEXT | | 联系方式 |
 | location | TEXT | | 地点 |
 | status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming=认领中，**v3.6.0 新增**，经表重建迁移） |
@@ -772,7 +771,6 @@ CLIP_CN_CKPT_PATH            非空则直接加载本地 .pt（运行期零网�
 MATCH_W_TEXT_TEXT            文-文权重（主证据），默认 0.75（2026-09-21 起）
 MATCH_W_IMG_IMG              图-图权重（主证据），默认 0.75
 MATCH_W_CROSS                跨模态权重（辅助证据），默认 0.25
-MATCH_W_COLOR                颜色权重，**已废弃恒 0**（2026-09-16 起不参与打分）
 MATCH_CROSS_REF_LO / _HI     跨模态尺度映射区间，默认 0.194 / 0.298（实测标定；仅外层加权与展示）
 MATCH_DECAY_DAYS / _FLOOR    时间衰减天数 / 下限，默认 240 / 0.6（2026-09-21 调温和）
 CROSS_PENALTY_ENABLED        阶段5 跨模态一致性惩罚开关，默认 True
@@ -927,7 +925,7 @@ with get_db_connection() as conn:
 
 ### 10.2 自动化测试（v3.3.3 新增，v3.5.0 / v3.6.0 扩容）
 
-仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 313 用例（311 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
+仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 296 用例（294 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
 
 **A. v3.4.1 基线（72 用例）**
 
@@ -948,14 +946,14 @@ with get_db_connection() as conn:
 | 文件 | 覆盖重点 |
 |------|----------|
 | `tests/test_match_contract_v350.py` | `/match` 响应 `match_source` + `legend` 契约；**403/401 契约冻结不变** |
-| `tests/test_cross_modal_scoring.py` | 三通道等权打分与缺维度动态归一化 |
+| `tests/test_cross_modal_scoring.py` | 三通道打分与缺维度动态归一化 |
 | `tests/test_cross_consistency_penalty.py` | 阶段5 跨模态一致性惩罚（只降权 / ≤×0.5 / 单调 / 可开关） |
 | `tests/test_embed_dim_runtime_contract.py` | `_assert_embed_dim` 运行期维度断言 |
 | `tests/test_config_rollback.py` | 模型后端 config 驱动 + 回滚切换 |
 | `tests/test_reembed_script.py` | 重嵌入脚本：干跑 ETA / 冷备 / 断点续跑 / 幂等 |
 | `tests/test_qa_v350_math.py` / `_contract.py` / `_dimension.py` / `_precheck.py` / `_reembed_safety.py` | QA 回归：打分数学 / 接口契约 / 维度错配防线 / 打分前预检 / 重嵌入安全 |
 | `tests/test_calibrate_candidates.py` | 标定候选集契约（按 `item_id` 去重 + 字段合并；锁住一次「候选重复 → Recall@K 被低估」的回归） |
-| `tests/test_calibrate_color_channel.py` | 三通道口径 + **颜色废弃守卫**（颜色向量/权重不得影响任何得分） |
+| `tests/test_scoring_regression.py` | 打分口径回归（主辅权重 / 跨模态映射 / 惩罚触发 / 证据链 / 标定同口径） |
 | `tests/test_calibrate_grid_summary.py` | 权重网格「并列退化」摘要（`summarize_grid` 契约） |
 | `tests/test_real_clip_smoke.py` | **真实权重门控**用例（`RUN_REAL_CLIP` 未设时 skip）；本机权重已下载，设 `RUN_REAL_CLIP=1` 时 **2 例通过** |
 
@@ -1067,7 +1065,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 - [x] P0 修复 R1：禁用用户已签发 JWT 立即失效（`dependencies/auth.py` 增补 disabled 拦截）
 - [x] P0 修复 R2：「今日失物/今日拾物」改为北京时间口径（`stats.py` 半开区间比较）
 - [x] P0 修复 R3：`requirements.txt` 直接声明 bcrypt，移除未使用的 passlib
-- [x] 文档对齐：PROJECT / README / CHANGELOG 与代码一致化（详见 `docs/review/doc-sync-2026-09-12.md`）
+- [x] 文档对齐：PROJECT / README / CHANGELOG 与代码一致化（详见 `docs/archive/doc-sync-2026-09-12.md`）
 
 #### V3.4.0 — 语义与性能加固 ✅ 已完成 (2026-09-12)
 - [x] 数据结构：`users` 新增 `status`（active / disabled / deleted）；`items` 新增 `color_vector`（幂等迁移 `database.py:126-143`）
@@ -1134,4 +1132,4 @@ venv\Scripts\python.exe -m pytest tests/ -v
 > **文档维护者**：开发团队  
 > **最后更新**：2026-10-14  
 > **相关文档**：[文档索引](docs/README.md) | [SRS](SRS.md) | [v3.3 PRD](docs/product/PRD-v3.3.md) | [v3.5.0 增量 PRD](docs/product/PRD-v3.5.0-incremental.md) | [竞品分析报告](docs/product/competitive-analysis.md) | [用户角色与场景](docs/product/personas-and-scenarios.md)  
-> **质量文档**：[架构评审报告 2026-09-12](docs/review/architecture-review-2026-09-12.md) | [文档与代码同步说明](docs/review/doc-sync-2026-09-12.md) | [增量修复设计](docs/review/design-fix-batch-2026-09-12.md) | [v3.4.0 变更总结](docs/review/v3.4.0-change-summary-2026-09-12.md) | [v3.5.0 增量架构设计](docs/review/v3.5.0-incremental-design.md) | [v3.5.0 QA 回归](docs/review/qa-v3.5.0-regression-2026-09-13.md)
+> **质量文档**：[架构评审报告 2026-09-12](docs/archive/architecture-review-2026-09-12.md) | [文档与代码同步说明](docs/archive/doc-sync-2026-09-12.md) | [增量修复设计](docs/archive/design-fix-batch-2026-09-12.md) | [v3.4.0 变更总结](docs/archive/v3.4.0-change-summary-2026-09-12.md) | [v3.5.0 增量架构设计](docs/archive/v3.5.0-incremental-design.md) | [v3.5.0 QA 回归](docs/review/qa-v3.5.0-regression-2026-09-13.md)
