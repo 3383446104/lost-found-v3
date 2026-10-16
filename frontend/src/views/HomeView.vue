@@ -25,30 +25,6 @@
       </el-carousel>
     </div>
 
-    <!-- 智能查找入口：用一句话描述，帮你找（跳转 /match 并自动执行一次匹配） -->
-    <div class="smart-entry">
-      <div class="smart-bar">
-        <el-input
-          v-model="smartQuery"
-          placeholder="描述一下物品，例如：黑色皮质长款钱包，正面有金属拉链"
-          clearable
-          size="large"
-          @keyup.enter="goSmartMatch"
-          class="smart-input"
-        >
-          <template #prefix><el-icon><MagicStick /></el-icon></template>
-        </el-input>
-        <el-button
-          type="primary"
-          size="large"
-          :icon="Search"
-          @click="goSmartMatch"
-          class="smart-btn"
-        >智能查找</el-button>
-      </div>
-      <p class="smart-hint">关键特征（颜色 / 品牌 / 标记）写在前 50 字内更准，其余随便写。</p>
-    </div>
-
     <!-- 数据看板（统计卡片 + 饼图合一） -->
     <div class="dashboard" v-if="stats">
       <div class="dashboard-left">
@@ -245,7 +221,6 @@ import { getItems, getCategories, getRecommend } from '@/api/items'
 import { publicBanners } from '@/api/banners'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
 import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
 import { getAnnouncements } from '@/api/announcements'
@@ -274,16 +249,6 @@ let pieChart = null
 const authStore = useAuthStore()
 const router = useRouter()
 
-// 智能查找入口：一句话描述 → 跳 /match 并自动执行一次匹配
-const smartQuery = ref('')
-const goSmartMatch = () => {
-  const q = smartQuery.value.trim()
-  if (!q) {
-    ElMessage.warning('请输入一句话描述，例如「黑色皮质长款钱包」')
-    return
-  }
-  router.push({ path: '/match', query: { text: q } })
-}
 // 防止用户把长句输进 LIKE 精确搜索框：取当前 keyword 作为描述带去 /match
 const goSmartMatchFromKeyword = () => {
   const q = (filters.value.keyword || '').trim()
@@ -530,40 +495,7 @@ onUnmounted(() => {
   color: var(--text-tertiary);
 }
 
-/* ---- 智能查找入口 ---- */
-.smart-entry {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  margin-bottom: var(--space-5);
-  box-shadow: var(--shadow-xs);
-}
-/* 输入框与按钮「分离布局」：不再使用 el-input 的 #append 插槽 ——
-   该插槽自带浅灰背景，会把 type="primary" 按钮的主色吃掉（看起来像禁用态），
-   且其直角边框会抹平输入框右侧圆角，交界处出现视觉断层。 */
-.smart-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.smart-bar .smart-input { flex: 1; min-width: 0; }
-.smart-btn {
-  flex-shrink: 0;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-.smart-hint {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  margin: var(--space-2) 0 0;
-}
 .smart-jump { white-space: nowrap; }
-
-@media (max-width: 640px) {
-  .smart-bar { flex-direction: column; align-items: stretch; }
-  .smart-btn { width: 100%; }
-}
 
 /* ---- 数据看板（统计+饼图合一） ---- */
 .dashboard {
