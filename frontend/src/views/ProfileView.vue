@@ -2,6 +2,13 @@
   <div class="page-container">
     <h1 class="page-title">个人信息</h1>
 
+    <!-- v3.7.0：快捷导航 6 chips（跳转既有页面） -->
+    <div class="quick-nav-chips">
+      <el-tag v-for="c in quickNav" :key="c.label" class="quick-nav-chip" @click="router.push(c.to)">
+        {{ c.label }}
+      </el-tag>
+    </div>
+
     <!-- 个人信息横幅 -->
     <div class="profile-banner">
       <div class="avatar-placeholder">{{ userFirstLetter }}</div>
@@ -177,6 +184,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { updateProfile, getMe, getHistory, deleteAccount } from '@/api/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -187,7 +195,20 @@ const user = computed(() => authStore.user)
 const userFirstLetter = computed(() => (user.value?.username || 'U')[0].toUpperCase())
 
 const profile = ref({})
-const activeTab = ref('account')
+const route = useRoute()
+const router = useRouter()
+// v3.7.0：支持 ?tab= 直达（快捷导航 chips 跳转用）
+const activeTab = ref(['account', 'contact', 'history'].includes(route.query.tab) ? route.query.tab : 'account')
+
+// v3.7.0：快捷导航 6 chips（跳转既有页面）
+const quickNav = [
+  { label: '我的发布', to: '/profile?tab=history' },
+  { label: '我的认领', to: '/claims' },
+  { label: '收到的认领', to: '/claims?tab=received' },
+  { label: '我的留言', to: '/profile?tab=history' },
+  { label: '我的举报', to: '/reports/mine' },
+  { label: '系统公告', to: '/' },
+]
 
 const tabs = [
   { key: 'account', label: '账户设置', icon: User },
@@ -439,5 +460,25 @@ onMounted(() => { loadProfile(); loadHistory() })
   .settings-content { width: 100%; }
   .settings-row { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
   .row-label { width: auto; }
+}
+
+/* ---- v3.7.0：快捷导航 chips ---- */
+.quick-nav-chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  max-width: 860px;
+  margin: 0 auto var(--space-4);
+}
+.quick-nav-chip {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: 6px 14px;
+  height: auto;
+  transition: all var(--transition-base);
+}
+.quick-nav-chip:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 </style>

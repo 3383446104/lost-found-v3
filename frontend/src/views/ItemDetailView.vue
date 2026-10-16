@@ -88,6 +88,37 @@
               <span class="info-label">审核时间</span>
               <span class="info-value">{{ item.review_time }}</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">浏览</span>
+              <span class="info-value">{{ item.view_count ?? 0 }} 次</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- v3.7.0：结构化属性网格 -->
+        <div class="info-card" v-if="item.item_color || item.item_brand || item.item_features || item.occurred_at || item.contact_method">
+          <h3 class="card-section-title">物品特征</h3>
+          <div class="info-rows">
+            <div class="info-row" v-if="item.item_color">
+              <span class="info-label">颜色</span>
+              <span class="info-value">{{ item.item_color }}</span>
+            </div>
+            <div class="info-row" v-if="item.item_brand">
+              <span class="info-label">品牌</span>
+              <span class="info-value">{{ item.item_brand }}</span>
+            </div>
+            <div class="info-row" v-if="item.item_features">
+              <span class="info-label">显著特征</span>
+              <span class="info-value">{{ item.item_features }}</span>
+            </div>
+            <div class="info-row" v-if="item.occurred_at">
+              <span class="info-label">发生时间</span>
+              <span class="info-value">{{ item.occurred_at }}</span>
+            </div>
+            <div class="info-row" v-if="item.contact_method">
+              <span class="info-label">其他联系方式</span>
+              <span class="info-value">{{ item.contact_method }}</span>
+            </div>
           </div>
         </div>
 

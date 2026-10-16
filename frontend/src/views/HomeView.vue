@@ -52,6 +52,26 @@
       </div>
     </div>
 
+    <!-- v3.7.0：快捷服务 4 卡（轮播图与推荐区之间） -->
+    <div class="quick-services">
+      <div class="quick-card" @click="$router.push({ path: '/publish', query: { type: 'lost' } })">
+        <el-icon :size="22"><Search /></el-icon>
+        <span class="quick-label">发布失物</span>
+      </div>
+      <div class="quick-card" @click="$router.push({ path: '/publish', query: { type: 'found' } })">
+        <el-icon :size="22"><Box /></el-icon>
+        <span class="quick-label">发布招领</span>
+      </div>
+      <div class="quick-card" @click="$router.push('/match')">
+        <el-icon :size="22"><MagicStick /></el-icon>
+        <span class="quick-label">图片匹配</span>
+      </div>
+      <div class="quick-card" @click="$router.push('/profile')">
+        <el-icon :size="22"><User /></el-icon>
+        <span class="quick-label">我的发布</span>
+      </div>
+    </div>
+
     <!-- 公告入口卡片 -->
     <div class="announce-card" v-if="announcements.length" @click="annDrawerVisible = true">
       <div class="announce-card-icon">
@@ -69,10 +89,14 @@
     <el-drawer v-model="annDrawerVisible" title="系统公告" size="420px" direction="rtl">
       <div class="ann-drawer-list">
         <div v-for="a in announcements" :key="a.id" class="ann-drawer-item" :class="{ pinned: a.is_pinned }">
-          <div class="ann-drawer-head" @click="a._open = !a._open">
+          <div class="ann-drawer-head" @click="openAnnouncement(a)">
             <el-tag v-if="a.is_pinned" type="warning" size="small" effect="dark">置顶</el-tag>
+            <el-tag size="small" :type="ANN_TYPE_MAP[a.type]?.tag || 'info'" effect="plain">
+              {{ ANN_TYPE_MAP[a.type]?.label || '公告' }}
+            </el-tag>
             <span class="ann-drawer-title">{{ a.title }}</span>
             <span class="ann-drawer-time">{{ a.created_at }}</span>
+            <span class="ann-view-count" v-if="a.view_count">👁 {{ a.view_count }}</span>
             <el-icon class="ann-drawer-arrow" :class="{ open: a._open }"><ArrowDown /></el-icon>
           </div>
           <div class="ann-drawer-content" v-show="a._open">
@@ -82,25 +106,50 @@
       </div>
     </el-drawer>
 
-    <!-- v3.6.0：为你推荐（管理员审核时勾选的推荐位） -->
-    <div v-if="recommends.length" class="recommend-section">
-      <div class="recommend-head">
-        <h2 class="recommend-title">
-          <el-icon><StarFilled /></el-icon>为你推荐
-        </h2>
+    <!-- v3.7.0：双推荐区（失物 / 招领分列，复用 recommend?type=） -->
+    <div v-if="recommendsLost.length || recommendsFound.length" class="recommend-duo">
+      <div v-if="recommendsLost.length" class="recommend-section">
+        <div class="recommend-head">
+          <h2 class="recommend-title">
+            <el-icon><StarFilled /></el-icon>为你推荐的失物
+          </h2>
+        </div>
+        <div class="recommend-grid">
+          <div
+            v-for="r in recommendsLost"
+            :key="r.id"
+            class="recommend-card"
+            @click="$router.push(`/items/${r.id}`)"
+          >
+            <img v-if="r.image_path" :src="getImageUrl(r.image_path)" :alt="r.title" loading="lazy" />
+            <div v-else class="img-placeholder"><el-icon :size="28"><PictureFilled /></el-icon></div>
+            <div class="recommend-body">
+              <span class="recommend-item-title">{{ r.title }}</span>
+              <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="recommend-grid">
-        <div
-          v-for="r in recommends"
-          :key="r.id"
-          class="recommend-card"
-          @click="$router.push(`/items/${r.id}`)"
-        >
-          <img v-if="r.image_path" :src="getImageUrl(r.image_path)" :alt="r.title" loading="lazy" />
-          <div v-else class="img-placeholder"><el-icon :size="28"><PictureFilled /></el-icon></div>
-          <div class="recommend-body">
-            <span class="recommend-item-title">{{ r.title }}</span>
-            <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
+
+      <div v-if="recommendsFound.length" class="recommend-section">
+        <div class="recommend-head">
+          <h2 class="recommend-title">
+            <el-icon><StarFilled /></el-icon>为你推荐的招领
+          </h2>
+        </div>
+        <div class="recommend-grid">
+          <div
+            v-for="r in recommendsFound"
+            :key="r.id"
+            class="recommend-card"
+            @click="$router.push(`/items/${r.id}`)"
+          >
+            <img v-if="r.image_path" :src="getImageUrl(r.image_path)" :alt="r.title" loading="lazy" />
+            <div v-else class="img-placeholder"><el-icon :size="28"><PictureFilled /></el-icon></div>
+            <div class="recommend-body">
+              <span class="recommend-item-title">{{ r.title }}</span>
+              <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -188,6 +237,7 @@
           </div>
           <div class="card-footer">
             <span class="card-time">{{ item.created_at }}</span>
+            <span class="card-views" v-if="item.view_count">👁 {{ item.view_count }}</span>
             <span
               v-if="item.review_status"
               class="status-tag"
@@ -220,11 +270,11 @@ import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories, getRecommend } from '@/api/items'
 import { publicBanners } from '@/api/banners'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
-import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled } from '@element-plus/icons-vue'
+import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled, Box, User } from '@element-plus/icons-vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
-import { getAnnouncements } from '@/api/announcements'
-import { Bell, ArrowRight } from '@element-plus/icons-vue'
+import { getAnnouncements, getAnnouncement } from '@/api/announcements'
+import { Bell, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 
 const items = ref([])
@@ -240,7 +290,16 @@ const announcements = ref([])
 const annDrawerVisible = ref(false)
 // v3.6.0：轮播图 + 为你推荐
 const banners = ref([])
-const recommends = ref([])
+// v3.7.0：双推荐区（失物 / 招领分列）
+const recommendsLost = ref([])
+const recommendsFound = ref([])
+
+// v3.7.0：公告类型打标
+const ANN_TYPE_MAP = {
+  system: { label: '系统公告', tag: 'info' },
+  lost: { label: '失物提醒', tag: 'danger' },
+  found: { label: '招领提醒', tag: 'success' },
+}
 
 const pinnedAnn = computed(() => announcements.value.find(a => a.is_pinned))
 const pieChartRef = ref(null)
@@ -323,6 +382,19 @@ const loadAnnouncements = async () => {
   try { const res = await getAnnouncements(); announcements.value = res.announcements || [] } catch { }
 }
 
+// v3.7.0：展开公告调详情接口（浏览数自增），并把最新数据并回列表项
+const openAnnouncement = async (a) => {
+  const willOpen = !a._open
+  a._open = willOpen
+  if (!willOpen) return
+  try {
+    const res = await getAnnouncement(a.id)
+    if (res.announcement) {
+      Object.assign(a, res.announcement, { _open: true })
+    }
+  } catch { /* 打开失败保持原内容 */ }
+}
+
 // v3.6.0：轮播图与推荐位
 const loadBanners = async () => {
   try { const res = await publicBanners(); banners.value = res.banners || [] } catch { }
@@ -334,7 +406,15 @@ const bannerClick = (b) => {
   }
 }
 const loadRecommends = async () => {
-  try { const res = await getRecommend({ limit: 8 }); recommends.value = res.items || [] } catch { }
+  // v3.7.0：双推荐区——失物 / 招领分别拉取
+  try {
+    const [lostRes, foundRes] = await Promise.all([
+      getRecommend({ limit: 8, type: 'lost' }),
+      getRecommend({ limit: 8, type: 'found' }),
+    ])
+    recommendsLost.value = lostRes.items || []
+    recommendsFound.value = foundRes.items || []
+  } catch { }
 }
 
 onMounted(() => {
@@ -743,5 +823,38 @@ onUnmounted(() => {
   .filter-right > * {
     width: 100%;
   }
+}
+
+/* ---- v3.7.0：快捷服务 4 卡 ---- */
+.quick-services {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.quick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  color: var(--el-color-primary);
+  transition: all var(--transition-base);
+}
+.quick-card:hover { border-color: var(--el-color-primary); box-shadow: var(--shadow-xs); }
+.quick-label { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); }
+
+/* ---- v3.7.0：双推荐区 / 浏览数 / 公告类型 ---- */
+.recommend-duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+.ann-view-count { font-size: var(--text-xs); color: var(--text-tertiary); margin-left: auto; }
+.card-views { font-size: var(--text-xs); color: var(--text-tertiary); display: inline-flex; align-items: center; gap: 2px; }
+@media (max-width: 640px) {
+  .quick-services { grid-template-columns: repeat(2, 1fr); }
+  .recommend-duo { grid-template-columns: 1fr; }
 }
 </style>
