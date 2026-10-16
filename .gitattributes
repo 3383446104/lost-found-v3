@@ -1,0 +1,2 @@
+# Windows 批处理必须 CRLF，防止 git 检出为 LF 导致 cmd 解析异常
+*.bat text eol=crlf
