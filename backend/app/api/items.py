@@ -13,7 +13,7 @@ from ..dependencies.auth import get_current_user, resolve_optional_viewer
 from ..utils.file import allowed_file
 from ..utils.time_utils import format_beijing_time, days_since_utc
 from ..clip_service import clip_service
-from ..validators import validate_item_title, validate_contact
+from ..validators import validate_item_title, validate_contact, validate_structured_field, validate_occurred_at
 from ..logger import logger
 from ..models.match import MatchRequest
 from ..services.match_service import find_dim_mismatch
@@ -170,11 +170,16 @@ async def create_item(
         category: str = Form("其他"),
         contact: str = Form(""),
         location: str = Form(""),
+        item_color: str = Form(""),
+        item_brand: str = Form(""),
+        item_features: str = Form(""),
+        occurred_at: str = Form(""),
+        contact_method: str = Form(""),
         image: Optional[UploadFile] = File(None),
         images: Optional[List[UploadFile]] = File(None),
         current_user: dict = Depends(get_current_user)
 ):
-    """发布物品（失物/招领；v3.6.0 支持 1-3 张图，首图作封面，仅封面参与向量检索）"""
+    """发布物品（失物/招领；v3.6.0 多图首图封面，v3.7.0 结构化字段拼入文本向量）"""
     if type not in ['lost', 'found']:
         raise HTTPException(400, "物品类型无效")
 
@@ -182,6 +187,17 @@ async def create_item(
     if not valid:
         raise HTTPException(400, msg)
     valid, msg = validate_contact(contact)
+    if not valid:
+        raise HTTPException(400, msg)
+    # v3.7.0 结构化字段：均选填，仅限长校验；occurred_at 限日期/时间格式
+    for value, max_len, name in (
+        (item_color, 20, '颜色'), (item_brand, 30, '品牌'),
+        (item_features, 100, '显著特征'), (contact_method, 100, '其他联系方式'),
+    ):
+        valid, msg = validate_structured_field(value, max_len, name)
+        if not valid:
+            raise HTTPException(400, msg)
+    valid, msg = validate_occurred_at(occurred_at)
     if not valid:
         raise HTTPException(400, msg)
 
@@ -220,7 +236,12 @@ async def create_item(
         raise HTTPException(500, "图片特征提取失败")
 
     text_vector = None
-    full_text = f"{title} {description}".strip()
+    # v3.7.0：文本向量 = title + 颜色 + 品牌 + 显著特征 + 描述（关键特征前置——
+    # cn_clip 文本塔约 50 字窗口、超长静默截断，靠前的字段优先保留）
+    full_text = " ".join(
+        p.strip() for p in (title, item_color, item_brand, item_features, description)
+        if p and p.strip()
+    )
     if full_text:
         try:
             text_vector = await run_in_threadpool(clip_service.get_text_feature, full_text)
@@ -239,12 +260,15 @@ async def create_item(
             cursor.execute('''
                 INSERT INTO items (type, title, description, category, image_path,
                                    images, cover_image, image_vector, text_vector,
-                                   contact, location, status, user_id, review_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   contact, location, status, user_id, review_status,
+                                   item_color, item_brand, item_features, occurred_at, contact_method)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (type, title, description, category, image_path,
                   images_json, cover_name,
                   vector_to_json(image_vector), vector_to_json(text_vector),
-                  contact, location, 'pending', current_user['user_id'], 'pending'))
+                  contact, location, 'pending', current_user['user_id'], 'pending',
+                  item_color or None, item_brand or None, item_features or None,
+                  occurred_at or None, contact_method or None))
             item_id = cursor.lastrowid
     except Exception as e:
         for p in saved_paths:
@@ -275,7 +299,7 @@ async def get_items(
     with get_db_connection() as conn:
         cursor = conn.cursor()
         base_query = """SELECT id, type, title, description, category, image_path, cover_image, images,
-                          contact, location, status, review_status, user_id, created_at, review_time
+                          view_count, contact, location, status, review_status, user_id, created_at, review_time
                    FROM items WHERE 1=1"""
         count_query = "SELECT COUNT(*) AS total FROM items WHERE 1=1"
         params = []
@@ -371,7 +395,7 @@ async def recommend_items(
         cursor = conn.cursor()
         cursor.execute(
             f"""SELECT id, type, title, description, category, image_path, cover_image,
-                       images, location, created_at
+                       images, view_count, location, created_at
                 FROM items WHERE {where}
                 ORDER BY created_at DESC LIMIT ?""",
             params + [limit],
@@ -385,7 +409,7 @@ async def recommend_items(
 
 @router.get("/{item_id:int}")
 async def get_item(item_id: int, request: Request):
-    """获取物品详情（公开，未审核物品仅限发布者/管理员查看）"""
+    """获取物品详情（公开，未审核物品仅限发布者/管理员查看；v3.7.0 起访问自增浏览数）"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         # 显式列清单：不 SELECT *，避免把内部向量列泄露给客户端
@@ -393,7 +417,8 @@ async def get_item(item_id: int, request: Request):
             SELECT id, type, title, description, category, image_path,
                    image_vector, text_vector, contact, location, status,
                    user_id, review_status, reviewer_id, review_time, reject_reason,
-                   is_recommend, created_at, updated_at, cover_image, images
+                   is_recommend, created_at, updated_at, cover_image, images,
+                   item_color, item_brand, item_features, occurred_at, contact_method, view_count
             FROM items WHERE id = ?
         ''', (item_id,))
         item = cursor.fetchone()
@@ -411,7 +436,16 @@ async def get_item(item_id: int, request: Request):
         if item['review_status'] != 'approved' or item['status'] != 'active':
             raise HTTPException(404, "物品不存在")
 
+    # v3.7.0：浏览计数——详情可见即自增（不可见 404 不计数）；
+    # 回读新值，让响应包含本次访问（详情页展示「浏览 N 次」含当前这次）
+    with get_db_connection() as conn:
+        conn.execute("UPDATE items SET view_count = view_count + 1 WHERE id = ?", (item_id,))
+        cur = conn.cursor()
+        cur.execute("SELECT view_count FROM items WHERE id = ?", (item_id,))
+        view_count = cur.fetchone()["view_count"]
+
     result = dict(item)
+    result["view_count"] = view_count
     result.pop('image_vector', None)
     result.pop('text_vector', None)
     if not (is_admin or result['user_id'] == viewer_id):
@@ -446,7 +480,7 @@ async def similar_items(
         opposite = 'found' if target['type'] == 'lost' else 'lost'
         cursor.execute(
             """SELECT id, title, description, image_vector, text_vector, image_path,
-                      cover_image, category, location, created_at
+                      cover_image, category, location, created_at, occurred_at, view_count
                FROM items
                WHERE type = ? AND status = 'active' AND review_status = 'approved' AND id != ?""",
             (opposite, item_id),
@@ -465,7 +499,7 @@ async def similar_items(
         cand_text = json_to_vector(cand['text_vector'])
         if cand_img is None and cand_text is None:
             continue
-        days_old = days_since_utc(cand['created_at'])
+        days_old = days_since_utc(cand['occurred_at'] or cand['created_at'])
         try:
             detail = await run_in_threadpool(
                 clip_service.compute_match_detail,
@@ -485,6 +519,7 @@ async def similar_items(
                 "location": cand['location'],
                 "image_path": cand['image_path'],
                 "cover_image": cand['cover_image'],
+                "view_count": cand['view_count'],
                 "similarity": round(detail["reference_score"], 6),
                 "level": detail["level"],
             })
@@ -591,6 +626,11 @@ async def update_item(
     category = form.get('category', '其他')
     contact = form.get('contact', '')
     location = form.get('location', '')
+    item_color = form.get('item_color', '')
+    item_brand = form.get('item_brand', '')
+    item_features = form.get('item_features', '')
+    occurred_at = form.get('occurred_at', '')
+    contact_method = form.get('contact_method', '')
     if not title:
         raise HTTPException(400, "标题不能为空")
 
@@ -599,6 +639,17 @@ async def update_item(
     if not valid:
         raise HTTPException(400, msg)
     valid, msg = validate_contact(contact)
+    if not valid:
+        raise HTTPException(400, msg)
+    # v3.7.0 结构化字段：均选填，仅限长校验；occurred_at 限日期/时间格式
+    for value, max_len, name in (
+        (item_color, 20, '颜色'), (item_brand, 30, '品牌'),
+        (item_features, 100, '显著特征'), (contact_method, 100, '其他联系方式'),
+    ):
+        valid, msg = validate_structured_field(value, max_len, name)
+        if not valid:
+            raise HTTPException(400, msg)
+    valid, msg = validate_occurred_at(occurred_at)
     if not valid:
         raise HTTPException(400, msg)
 
@@ -677,7 +728,12 @@ async def update_item(
             raise HTTPException(500, "图片特征提取失败")
 
     text_vector = None
-    full_text = f"{title} {description}".strip()
+    # v3.7.0：文本向量 = title + 颜色 + 品牌 + 显著特征 + 描述（关键特征前置——
+    # cn_clip 文本塔约 50 字窗口、超长静默截断，靠前的字段优先保留）
+    full_text = " ".join(
+        p.strip() for p in (title, item_color, item_brand, item_features, description)
+        if p and p.strip()
+    )
     if full_text:
         try:
             text_vector = await run_in_threadpool(clip_service.get_text_feature, full_text)
@@ -706,14 +762,18 @@ async def update_item(
                 images = ?, cover_image = ?,
                 image_vector = ?, text_vector = ?,
                 review_status = ?, status = ?,
-                reviewer_id = ?, review_time = ?, reject_reason = ?
+                reviewer_id = ?, review_time = ?, reject_reason = ?,
+                item_color = ?, item_brand = ?, item_features = ?,
+                occurred_at = ?, contact_method = ?
             WHERE id = ?
         ''', (title, description, category, contact, location,
               os.path.join(settings.UPLOAD_FOLDER, new_cover) if new_cover else None,
               json.dumps(final_names) if final_names else None, new_cover,
               image_vector_json,
               vector_to_json(text_vector), review_status, status,
-              reviewer_id, review_time, reject_reason, item_id))
+              reviewer_id, review_time, reject_reason,
+              item_color or None, item_brand or None, item_features or None,
+              occurred_at or None, contact_method or None, item_id))
 
     # 删除已不再属于该物品的旧图文件（不在 final_names 中的 stored 文件）
     removed = [s for s in stored if s not in final_names]
@@ -819,7 +879,8 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, title, description, image_vector, text_vector, image_path, category, location, created_at
+            SELECT id, title, description, image_vector, text_vector, image_path,
+                   category, location, created_at, occurred_at, view_count
             FROM items
             WHERE type = ? AND status = 'active' AND review_status = 'approved'
         ''', (req.target_type,))
@@ -843,8 +904,9 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
     for item in target_items:
         target_img_vec = json_to_vector(item['image_vector'])
         target_text_vec = json_to_vector(item['text_vector'])
-        # 时间衰减（统一走 days_since_utc：修正 naive/aware 相减导致衰减静默失效的缺陷）
-        days_old = days_since_utc(item['created_at'])
+        # 时间衰减（统一走 days_since_utc：修正 naive/aware 相减导致衰减静默失效的缺陷；
+        # v3.7.0 起按发生时间 occurred_at 口径，缺失回退发布时间 created_at）
+        days_old = days_since_utc(item['occurred_at'] or item['created_at'])
         try:
             detail = await run_in_threadpool(
                 clip_service.compute_match_detail,
@@ -874,6 +936,7 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
                 'category': item['category'],
                 'location': item['location'],
                 'image_path': item['image_path'],
+                'view_count': item['view_count'],
                 # 展示分（用户与邮件看到的「相似度」）
                 'similarity': round(detail["reference_score"], 6),
                 # 内容分（阈值判定用，与标定同尺度）

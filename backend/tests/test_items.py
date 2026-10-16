@@ -226,3 +226,125 @@ def test_mark_claimed_non_owner_403(client, make_user, create_item, approve_item
 
     resp = client.put(f"/api/items/{item_id}/mark-claimed", headers=other["headers"])
     assert resp.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# v3.7.0：结构化字段 / 文本向量拼接 / 浏览计数
+# --------------------------------------------------------------------------- #
+def test_v370_create_with_structured_fields(client, make_user, approve_item):
+    """发布带 5 个结构化字段 → 详情完整返回；本次访问已计入浏览数。"""
+    user = make_user(username="v370_struct")
+    resp = client.post(
+        "/api/items/",
+        data={
+            "type": "lost", "title": "黑色钱包", "description": "拉链坏了",
+            "category": "其他", "contact": "123", "location": "图书馆",
+            "item_color": "黑色", "item_brand": "小米", "item_features": "有划痕",
+            "occurred_at": "2026-10-10", "contact_method": "微信:abc",
+        },
+        headers=user["headers"],
+    )
+    assert resp.status_code == 201
+    item_id = resp.json()["id"]
+    approve_item(item_id)
+
+    detail = client.get(f"/api/items/{item_id}").json()["item"]
+    assert detail["item_color"] == "黑色"
+    assert detail["item_brand"] == "小米"
+    assert detail["item_features"] == "有划痕"
+    assert detail["occurred_at"] == "2026-10-10"
+    assert detail["contact_method"] == "微信:abc"
+    assert detail["view_count"] >= 1  # 刚才这次详情访问已自增
+
+
+def test_v370_text_vector_concat_order(client, make_user, monkeypatch):
+    """文本向量 = title + 颜色 + 品牌 + 显著特征 + 描述（空字段跳过）。"""
+    from app.clip_service import clip_service
+
+    captured = {}
+
+    def _rec(text):
+        captured["text"] = text
+        import numpy as np
+        return np.ones(512, dtype=np.float32) / np.sqrt(512)
+
+    monkeypatch.setattr(clip_service, "get_text_feature", _rec)
+    user = make_user(username="v370_concat")
+    resp = client.post(
+        "/api/items/",
+        data={
+            "type": "lost", "title": "黑色钱包", "description": "拉链坏了",
+            "category": "其他", "contact": "", "location": "图书馆",
+            "item_color": "黑色", "item_brand": "小米", "item_features": "有划痕",
+            "occurred_at": "", "contact_method": "",
+        },
+        headers=user["headers"],
+    )
+    assert resp.status_code == 201
+    assert captured["text"] == "黑色钱包 黑色 小米 有划痕 拉链坏了"
+
+    # 空字段跳过：只传 title（description 为空）
+    resp2 = client.post(
+        "/api/items/",
+        data={"type": "lost", "title": "眼镜", "description": "", "category": "其他",
+              "contact": "", "location": "食堂"},
+        headers=user["headers"],
+    )
+    assert resp2.status_code == 201
+    assert captured["text"] == "眼镜"
+
+
+def test_v370_invalid_structured_fields_400(client, make_user):
+    """显著特征超长 / 发生时间格式非法 → 400。"""
+    user = make_user(username="v370_invalid")
+    resp = client.post(
+        "/api/items/",
+        data={"type": "lost", "title": "测试物品", "description": "", "category": "其他",
+              "contact": "", "location": "A", "item_features": "x" * 101},
+        headers=user["headers"],
+    )
+    assert resp.status_code == 400
+
+    resp2 = client.post(
+        "/api/items/",
+        data={"type": "lost", "title": "测试物品", "description": "", "category": "其他",
+              "contact": "", "location": "A", "occurred_at": "2026/10/10"},
+        headers=user["headers"],
+    )
+    assert resp2.status_code == 400
+
+
+def test_v370_view_count_increments_per_visible_detail(client, make_user, create_item, approve_item):
+    """详情每次可见访问 +1；列表卡片返回 view_count。"""
+    user = make_user(username="v370_views")
+    item_id = create_item(user["headers"], title="浏览计数物品")
+    approve_item(item_id)
+
+    assert client.get(f"/api/items/{item_id}").json()["item"]["view_count"] == 1
+    assert client.get(f"/api/items/{item_id}").json()["item"]["view_count"] == 2
+
+    listed = client.get("/api/items/").json()["items"]
+    mine = [it for it in listed if it["id"] == item_id][0]
+    assert mine["view_count"] == 2  # 列表也返回 view_count（卡片展示用）
+
+
+def test_v370_update_writes_structured_fields(client, make_user, create_item):
+    """编辑写入 5 个结构化字段，详情返回更新后的值。"""
+    user = make_user(username="v370_update")
+    item_id = create_item(user["headers"], title="更新前")
+    resp = client.put(
+        f"/api/items/{item_id}",
+        data={"title": "更新后", "description": "新描述", "category": "其他",
+              "contact": "", "location": "宿舍",
+              "item_color": "蓝色", "item_brand": "华为", "item_features": "贴纸",
+              "occurred_at": "2026-10-12", "contact_method": "QQ:123"},
+        headers=user["headers"],
+    )
+    assert resp.status_code == 200
+    detail = client.get(f"/api/items/{item_id}", headers=user["headers"]).json()["item"]
+    assert detail["title"] == "更新后"
+    assert detail["item_color"] == "蓝色"
+    assert detail["item_brand"] == "华为"
+    assert detail["item_features"] == "贴纸"
+    assert detail["occurred_at"] == "2026-10-12"
+    assert detail["contact_method"] == "QQ:123"
