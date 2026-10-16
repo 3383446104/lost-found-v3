@@ -96,7 +96,7 @@ router.afterEach:
   已登录 + status !== 'disabled' → 刷新未读消息数量
 ```
 
-> ⚠️ **v3.4.0（C2）**：守卫判定字段由 `user.role === 'disabled'` 改为 `user.status === 'disabled'`（见 `lost-found-frontend/src/router/index.js`）。
+> ⚠️ **v3.4.0（C2）**：守卫判定字段由 `user.role === 'disabled'` 改为 `user.status === 'disabled'`（见 `frontend/src/router/index.js`）。
 
 ---
 

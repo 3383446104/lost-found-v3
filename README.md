@@ -91,7 +91,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### 启动前端
 
 ```bash
-cd lost-found-frontend
+cd frontend
 npm install
 npm run dev                    # → http://localhost:5173
 ```

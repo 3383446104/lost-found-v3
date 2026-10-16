@@ -1,4 +1,4 @@
-# lost-found-frontend
+# frontend
 
 校园失物检索平台前端（Vue 3 + Element Plus + ECharts + Pinia + Vite）。
 

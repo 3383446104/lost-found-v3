@@ -126,7 +126,7 @@ lost-found-v3/
 │       ├── services/       ← 业务逻辑（自动匹配/通知）
 │       ├── dependencies/   ← 鉴权依赖（JWT + 可选身份解析）
 │       └── utils/          ← 工具（时间/文件/邮件）
-└── lost-found-frontend/
+└── frontend/
     ├── index.html
     ├── vite.config.js      ← Vite 配置 + API 代理
     ├── public/
@@ -748,7 +748,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### 8.3 前端启动
 
 ```bash
-cd lost-found-frontend
+cd frontend
 npm install        # 首次需要安装依赖
 npm run dev        # 开发模式 → http://localhost:5173
 npm run build      # 生产构建 → dist/
