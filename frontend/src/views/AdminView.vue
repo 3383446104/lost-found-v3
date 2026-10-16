@@ -254,13 +254,6 @@
                 <el-tag v-if="row.is_pinned" type="warning" size="small" style="margin-left:6px">置顶</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="类型" width="100">
-              <template #default="{ row }">
-                <el-tag size="small" :type="row.type==='lost' ? 'danger' : row.type==='found' ? 'success' : 'info'">
-                  {{ row.type==='lost' ? '失物提醒' : row.type==='found' ? '招领提醒' : '系统公告' }}
-                </el-tag>
-              </template>
-            </el-table-column>
             <el-table-column prop="target_role" label="范围" width="90">
               <template #default="{ row }">{{ row.target_role==='all'?'全体':row.target_role==='user'?'用户':'管理' }}</template>
             </el-table-column>
@@ -317,29 +310,6 @@
         <el-form-item label="内容" required>
           <el-input v-model="annForm.content" type="textarea" :rows="5" placeholder="公告内容" maxlength="1000" show-word-limit />
         </el-form-item>
-        <el-form-item label="类型">
-          <el-radio-group v-model="annForm.type">
-            <el-radio-button value="system">系统公告</el-radio-button>
-            <el-radio-button value="lost">失物提醒</el-radio-button>
-            <el-radio-button value="found">招领提醒</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="封面图（选填）">
-          <input
-            ref="annCoverInput"
-            type="file"
-            accept=".jpg,.jpeg,.png,.gif,.webp"
-            style="display:none"
-            @change="handleAnnCoverChange"
-          />
-          <div class="ann-cover-row">
-            <img v-if="annForm.cover_image" :src="getImageUrl(annForm.cover_image)" class="ann-cover-preview" />
-            <el-button size="small" :loading="annCoverUploading" @click="annCoverInput?.click()">
-              {{ annForm.cover_image ? '更换封面' : '上传封面' }}
-            </el-button>
-            <el-button v-if="annForm.cover_image" size="small" @click="annForm.cover_image = ''">移除</el-button>
-          </div>
-        </el-form-item>
         <el-form-item>
           <el-checkbox v-model="annForm.is_pinned">置顶公告</el-checkbox>
         </el-form-item>
@@ -391,7 +361,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { reviewItem, getUsers, updateUser, createUser, deleteUser, getAllItems, updateItemStatus, batchItems } from '@/api/admin'
-import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, unpublishAnnouncement, uploadAnnouncementImage } from '@/api/announcements'
+import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, unpublishAnnouncement } from '@/api/announcements'
 import { getImageUrl, ITEM_TYPE_MAP } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { PictureFilled, Select, CloseBold, Plus, Edit, Search, Loading, ArrowDown, Remove, CircleCheck, Delete, TrendCharts } from '@element-plus/icons-vue'
@@ -606,25 +576,7 @@ const annLoading = ref(false)
 const annDialogVisible = ref(false)
 const annSaving = ref(false)
 const editingAnn = ref(null)
-const annForm = ref({ title: '', content: '', is_pinned: false, target_role: 'all', type: 'system', cover_image: '' })
-const annCoverInput = ref(null)
-const annCoverUploading = ref(false)
-
-// v3.7.0：公告封面上传（先传图拿文件名，提交时存 cover_image）
-const handleAnnCoverChange = async (e) => {
-  const file = e.target.files[0]
-  if (!file) return
-  annCoverUploading.value = true
-  try {
-    const res = await uploadAnnouncementImage(file)
-    annForm.value.cover_image = res.path
-  } catch {
-    ElMessage.error('封面上传失败')
-  } finally {
-    annCoverUploading.value = false
-    if (annCoverInput.value) annCoverInput.value.value = ''
-  }
-}
+const annForm = ref({ title: '', content: '', is_pinned: false, target_role: 'all' })
 
 const loadAnnouncements = async () => {
   annLoading.value = true
@@ -634,9 +586,8 @@ const loadAnnouncements = async () => {
 const openAnnDialog = (row) => {
   editingAnn.value = row || null
   annForm.value = row
-    ? { title: row.title, content: row.content, is_pinned: !!row.is_pinned, target_role: row.target_role || 'all',
-        type: row.type || 'system', cover_image: row.cover_image || '', status: row.status || 'draft' }
-    : { title: '', content: '', is_pinned: false, target_role: 'all', type: 'system', cover_image: '', status: 'draft' }
+    ? { title: row.title, content: row.content, is_pinned: !!row.is_pinned, target_role: row.target_role || 'all', status: row.status || 'draft' }
+    : { title: '', content: '', is_pinned: false, target_role: 'all', status: 'draft' }
   annDialogVisible.value = true
 }
 
@@ -649,8 +600,6 @@ const handleSaveAnn = async (status) => {
       content: annForm.value.content.trim(),
       is_pinned: annForm.value.is_pinned ? 1 : 0,
       target_role: annForm.value.target_role,
-      type: annForm.value.type,
-      cover_image: annForm.value.cover_image || null,
       status
     }
     if (editingAnn.value?.id) {
@@ -859,19 +808,5 @@ onMounted(() => { loadItems(); loadUsers(); loadAnnouncements() })
   .expand-actions .el-button {
     flex: 1;
   }
-}
-
-/* ---- v3.7.0：公告封面 ---- */
-.ann-cover-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.ann-cover-preview {
-  width: 120px;
-  height: 68px;
-  object-fit: cover;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
 }
 </style>

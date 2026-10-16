@@ -48,29 +48,11 @@
             maxlength="500"
             show-word-limit
           />
-          <p class="field-hint">与标题、颜色、品牌、显著特征一起计入匹配文本向量；可用窗口约 {{ TEXT_TOWER_WINDOW }} 字，建议把关键特征前置。</p>
+          <p class="field-hint">与标题一起计入匹配文本向量；可用窗口约 {{ TEXT_TOWER_WINDOW }} 字，建议把关键特征前置。</p>
           <p v-if="descCharCount > TEXT_TOWER_WINDOW" class="field-hint field-hint-warn">
             <el-icon><WarningFilled /></el-icon>
             <span>已输入 {{ descCharCount }} 字：超出 {{ TEXT_TOWER_WINDOW }} 字的部分不影响匹配精度，建议把关键特征写在前 {{ TEXT_TOWER_WINDOW }} 字内。</span>
           </p>
-        </el-form-item>
-
-        <p class="form-section">特征信息（选填，可提升匹配精度）</p>
-        <div class="form-row">
-          <el-form-item label="颜色" class="form-grow">
-            <el-input v-model="form.item_color" placeholder="如：黑色" maxlength="20" size="large" />
-          </el-form-item>
-          <el-form-item label="品牌" class="form-grow">
-            <el-input v-model="form.item_brand" placeholder="如：小米（无则不填）" maxlength="30" size="large" />
-          </el-form-item>
-        </div>
-        <el-form-item label="显著特征">
-          <el-input
-            v-model="form.item_features"
-            placeholder="如：正面有金属拉链、一角有划痕"
-            maxlength="100"
-            show-word-limit
-          />
         </el-form-item>
 
         <div class="form-row">
@@ -79,24 +61,6 @@
           </el-form-item>
           <el-form-item label="联系方式" prop="contact" class="form-grow">
             <el-input v-model="form.contact" placeholder="手机号/微信/QQ等" size="large" />
-          </el-form-item>
-        </div>
-
-        <p class="form-section">时间与其他联系方式</p>
-        <div class="form-row">
-          <el-form-item label="发生时间" class="form-grow">
-            <el-date-picker
-              v-model="form.occurred_at"
-              type="date"
-              value-format="YYYY-MM-DD"
-              placeholder="选择发生日期（选填，用于匹配排序）"
-              size="large"
-              clearable
-              style="width:100%"
-            />
-          </el-form-item>
-          <el-form-item label="其他联系方式" class="form-grow">
-            <el-input v-model="form.contact_method" placeholder="微信/QQ 等（选填）" maxlength="100" size="large" />
           </el-form-item>
         </div>
 
@@ -168,12 +132,7 @@ const form = ref({
   description: '',
   category: '其他',
   contact: '',
-  location: '',
-  item_color: '',
-  item_brand: '',
-  item_features: '',
-  occurred_at: '',
-  contact_method: ''
+  location: ''
 })
 
 // v3.6.0：多图状态 [{ key, name(已存文件名|null), file(新文件|null), previewUrl }]
@@ -251,8 +210,7 @@ const submit = async () => {
     submitting.value = true
     try {
       const formData = new FormData()
-      const allowedKeys = ['type', 'title', 'description', 'category', 'contact', 'location',
-        'item_color', 'item_brand', 'item_features', 'occurred_at', 'contact_method']
+      const allowedKeys = ['type', 'title', 'description', 'category', 'contact', 'location']
       allowedKeys.forEach(key => {
         if (form.value[key] !== undefined && form.value[key] !== null) {
           formData.append(key, form.value[key])
@@ -283,10 +241,6 @@ const submit = async () => {
 }
 
 onMounted(async () => {
-  // v3.7.0：首页快捷卡跳转发布页时用 query.type 预选类型
-  if (!isEdit.value && ['lost', 'found'].includes(route.query.type)) {
-    form.value.type = route.query.type
-  }
   try {
     const res = await getCategories()
     categories.value = res.categories || []
@@ -302,12 +256,7 @@ onMounted(async () => {
           description: data.item.description || '',
           category: data.item.category || '其他',
           contact: data.item.contact || '',
-          location: data.item.location || '',
-          item_color: data.item.item_color || '',
-          item_brand: data.item.item_brand || '',
-          item_features: data.item.item_features || '',
-          occurred_at: data.item.occurred_at || '',
-          contact_method: data.item.contact_method || ''
+          location: data.item.location || ''
         }
         // 加载已有图片列表（保持顺序，首图为封面）
         const existing = parseItemImages(data.item)
@@ -358,15 +307,6 @@ onMounted(async () => {
 .form-row {
   display: flex;
   gap: var(--space-5);
-}
-
-.form-section {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: var(--space-4) 0 var(--space-2);
-  padding-left: var(--space-2);
-  border-left: 3px solid var(--el-color-primary);
 }
 
 .form-grow {
