@@ -1,6 +1,6 @@
 # 校园失物检索平台 — 项目文档
 
-> 版本：v3.7.0 | 日期：2026-10-16 | 技术栈：FastAPI + Vue 3 + CLIP（Chinese-CLIP / open_clip 双后端）
+> 版本：v3.6.0 | 日期：2026-10-14 | 技术栈：FastAPI + Vue 3 + CLIP（Chinese-CLIP / open_clip 双后端）
 >
 > **v3.3 核心变更**：去除访客 | 自标记认领 | 个人中心重构 | 批量审核 | 总计找回 | 历史记录
 > **v3.3.1 修复**：统计过滤 | 批量审核路由 | 认领文案 | 列表过滤 | mark-claimed 路由 | 自动匹配通知
@@ -8,8 +8,7 @@
 > **v3.4.0 语义与性能加固**：账户状态拆分（`role` × `status`）| 颜色特征持久化（`items.color_vector`）| 公开接口账号状态校验 | 邮件异步化 | 路由 `:int` 健壮化 | 请求体 Pydantic 化 | 死代码清理 | 自动化测试扩至 **70 用例**
 > **v3.4.1 契约补齐**：补齐 `POST /api/items/match` 鉴权（需登录；缺 token → 403 / 非法 token → 401）| 自动化测试扩至 **72 用例**
 > **v3.5.0 中文化模型 + 跨模态检索**：默认模型换为 **Chinese-CLIP ViT-H-14**（`cn_clip`，`open_clip ViT-B-32` 可回滚）| 启用 **img·text 跨模态**四通道打分 | 阶段5 升级为**真跨模态一致性惩罚** | 阈值/权重 config 化并重标定 | `/match` 结果新增 `match_source`、响应新增 `legend` | 全量重嵌入 / 标定 / 颜色回填三个脚本 | 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**；另修复重嵌入脚本的「假绿迁移」缺陷（`_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫）。⚠️ **真实权重已在本机下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 评测集已经扩充轮（2026-09-14：+12 查询变体正样本、+2 同类图负对 → **84 对，有效 36 正 / 42 负 n=78**）复标后，Precision 上界仍仅 **0.6889**，`AUTO`/`EMAIL` **结构性无解**（同类近重复与正样本在分数上不可分，须待真实物品类别多样性增长）。✅ **生产库已完成全量重嵌入（2026-09-14，冷备 + `_exit_code` 守卫，6 条全部 1024 维）**，`/match` 已端到端实测恢复（HTTP 200，纯文/纯图/混合三模式全部通过）；`AUTO_MATCH_ENABLED=false` 灰度保持（⚠️ 该行为 v3.5.0 收尾时点快照，「AUTO/EMAIL 无解」与灰度状态已由 v3.6.0 解决，见下行）
-> **v3.6.0 打分口径重构 + 社区化融合**：按查询形态分**三种检索模式**（文字 / 图片 / 图文混合，缺通道动态归一化自动成形）| 权重改「主证据 + 辅助证据」（同模态 0.75 / 跨模态 0.25）| **跨模态尺度映射**（0.194→0、0.298→1；仅外层加权与展示，阶段5 仍用原始余弦）| **证据链** + 三分数分离（`content_score` 判定 / `match_score` 排序 / `reference_score` 展示）| 时间衰减失效修复（`utils/time_utils.days_since_utc`）并调温和（90→240 天、下限 0.2→0.6）| **三档阈值首次标定成功**（MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069，内容分尺度；自动匹配判定改用 `content_score`；自动推送开关已开启）| 融合参考项目八大设计：认领闭环 / 举报 / 留言 / 多图 / 统计看板 / 相似推荐 / 证据链可视化 / 内容运营 | 自动化测试扩至 **313 用例（311 通过 / 2 门控跳过）**
-> **v3.7.0 交互重构 + 运营增强**：物品结构化字段（`item_color` / `item_brand` / `item_features` / `occurred_at` / `contact_method`，前三者**拼入文本向量**）| 时间衰减口径改**发生时间**（缺失回退发布时间）| 物品与公告**浏览计数**（`view_count`）| 公告**类型 + 封面** | 首页**双推荐区**（失物 / 招领分列）+ **快捷服务 4 卡** | 个人中心**快捷导航** | 颜色通道 `color_vector` 残留列口径修正 | 管理员侧边栏重构规划至 **v3.8.0** | 参考项目「前端设计思路」借鉴落地（结构化字段 / 三步匹配向导思路 / 双推荐区 / 快捷导航）
+> **v3.6.0 打分口径重构 + 社区化融合**：按查询形态分**三种检索模式**（文字 / 图片 / 图文混合，缺通道动态归一化自动成形）| 权重改「主证据 + 辅助证据」（同模态 0.75 / 跨模态 0.25）| **跨模态尺度映射**（0.194→0、0.298→1；仅外层加权与展示，阶段5 仍用原始余弦）| **证据链** + 三分数分离（`content_score` 判定 / `match_score` 排序 / `reference_score` 展示）| 时间衰减失效修复（`utils/time_utils.days_since_utc`）并调温和（90→240 天、下限 0.2→0.6）| **三档阈值首次标定成功**（MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069，内容分尺度；自动匹配判定改用 `content_score`；自动推送开关已开启）| 融合参考项目八大设计：认领闭环 / 举报 / 留言 / 多图 / 统计看板 / 相似推荐 / 证据链可视化 / 内容运营 | 自动化测试扩至 **304 用例（302 通过 / 2 门控跳过）**
 
 ---
 
@@ -106,7 +105,7 @@ lost-found-v3/
 │   ├── pytest.ini          ← pytest 配置
 │   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定）
 │   ├── eval/               ← 评测集（eval_set_v3.5.0.json，84 对构造样本）
-│   ├── tests/              ← 自动化测试套件（313 用例）
+│   ├── tests/              ← 自动化测试套件（296 用例）
 │   │   ├── conftest.py
 │   │   ├── test_auth.py / test_items.py / test_admin.py / test_stats.py
 │   │   ├── test_claims.py / test_reports.py / test_comments.py / test_banners.py / test_categories.py
@@ -179,18 +178,16 @@ lost-found-v3/
 
 | 编号 | 需求 | 后端 | 前端 | 状态 |
 |------|------|:----:|:----:|:----:|
-| FR-ITEM-01 | 发布物品（类型/标题/描述/分类/位置/联系/图片 + v3.7.0 颜色/品牌/显著特征/发生时间/其他联系方式） | ✅ POST /api/items/ (FormData) | ✅ PublishView | ✅ |
+| FR-ITEM-01 | 发布物品（类型/标题/描述/分类/位置/联系/图片） | ✅ POST /api/items/ (FormData) | ✅ PublishView | ✅ |
 | FR-ITEM-02 | 物品列表（分页+卡片） | ✅ GET /api/items/ | ✅ HomeView | ✅ |
 | FR-ITEM-03 | 分类筛选（全部/失物/拾物/我的） | ✅ type/user_id 参数 | ✅ filter radio + checkbox | ✅ |
 | FR-ITEM-04 | 类别筛选 | ✅ category 参数 | ✅ el-select categories | ✅ |
 | FR-ITEM-05 | 关键词搜索 | ✅ keyword LIKE 查询 | ✅ el-input search | ✅ |
-| FR-ITEM-06 | 物品详情（v3.7.0 起浏览计数自增） | ✅ GET /api/items/{id} | ✅ ItemDetailView | ✅ |
+| FR-ITEM-06 | 物品详情 | ✅ GET /api/items/{id} | ✅ ItemDetailView | ✅ |
 | FR-ITEM-07 | 编辑物品（本人/管理员） | ✅ PUT /api/items/{id} | ✅ PublishView?edit= | ✅ |
 | FR-ITEM-08 | 删除物品（含图片文件） | ✅ DELETE /api/items/{id} | ✅ ItemDetailView | ✅ |
-| FR-ITEM-09 | CLIP 特征提取（图像+文本向量，维度随后端：cn_clip 1024 / open_clip 512；v3.7.0 起文本向量拼入颜色/品牌/显著特征） | ✅ create_item/update_item | — | ✅ |
+| FR-ITEM-09 | CLIP 特征提取（图像+文本向量，维度随后端：cn_clip 1024 / open_clip 512） | ✅ create_item/update_item | — | ✅ |
 | FR-ITEM-10 | 多图上传（1-3 张，首图封面，拖拽排序；**仅封面参与向量检索**） | ✅ create_item/update_item（images / keep） | ✅ PublishView 网格 + 原生拖拽 | ✅ |
-| FR-ITEM-11 | 结构化字段（颜色/品牌/显著特征/发生时间/其他联系方式；**拼入文本向量**提升检索）（v3.7.0） | ⏳ items 加 6 列 + create/update | ⏳ PublishView 分区表单 | ⏳ |
-| FR-ITEM-12 | 浏览计数（详情访问自增 + 卡片展示）（v3.7.0） | ⏳ items.view_count | ⏳ ItemDetailView / HomeView | ⏳ |
 
 ### 3.3 智能匹配模块 (FR-MATCH)
 
@@ -261,10 +258,8 @@ lost-found-v3/
 | FR-OPS-01 | 轮播图（排序 / 启停 / 跳转链接 / 图片上传 `banner_` 前缀） | ✅ /api/banners* | ✅ HomeView 轮播 + BannerManage | ✅ |
 | FR-OPS-02 | 分类管理（表驱动 + 排序；**被物品使用的分类拒绝删除**；空表回退常量） | ✅ /api/categories/admin* | ✅ CategoryManage | ✅ |
 | FR-OPS-03 | 公告草稿/发布分离（draft/published + publish/unpublish） | ✅ announcements.status | ✅ AdminView 发布/下架按钮 | ✅ |
-| FR-OPS-04 | 公告类型 + 封面 + 浏览数（type system/lost/found、cover_image、view_count）（v3.7.0） | ⏳ announcements 加 3 列 | ⏳ AdminView 公告表单 + 首页列表 | ⏳ |
 | FR-STATS-04 | 管理端统计：总览 / 找回率 / 发布趋势（北京时间口径）/ 分类占比 | ✅ /api/stats/admin/* | ✅ AdminStatsView | ✅ |
 | FR-STATS-05 | 找回率口径：claimed_total = max(计数器, by_type 求和)；rate = claimed/(claimed+active+claiming) | ✅ stats.py | ✅ gauge 展示 | ✅ |
-| FR-STATS-06 | 首页双推荐区（失物/招领分列；复用 recommend?type=）（v3.7.0） | ✅ recommend?type=（v3.6.0 已预留） | ⏳ HomeView 分块 | ⏳ |
 
 ### 3.9 非功能需求覆盖
 
@@ -291,17 +286,15 @@ lost-found-v3/
 | 模块 | 总需求数 | 已实现 | 覆盖率 |
 |------|:------:|:------:|:------:|
 | 用户认证 | 6 | 6 | 100% |
-| 物品管理（v3.7.0 含 2 项规划中） | 12 | 10 | 83% |
+| 物品管理 | 10 | 10 | 100% |
 | 智能匹配 | 10 | 10 | 100% |
 | 管理员审核 | 6 | 6 | 100% |
 | 消息通知 | 6 | 6 | 100% |
 | 认领闭环（v3.6.0） | 6 | 6 | 100% |
 | 社区互动（v3.6.0） | 7 | 7 | 100% |
-| 内容运营与统计（v3.7.0 含 2 项规划中） | 7 | 5 | 71% |
+| 内容运营与统计（v3.6.0） | 5 | 5 | 100% |
 | 非功能需求 | 13 | 12 | 92% |
-| **总计** | **73** | **68** | **93%** |
-
-> ⏳ **v3.7.0 新增 4 项**（FR-ITEM-11/12、FR-OPS-04、FR-STATS-06）当前为「规划态」——文档已对齐、代码待实现；计入总需求、未计入「已实现」。v3.6.0 基线覆盖率 99%（69 需求 / 68 实现）。
+| **总计** | **69** | **68** | **99%** |
 
 ---
 
@@ -338,15 +331,10 @@ lost-found-v3/
 | cover_image | TEXT | | 封面文件名（= images[0]，**仅封面参与向量检索**）（**v3.6.0 新增**） |
 | images | TEXT | | 有序图片文件名 JSON 数组（1-3 张）（**v3.6.0 新增**） |
 | is_recommend | INTEGER | DEFAULT 0 | 首页推荐位标记（**v3.6.0 新增**） |
-| item_color | TEXT | | 颜色（选填，**拼入文本向量**）（**v3.7.0 新增**） |
-| item_brand | TEXT | | 品牌/标识（选填，**拼入文本向量**）（**v3.7.0 新增**） |
-| item_features | TEXT | | 显著特征（选填，**拼入文本向量** + 详情页高亮）（**v3.7.0 新增**） |
 | image_vector | TEXT | | CLIP 图像特征 (JSON) |
-| text_vector | TEXT | | CLIP 文本特征 (JSON)；v3.7.0 起由 title + 颜色 + 品牌 + 显著特征 + 描述编码 |
+| text_vector | TEXT | | CLIP 文本特征 (JSON) |
 | contact | TEXT | | 联系方式 |
-| contact_method | TEXT | | 其他联系方式（微信/QQ 等，选填）（**v3.7.0 新增**） |
 | location | TEXT | | 地点 |
-| occurred_at | TEXT | | 发生时间（选填，**v3.7.0 起参与时间衰减**，缺失回退发布时间）（**v3.7.0 新增**） |
 | status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming=认领中，**v3.6.0 新增**，经表重建迁移） |
 | user_id | INTEGER | FK → users.id | 发布者 |
 | review_status | TEXT | CHECK(3 states) | pending/approved/rejected |
@@ -355,7 +343,6 @@ lost-found-v3/
 | reject_reason | TEXT | | 驳回理由 |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 发布时间 |
 | updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
-| view_count | INTEGER | DEFAULT 0 | 浏览计数（详情访问自增）（**v3.7.0 新增**） |
 
 ### 4.3 matches（匹配记录表）
 
@@ -388,11 +375,7 @@ lost-found-v3/
 | title | TEXT | NOT NULL | 标题 |
 | content | TEXT | NOT NULL | 内容 |
 | is_pinned | INTEGER | DEFAULT 0 | 是否置顶 |
-| target_role | TEXT | DEFAULT 'all' | 可见范围：all / user / admin |
-| status | TEXT | DEFAULT 'published' | 草稿/发布分离：draft / published（**v3.6.0 新增**） |
-| type | TEXT | DEFAULT 'system' | 公告类型：system 系统公告 / lost 失物提醒 / found 招领提醒（**v3.7.0 新增**） |
-| cover_image | TEXT | | 封面图（**v3.7.0 新增**） |
-| view_count | INTEGER | DEFAULT 0 | 浏览计数（详情访问自增）（**v3.7.0 新增**） |
+| target_role | TEXT | DEFAULT 'all' | 可见范围：all / user |
 | admin_id | INTEGER | FK → users.id | 发布管理员 |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 发布时间 |
 
@@ -655,16 +638,16 @@ HTTP 状态码：`400` 参数错误 / `401` 认证失败 / `403` 权限不足 / 
 |------|------|:----:|------|------|
 | `/login` | LoginView | 独立（毛玻璃） | 未登录 | 校园航拍背景 + 半透明卡片；已登录自动跳转 |
 | `/register` | RegisterView | 独立（毛玻璃） | 未登录 | 同登录页风格 |
-| `/items` | HomeView | DefaultLayout | 登录 | 轮播图 + 公告栏 + 统计卡片 + **快捷服务 4 卡** + 筛选栏 + 卡片网格 + **双推荐区（失物/招领分列）** + 骨架屏 |
-| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区 + 相似推荐 + 认领闭环操作区（申请/审批入口/脱敏联系方式）+ 举报入口 + **浏览计数 + 属性网格（颜色/品牌/特征/发生时间）** |
-| `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 多图上传(1-3 张, 拖拽排序, 首图封面) + **结构化字段（颜色/品牌/显著特征/发生时间/其他联系方式）** |
+| `/items` | HomeView | DefaultLayout | 登录 | 轮播图 + 公告栏 + 统计卡片 + 筛选栏 + 卡片网格 + 「为你推荐」+ 骨架屏 |
+| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区 + 相似推荐 + 认领闭环操作区（申请/审批入口/脱敏联系方式）+ 举报入口 |
+| `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 多图上传(1-3 张, 拖拽排序, 首图封面) |
 | `/match` | MatchView | DefaultLayout | 登录 | 匹配面板 + 多图上传 + 证据徽章/依据文案 + 结果进度条 |
 | `/claims` | ClaimsView | DefaultLayout | 登录 | 双 tab（我的申请/收到的申请）+ 同意(互斥提示)/拒绝(必填理由)/确认完成/撤销 |
 | `/reports/mine` | MyReportsView | DefaultLayout | 登录 | 举报进度卡片 |
 | `/admin` | AdminView | DefaultLayout | 管理员 | 物品审核(批量+设推荐) + 用户管理 + 公告(草稿/发布) + 举报/留言/轮播图/分类管理 |
 | `/admin/stats` | AdminStatsView | DefaultLayout | 管理员 | 指标卡 + 找回率仪表盘 + 发布趋势 + 分类占比（含表格视图） |
 | `/notifications` | NotificationsView | DefaultLayout | 登录 | 通知卡片 + 一键已读 |
-| `/profile` | ProfileView | DefaultLayout | 登录 | **快捷导航 chips** + 信息横幅 + Tab(账户/联系/历史) + 危险区域 |
+| `/profile` | ProfileView | DefaultLayout | 登录 | 信息横幅 + Tab(账户/联系/历史) + 危险区域 |
 
 ### 路由守卫逻辑
 
@@ -866,7 +849,7 @@ with get_db_connection() as conn:
 基础分 = Σ(wᵢ · simᵢ) / Σ(wᵢ)     （仅在双方该维度均存在时计入 wᵢ；全缺 → 0.0）
 
 阶段1 类别/位置调节：同类 +0.05 / 异类 -0.08；同位 +0.03 / 异位 -0.04
-阶段2 时间衰减：     base ×= max(0.6, 1 − 已发生天数 / 240)（2026-09-21 由 90 天·下限 0.2 调温和；**v3.7.0 起按发生时间 occurred_at 口径**，缺失回退发布时间 created_at）
+阶段2 时间衰减：     base ×= max(0.6, 1 − 已发布天数 / 240)（2026-09-21 由 90 天·下限 0.2 调温和）
 阶段3 分层阈值：     手动 0.624956 / 自动 0.733952 / 邮件 0.832069（2026-09-21 标定值）
 阶段4 动态权重：     缺维按比例重分配，见上式
 阶段5 跨模态一致性惩罚：仅当「文-文 ≥ 0.55 且 图-图不高」触发（真·文本撞车；原 max 条件会误伤原图自比）；
@@ -942,7 +925,7 @@ with get_db_connection() as conn:
 
 ### 10.2 自动化测试（v3.3.3 新增，v3.5.0 / v3.6.0 扩容）
 
-仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 313 用例（311 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
+仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 296 用例（294 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
 
 **A. v3.4.1 基线（72 用例）**
 
@@ -976,7 +959,7 @@ with get_db_connection() as conn:
 
 > ⚠️ **门控跳过说明**：`test_real_clip_smoke.py` 的 2 个用例需真实 `cn_clip` 权重与 `RUN_REAL_CLIP=1`。权重（3.83GB）已在本机下载并端到端验证，故设 `RUN_REAL_CLIP=1` 时这 2 例由 **skip 转通过**；不设时仍 skip（供无权重环境 / CI 使用）。
 
-**C. v3.6.0 新增（合计 +75；收尾阶段补至总收集 313 = 311 passed / 2 门控 skip）**
+**C. v3.6.0 新增（合计 +75，总收集 304 = 302 passed / 2 门控 skip）**
 
 | 文件 | 覆盖重点 | 用例数 |
 |------|----------|:------:|
@@ -1128,20 +1111,6 @@ venv\Scripts\python.exe -m pytest tests/ -v
 - [x] 自动化测试扩至 **313 用例（311 通过 / 2 门控跳过）**
 - [x] `APP_VERSION` → `3.6.0`；PROJECT / SRS / README / docs 索引同步
 
-#### V3.7.0 — 交互重构 + 运营增强 ✅ 规划完成（文档已对齐，代码待实现）
-- [ ] 物品结构化字段：`item_color` / `item_brand` / `item_features` / `occurred_at` / `contact_method`（items 加 6 列；**前三者拼入文本向量**提升 CLIP 文本检索）
-- [ ] 时间衰减口径改用**发生时间 `occurred_at`**（缺失回退发布时间 `created_at`）
-- [ ] 浏览计数 `view_count`（items + announcements；详情访问自增，卡片展示）
-- [ ] 公告增强：`type`（system/lost/found）+ `cover_image`（announcements 加 3 列）
-- [ ] 首页双推荐区（失物/招领分列，复用 `recommend?type=`）+ 快捷服务 4 卡
-- [ ] 个人中心快捷导航 chips（我的发布/我的认领/收到的认领/我的留言/我的举报/系统公告）
-- [ ] 颜色通道 `color_vector` 残留列口径修正（列保留未删、不参与读写）
-- [ ] 测试用例数统一口径（以 `pytest --collect-only` 为准）
-
-#### V3.8.0 — 管理端重构（规划中）
-- [ ] 管理员侧边栏重构：单页 Tab 堆叠 → 独立侧边栏 + 分路由页面（复用 `views/admin/` 现有组件）
-- [ ] 待审核数侧边栏红点 badge
-
 #### V3.5 — 体验飞升（计划中）
 - [ ] 微信小程序端
 - [ ] 向量数据库迁移（pgvector 或 FAISS）
@@ -1161,6 +1130,6 @@ venv\Scripts\python.exe -m pytest tests/ -v
 ---
 
 > **文档维护者**：开发团队  
-> **最后更新**：2026-10-16  
+> **最后更新**：2026-10-14  
 > **相关文档**：[文档索引](docs/README.md) | [SRS](SRS.md) | [v3.3 PRD](docs/product/PRD-v3.3.md) | [v3.5.0 增量 PRD](docs/product/PRD-v3.5.0-incremental.md) | [竞品分析报告](docs/product/competitive-analysis.md) | [用户角色与场景](docs/product/personas-and-scenarios.md)  
 > **质量文档**：[架构评审报告 2026-09-12](docs/archive/architecture-review-2026-09-12.md) | [文档与代码同步说明](docs/archive/doc-sync-2026-09-12.md) | [增量修复设计](docs/archive/design-fix-batch-2026-09-12.md) | [v3.4.0 变更总结](docs/archive/v3.4.0-change-summary-2026-09-12.md) | [v3.5.0 增量架构设计](docs/archive/v3.5.0-incremental-design.md) | [v3.5.0 QA 回归](docs/review/qa-v3.5.0-regression-2026-09-13.md)

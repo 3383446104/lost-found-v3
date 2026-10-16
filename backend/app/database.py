@@ -293,23 +293,6 @@ def init_db():
         if not {'cover_image', 'images', 'is_recommend'} <= set(item_cols_v360):
             logger.info("迁移成功：items 表已添加 cover_image / images / is_recommend 列")
 
-        # ---------- 迁移：items 新增结构化字段与浏览计数（v3.7.0）----------
-        cursor.execute("PRAGMA table_info(items)")
-        item_cols_v370 = [row['name'] for row in cursor.fetchall()]
-        for col, ddl in (
-            ("item_color", "TEXT"),
-            ("item_brand", "TEXT"),
-            ("item_features", "TEXT"),
-            ("occurred_at", "TEXT"),
-            ("contact_method", "TEXT"),
-            ("view_count", "INTEGER DEFAULT 0"),
-        ):
-            if col not in item_cols_v370:
-                cursor.execute(f"ALTER TABLE items ADD COLUMN {col} {ddl}")
-        if not {'item_color', 'item_brand', 'item_features',
-                'occurred_at', 'contact_method', 'view_count'} <= set(item_cols_v370):
-            logger.info("迁移成功：items 表已添加 v3.7.0 结构化字段与浏览计数列")
-
         # ---- 统计计数表（持久化计数器，不受物品删除影响） ----
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stats_counters (
@@ -351,18 +334,6 @@ def init_db():
         if 'status' not in ann_cols_v360:
             cursor.execute("ALTER TABLE announcements ADD COLUMN status TEXT DEFAULT 'published'")
             logger.info("迁移成功：announcements 表已添加 status 列（草稿/发布分离）")
-
-        # 迁移：公告类型/封面/浏览计数（v3.7.0）
-        cursor.execute("PRAGMA table_info(announcements)")
-        ann_cols_v370 = [r['name'] for r in cursor.fetchall()]
-        if 'type' not in ann_cols_v370:
-            cursor.execute("ALTER TABLE announcements ADD COLUMN type TEXT DEFAULT 'system'")
-        if 'cover_image' not in ann_cols_v370:
-            cursor.execute("ALTER TABLE announcements ADD COLUMN cover_image TEXT")
-        if 'view_count' not in ann_cols_v370:
-            cursor.execute("ALTER TABLE announcements ADD COLUMN view_count INTEGER DEFAULT 0")
-        if not {'type', 'cover_image', 'view_count'} <= set(ann_cols_v370):
-            logger.info("迁移成功：announcements 表已添加 type / cover_image / view_count 列（v3.7.0）")
 
         # ---- 目录准备 ----
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)

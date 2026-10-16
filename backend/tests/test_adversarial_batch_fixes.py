@@ -245,17 +245,6 @@ def test_migration_schema_has_status_column(client):
     assert "status" in users_cols, f"users 缺 status 列：{users_cols}"
 
 
-def test_migration_schema_has_v370_columns(client):
-    """PRAGMA 校验（v3.7.0 幂等迁移）：items 六列 + announcements 三列。"""
-    with db_module.get_db_connection() as conn:
-        items_cols = [r["name"] for r in conn.execute("PRAGMA table_info(items)").fetchall()]
-        ann_cols = [r["name"] for r in conn.execute("PRAGMA table_info(announcements)").fetchall()]
-    for col in ("item_color", "item_brand", "item_features", "occurred_at", "contact_method", "view_count"):
-        assert col in items_cols, f"items 缺 {col} 列：{items_cols}"
-    for col in ("type", "cover_image", "view_count"):
-        assert col in ann_cols, f"announcements 缺 {col} 列：{ann_cols}"
-
-
 def test_migration_legacy_role_values_mapped_to_status(tmp_path, monkeypatch):
     """模拟旧库（无 status 列、role 存 disabled/deleted）：init_db 应完成一次性 role→status 映射。
 

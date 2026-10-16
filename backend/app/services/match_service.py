@@ -77,7 +77,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
 
             # 3. 查询所有已审核且状态为 active 的目标物品
             cursor.execute('''
-                SELECT id, user_id, title, category, location, created_at, occurred_at, image_vector, text_vector, image_path
+                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, image_path
                 FROM items
                 WHERE type = ? AND status = 'active' AND review_status = 'approved'
             ''', (target_type,))
@@ -113,10 +113,9 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             target_img_vec = json_to_vector(target['image_vector']) if target['image_vector'] else None
             target_text_vec = json_to_vector(target['text_vector']) if target['text_vector'] else None
 
-            # 计算目标物品已发生天数（时间衰减）—— 统一走 days_since_utc，
-            # 修正 naive/aware 相减抛 TypeError 被吞导致衰减静默失效的缺陷（2026-09-21）；
-            # v3.7.0 起按发生时间 occurred_at 口径，缺失回退发布时间 created_at
-            days_old = days_since_utc(target['occurred_at'] or target['created_at'])
+            # 计算目标物品已发布天数（时间衰减）—— 统一走 days_since_utc，
+            # 修正 naive/aware 相减抛 TypeError 被吞导致衰减静默失效的缺陷（2026-09-21）
+            days_old = days_since_utc(target['created_at'])
 
             # 一次调用拿到「三分数 + 证据链」（2026-09-21 口径统一）
             #   content_score 不含时间衰减与类别位置 → **与阈值标定同尺度**，用于判定

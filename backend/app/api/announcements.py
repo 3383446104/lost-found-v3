@@ -1,20 +1,11 @@
 # app/api/announcements.py
 # v3.6.0 融合：公告草稿/发布分离（status: draft / published）
-# v3.7.0 运营增强：type（system/lost/found）+ cover_image + view_count（详情访问自增）
-import os
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
-from ..config import settings
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from ..database import get_db_connection
 from ..dependencies.auth import get_current_admin, verify_token
-from ..utils.file import allowed_file
 from ..utils.time_utils import format_beijing_time
-from ..logger import logger
 
 router = APIRouter(prefix="/announcements", tags=["公告"])
-
-MAX_UPLOAD_SIZE = getattr(settings, "MAX_UPLOAD_SIZE", 5 * 1024 * 1024)
 
 
 def _valid_status(value) -> str:
@@ -22,29 +13,6 @@ def _valid_status(value) -> str:
     if value not in ("draft", "published"):
         raise HTTPException(400, "status 必须为 draft 或 published")
     return value
-
-
-def _valid_type(value) -> str:
-    """公告类型（v3.7.0）：system 系统公告 / lost 失物提醒 / found 招领提醒。"""
-    value = value or "system"
-    if value not in ("system", "lost", "found"):
-        raise HTTPException(400, "type 必须为 system / lost / found")
-    return value
-
-
-def _resolve_admin_id(request: Request):
-    """从 Authorization 头解析管理员 id（无/非法 → None）。"""
-    token = request.headers.get('Authorization', '')
-    if not token.startswith('Bearer '):
-        return None
-    payload = verify_token(token.replace('Bearer ', ''))
-    if not payload:
-        return None
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute('SELECT role FROM users WHERE id=?', (payload['user_id'],))
-        u = cur.fetchone()
-    return payload['user_id'] if u and u['role'] == 'admin' else None
 
 
 @router.get("")
@@ -56,7 +24,18 @@ async def list_announcements(
 ):
     """公告列表（公开：仅已发布；管理端传 all=true 看全量含草稿）"""
     # 只有 admin 传 all=true 时才看全部
-    can_see_all = bool(all and _resolve_admin_id(request))
+    can_see_all = False
+    if all:
+        token = request.headers.get('Authorization', '')
+        if token.startswith('Bearer '):
+            payload = verify_token(token.replace('Bearer ', ''))
+            if payload:
+                with get_db_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute('SELECT role FROM users WHERE id=?', (payload['user_id'],))
+                    u = cur.fetchone()
+                    if u and u['role'] == 'admin':
+                        can_see_all = True
 
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -65,7 +44,7 @@ async def list_announcements(
             total = cur.fetchone()[0]
             offset = (page - 1) * size
             cur.execute(
-                "SELECT id, title, content, is_pinned, target_role, status, type, cover_image, view_count, created_at FROM announcements ORDER BY is_pinned DESC, created_at DESC LIMIT ? OFFSET ?",
+                "SELECT id, title, content, is_pinned, target_role, status, created_at FROM announcements ORDER BY is_pinned DESC, created_at DESC LIMIT ? OFFSET ?",
                 (size, offset)
             )
         else:
@@ -75,7 +54,7 @@ async def list_announcements(
             total = cur.fetchone()[0]
             offset = (page - 1) * size
             cur.execute(
-                "SELECT id, title, content, is_pinned, target_role, status, type, cover_image, view_count, created_at FROM announcements WHERE target_role IN ('all','user') AND status='published' ORDER BY is_pinned DESC, created_at DESC LIMIT ? OFFSET ?",
+                "SELECT id, title, content, is_pinned, target_role, status, created_at FROM announcements WHERE target_role IN ('all','user') AND status='published' ORDER BY is_pinned DESC, created_at DESC LIMIT ? OFFSET ?",
                 (size, offset)
             )
         items = [dict(r) for r in cur.fetchall()]
@@ -83,63 +62,6 @@ async def list_announcements(
     for item in items:
         item["created_at"] = format_beijing_time(item.get("created_at"))
     return {"announcements": items, "total": total, "page": page, "size": size}
-
-
-@router.get("/{ann_id:int}")
-async def get_announcement(ann_id: int, request: Request):
-    """公告详情（公开：仅已发布且面向用户/全部；管理员可见任意）；访问自增浏览数（v3.7.0）"""
-    admin_id = _resolve_admin_id(request)
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, title, content, is_pinned, target_role, status, type, cover_image, view_count, created_at FROM announcements WHERE id=?",
-            (ann_id,)
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(404, "公告不存在")
-
-        visible = bool(admin_id) or (row["status"] == "published" and row["target_role"] in ("all", "user"))
-        if not visible:
-            raise HTTPException(404, "公告不存在")
-
-        # 可见即自增（不可见 404 不计数）；回读新值让响应包含本次访问
-        cur.execute("UPDATE announcements SET view_count = view_count + 1 WHERE id=?", (ann_id,))
-        cur.execute("SELECT view_count FROM announcements WHERE id=?", (ann_id,))
-        row = dict(row)
-        row["view_count"] = cur.fetchone()["view_count"]
-
-    result = row
-    result["created_at"] = format_beijing_time(result.get("created_at"))
-    return {"announcement": result}
-
-
-@router.post("/upload")
-async def upload_announcement_image(
-    image: UploadFile = File(...),
-    current_admin: dict = Depends(get_current_admin)
-):
-    """上传公告封面图（ann_ 前缀持久文件，复用 /items/uploads/ 静态路由；v3.7.0）"""
-    if not image or not image.filename:
-        raise HTTPException(400, "请选择图片")
-    content = await image.read()
-    if not allowed_file(image.filename, content):
-        raise HTTPException(400, "文件类型不支持")
-    if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(400, f"图片大小不能超过 {MAX_UPLOAD_SIZE//1024//1024}MB")
-
-    ext = os.path.splitext(image.filename)[1][1:].lower()
-    filename = f"ann_{uuid.uuid4().hex}.{ext}" if ext else f"ann_{uuid.uuid4().hex}"
-    file_path = os.path.join(settings.UPLOAD_FOLDER, filename)
-    try:
-        with open(file_path, "wb") as f:
-            f.write(content)
-    except Exception as e:
-        logger.error(f"公告封面保存失败: {e}")
-        raise HTTPException(500, "文件保存失败")
-
-    return {"path": filename, "success": True}
 
 
 @router.post("")
@@ -155,14 +77,12 @@ async def create_announcement(
     if not content:
         raise HTTPException(400, "内容不能为空")
     status = _valid_status(payload.get("status"))
-    ann_type = _valid_type(payload.get("type"))
 
     with get_db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO announcements (title, content, is_pinned, target_role, status, type, cover_image, admin_id) VALUES (?,?,?,?,?,?,?,?)",
-            (title, content, payload.get("is_pinned", 0), payload.get("target_role", "all"),
-             status, ann_type, payload.get("cover_image") or None, current_admin["user_id"])
+            "INSERT INTO announcements (title, content, is_pinned, target_role, status, admin_id) VALUES (?,?,?,?,?,?)",
+            (title, content, payload.get("is_pinned", 0), payload.get("target_role", "all"), status, current_admin["user_id"])
         )
     return {"success": True, "id": cur.lastrowid}
 
@@ -180,12 +100,10 @@ async def update_announcement(
         if not cur.fetchone():
             raise HTTPException(404, "公告不存在")
         status = _valid_status(payload.get("status"))
-        ann_type = _valid_type(payload.get("type"))
         cur.execute(
-            "UPDATE announcements SET title=?, content=?, is_pinned=?, target_role=?, status=?, type=?, cover_image=? WHERE id=?",
+            "UPDATE announcements SET title=?, content=?, is_pinned=?, target_role=?, status=? WHERE id=?",
             (payload.get("title", ""), payload.get("content", ""), payload.get("is_pinned", 0),
-             payload.get("target_role", "all"), status, ann_type,
-             payload.get("cover_image") or None, ann_id)
+             payload.get("target_role", "all"), status, ann_id)
         )
     return {"success": True}
 

@@ -18,7 +18,6 @@ def days_since_utc(time_value, *, now: datetime.datetime = None) -> int:
     **时间衰减完全失效且无任何日志**（老物品分数不降）。本函数统一处理：
 
     - ISO 8601（含 ``Z`` / ``+08:00`` 偏移）；
-    - 纯日期 ``YYYY-MM-DD``（v3.7.0 起 ``occurred_at`` 发生时间；按 UTC 当日 0 点解释）；
     - SQLite 空格格式（含可选微秒）；
     - naive → 显式补 UTC；aware → 归一化到 UTC；
     - 解析失败 → 返回 0（按不衰减处理）并记 warning，**绝不静默**。
@@ -43,14 +42,7 @@ def days_since_utc(time_value, *, now: datetime.datetime = None) -> int:
     except ValueError:
         dt = None
 
-    # 2) 纯日期 "YYYY-MM-DD"（v3.7.0 occurred_at；按 UTC 当日 0 点解释）
-    if dt is None:
-        try:
-            dt = datetime.datetime.strptime(ts, "%Y-%m-%d")
-        except ValueError:
-            dt = None
-
-    # 3) SQLite "YYYY-MM-DD HH:MM:SS[.ffffff]"
+    # 2) SQLite "YYYY-MM-DD HH:MM:SS[.ffffff]"
     if dt is None:
         for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
             try:

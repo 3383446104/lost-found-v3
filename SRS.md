@@ -1,8 +1,6 @@
 # 校园失物检索平台 — 软件需求规格说明书 (SRS)
 
-> 版本：v3.7.0 | 日期：2026-10-16 | 基于 v3.3 源码 + v3.4.x 加固 + v3.5.0 中文化模型 / 跨模态检索 + v3.6.0 打分口径重构与社区化融合 + v3.7.0 交互重构与运营增强，逐项与代码对齐
->
-> **v3.7.0 核心变更**：物品结构化字段（颜色 / 品牌 / 显著特征 / 发生时间 / 其他联系方式，并**拼入文本向量**提升检索质量）| 时间衰减口径改用**发生时间** | 物品与公告**浏览计数** | 公告**类型 + 封面** | 首页**双推荐区**（失物 / 招领分列）+ 快捷服务 4 卡 | 个人中心**快捷导航**；管理员侧边栏重构规划至 **v3.8.0**
+> 版本：v3.6.0 | 日期：2026-10-14 | 基于 v3.3 源码 + v3.4.x 加固 + v3.5.0 中文化模型 / 跨模态检索 + v3.6.0 打分口径重构与社区化融合，逐项与代码对齐
 
 ---
 
@@ -27,16 +25,14 @@
 本系统是一个面向高校校园的智能化失物招领平台，核心能力包括：
 
 - 用户注册与登录（JWT 鉴权，7 天有效期）
-- 失物/拾物信息发布与管理（**1-3 张图片**、拖拽排序、首图封面；v3.7.0 起新增**颜色 / 品牌 / 显著特征 / 发生时间 / 其他联系方式**结构化字段，并**拼入文本向量**提升检索质量）
-- 物品 / 公告**浏览计数**（v3.7.0，详情页访问自增，首页卡片展示浏览数）
-- 基于 **Chinese-CLIP ViT-H-14**（默认，中文图文跨模态）多模态模型的图文特征提取与智能匹配（**三检索模式** + 主辅证据加权 + 跨模态尺度映射 + 证据链；**时间衰减按发生时间口径**）；`open_clip ViT-B-32` 为可回滚后端
+- 失物/拾物信息发布与管理（**1-3 张图片**、拖拽排序、首图封面）
+- 基于 **Chinese-CLIP ViT-H-14**（默认，中文图文跨模态）多模态模型的图文特征提取与智能匹配（**三检索模式** + 主辅证据加权 + 跨模态尺度映射 + 证据链）；`open_clip ViT-B-32` 为可回滚后端
 - 管理员审核机制（通过/驳回 + 双向邮件通知 + 设为首页推荐）
 - 站内消息与 QQ 邮箱 HTML 邮件通知（含匹配等级与命中依据）
 - **认领闭环**（申请含特征描述 + 证明图 → 发布者审批（互斥自动拒绝）→ 归还确认；联系方式脱敏；v3.6.0 起取代旧"通知式认领"）
 - **社区互动**（五类举报 + 处理留痕 + 进度查询；楼中楼留言）
-- **内容运营**（轮播图 / 分类管理 / 公告草稿·**类型·封面**）与**相似推荐**（详情页相似物品、首页推荐位）
+- **内容运营**（轮播图 / 分类管理 / 公告草稿）与**相似推荐**（详情页相似物品、首页推荐位）
 - 数据统计看板（首页 4 卡片 + 分类占比；管理端找回率 / 发布趋势 / 分类占比）
-- 首页**双推荐区**（「为你推荐的失物」「为你推荐的招领」分列）+ **快捷服务 4 卡**；个人中心**快捷导航**（v3.7.0）
 - 深色/浅色主题切换
 
 ### 1.2 技术栈
@@ -125,18 +121,16 @@ router.afterEach:
 
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
-| FR-ITEM-01 | 发布物品 | `POST /api/items/` — FormData: type(lost/found)、title(2-50字符)、description(≤500字)、category、contact、location、image(≤16MB)，v3.7.0 起新增 item_color/item_brand/item_features/occurred_at/contact_method（选填）。自动提取 CLIP 图像+文本特征（文本向量 = `title + item_color + item_brand + item_features + description`，v3.7.0 起；维度随后端：`cn_clip` 1024 / `open_clip` 512）。初始状态 review_status=pending, status=pending |
+| FR-ITEM-01 | 发布物品 | `POST /api/items/` — FormData: type(lost/found)、title(2-50字符)、description(≤500字)、category、contact、location、image(≤16MB)。自动提取 CLIP 图像+文本特征（维度随后端：`cn_clip` 1024 / `open_clip` 512）。初始状态 review_status=pending, status=pending |
 | FR-ITEM-02 | 物品列表（分页+筛选） | `GET /api/items/` — 参数: type/category/keyword/user_id/limit/offset。管理员看全部；普通用户看 (approved+active) OR 自己物品；匿名仅看已审核+活跃物品 |
 | FR-ITEM-03 | 分类筛选 | 全部/失物/拾物/仅我的 |
 | FR-ITEM-04 | 类别筛选 | 7 类别：电子产品/证件卡片/包袋箱包/书籍文具/服装配饰/钥匙门禁/其他 |
 | FR-ITEM-05 | 关键词搜索 | title 或 description LIKE 模糊匹配 |
-| FR-ITEM-06 | 物品详情 | `GET /api/items/{id}` — 公开访问，未审核物品仅限发布者/管理员可见。返回全部字段（不含向量）。v3.7.0 起访问时 `view_count` 自增（详情页展示浏览数） |
-| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）与结构化字段编辑。非管理员编辑后 review_status 重置为 pending |
+| FR-ITEM-06 | 物品详情 | `GET /api/items/{id}` — 公开访问，未审核物品仅限发布者/管理员可见。返回全部字段（不含向量） |
+| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）。非管理员编辑后 review_status 重置为 pending |
 | FR-ITEM-08 | 删除物品 | `DELETE /api/items/{id}` — 仅本人/管理员。同时删除图片文件 |
 | FR-ITEM-09 | 图片访问 | `GET /api/items/uploads/{filename}` — 公开，路径遍历防护 |
 | FR-ITEM-10 | 多图上传（v3.6.0） | 1-3 张，首图封面（`images` 有序 JSON）；**仅封面参与向量检索**；编辑用 `keep`（保留文件新顺序）+ 新图，封面变更才重算向量、移除的文件同步删除 |
-| FR-ITEM-11 | 结构化字段（v3.7.0） | item_color 颜色 / item_brand 品牌 / item_features 显著特征 / occurred_at 发生时间 / contact_method 其他联系方式（微信/QQ 等）；均选填、`occurred_at` 参与时间衰减，前三者**拼入文本向量**提升 CLIP 文本检索质量；详情页属性网格展示 |
-| FR-ITEM-12 | 浏览计数（v3.7.0） | items.view_count 详情访问自增；列表/详情卡片展示「浏览 N 次」，为「热门物品」排序留数据基础 |
 
 ### 3.3 智能匹配模块 (FR-MATCH)
 
@@ -145,7 +139,7 @@ router.afterEach:
 | FR-MATCH-01 | 以图搜图 | `POST /api/items/match` — 上传 temp 图片 → CLIP 图像特征 → 计算与目标物品余弦相似度 |
 | FR-MATCH-02 | 以文搜图（**真跨模态**） | 输入文字 → CLIP 文本特征 → 与目标**图片**特征计算跨模态相似度（`sim_cross_t2i = q_text · t_img`，而非仅比文本自相似） |
 | FR-MATCH-03 | 图文混合匹配 | 同时提供图片+文字；按查询形态的**三种检索模式**（文字 / 图片 / 图文混合）由缺通道动态归一化自动成形，混合模式权重 ≈ 0.43 / 0.43 / 0.14 |
-| FR-MATCH-04 | 加权相似度算法（主辅证据 + 五阶段） | 权重「**主证据 + 辅助证据**」：同模态（文-文 / 图-图）0.75、跨模态 0.25（缺通道动态归一化）；**跨模态尺度映射** 0.194→0 / 0.298→1（仅外层加权与展示）；跨模态内 `q_text·t_img` 与 `q_img·t_text` 各 0.5；叠加类别/位置调节（+0.05/-0.08、+0.03/-0.04）、时间衰减（240 天 / 下限 0.6，**v3.7.0 起按发生时间 `occurred_at` 口径**，缺失回退发布时间）、分层阈值与**阶段5 跨模态一致性惩罚**（触发条件收窄为「文-文高且图-图不高」）；**颜色通道 2026-09-16 起废弃不参与打分** |
+| FR-MATCH-04 | 加权相似度算法（主辅证据 + 五阶段） | 权重「**主证据 + 辅助证据**」：同模态（文-文 / 图-图）0.75、跨模态 0.25（缺通道动态归一化）；**跨模态尺度映射** 0.194→0 / 0.298→1（仅外层加权与展示）；跨模态内 `q_text·t_img` 与 `q_img·t_text` 各 0.5；叠加类别/位置调节（+0.05/-0.08、+0.03/-0.04）、时间衰减（240 天 / 下限 0.6）、分层阈值与**阶段5 跨模态一致性惩罚**（触发条件收窄为「文-文高且图-图不高」）；**颜色通道 2026-09-16 废弃** |
 | FR-MATCH-05 | 结果排序 | 按 `match_score`（含时间衰减）降序返回 Top 20，仅匹配 active + approved 物品；判定用 `content_score` ≥ 阈值 |
 | FR-MATCH-06 | 分层阈值（**已标定**） | 手动 0.624956 / 自动 0.733952（P=91.7% / R=61.1%）/ 邮件 0.832069（P=100% / R=19.4%）；**内容分尺度**（2026-09-21） |
 | FR-MATCH-07 | 临时图片上传 | `POST /api/items/temp-upload` — 上传后返回文件名，匹配后自动删除 |
@@ -220,7 +214,6 @@ router.afterEach:
 | FR-OPS-01 | 轮播图 | 公开 `GET /api/banners`（仅启用、sort_no 升序）；管理端上传（`banner_` 前缀）+ CRUD（标题 / 描述 / 跳转链接 / 排序 / 启停） |
 | FR-OPS-02 | 分类管理 | `GET/POST/PUT/DELETE /api/categories/admin*` — 表驱动（种子 7 类）；**被物品使用的分类删除返回 400**；`GET /api/items/categories` 空表回退常量（响应结构不变） |
 | FR-OPS-03 | 公告草稿 / 发布分离 | announcements 加 `status`（draft / published）；公开列表仅 published；`PUT /{id}/publish` / `unpublish` |
-| FR-OPS-04 | 公告类型 / 封面 / 浏览数（v3.7.0） | announcements 加 `type`（system 系统公告 / lost 失物提醒 / found 招领提醒）、`cover_image`（封面图）、`view_count`（详情访问自增）；公告列表按 type 打标、置顶优先 |
 
 ### 3.9 管理端统计模块 (FR-STATS-ADMIN) — v3.6.0
 
@@ -238,7 +231,6 @@ router.afterEach:
 | FR-STATS-01 | 首页看板 | `GET /api/stats/dashboard` — 展示中物品总数/今日失物/今日拾物/总计找回数量 + 分类占比 `categories` |
 | FR-STATS-02 | 统计卡片 + 饼图 | 首页 4 卡片（展示中/今日失物/今日拾物/总计找回）+ 分类占比饼图，彩色数字，响应式 2×2 网格 |
 | FR-STATS-03 | 总计找回计数 | 由 `stats_counters` 持久化计数器累计（不受物品删除影响）；接口读取该计数（缺失时回退 `COUNT(*) WHERE status='claimed'`） |
-| FR-STATS-04 | 首页双推荐区（v3.7.0） | 「为你推荐的失物」「为你推荐的招领」两块分列展示；复用 `GET /api/items/recommend?type=lost/found`（v3.6.0 已预留 type 参数）；数据源为管理员审核勾选的推荐位，按类型分块渲染 |
 
 > ⚠️ **v3.3 变更**：第4卡片从"今日找回"改为"总计找回"（累计值），移除累计活跃功能。**分类占比（`categories`）仍保留并由首页 ECharts 饼图渲染**——早期"移除分类占比"的表述与代码不符。
 
@@ -256,8 +248,6 @@ router.afterEach:
 | FR-UI-08 | 圆角系统 | 6 级 (4px/6px/10px/14px/20px/9999px) |
 | FR-UI-09 | 间距系统 | 4px 网格 (4~48px) |
 | FR-UI-10 | 字体层级 | 10 级 (11px~32px) |
-| FR-UI-11 | 首页快捷服务（v3.7.0） | 4 张导航卡（发布失物 / 发布招领 / 图片匹配 / 我的发布），一键直达；位于轮播图与推荐区之间 |
-| FR-UI-12 | 个人中心快捷导航（v3.7.0） | 顶部 6 chips（我的发布 / 我的认领 / 收到的认领 / 我的留言 / 我的举报 / 系统公告）集中入口，跳转既有页面 |
 
 ---
 
@@ -273,7 +263,7 @@ router.afterEach:
 | NFR-PERF-02 | 列表接口响应时间 | < 500ms |
 | NFR-PERF-03 | 图片上传限制 | ≤ 16MB/张（物品图片）；v3.3 已移除头像功能 |
 | NFR-PERF-04 | CLIP 模型 | 默认 **Chinese-CLIP ViT-H-14**（权重约 3.83GB），输出 L2 归一化 **1024 维**联合投影向量；回滚 **open_clip ViT-B-32**（约 600MB），输出 **512 维** |
-| NFR-PERF-05 | 颜色通道（已废弃） | 颜色通道 **2026-09-16 起不参与打分**：代码不再计算/存储/读取任何颜色特征；`items.color_vector` 列因 SQLite 迁移成本**保留未删**（残留列，值为 NULL，不参与任何读写） |
+| NFR-PERF-05 | 颜色通道（已移除） | 颜色通道 **2026-10-16 整体移除**（2026-09-16 起已不参与打分）：不再计算/存储/读取任何颜色特征 |
 | NFR-PERF-06 | 多图上传限制（v3.6.0） | 每物品 1-3 张，单张 ≤ 16MB；**仅封面编码向量**（录入成本不随图数增长） |
 
 > ⚠️ **旧 `NFR-PERF-01`「匹配 < 3s」在 v3.5.0 作废**（口径偏旧、未按路径拆分），以本表的 `NFR-PERF-01 / 01b / 01c` 为准。
@@ -480,15 +470,10 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 | cover_image | TEXT | | 封面文件名（= images[0]，**仅封面参与向量检索**）（v3.6.0） |
 | images | TEXT | | 有序图片文件名 JSON 数组（1-3 张）（v3.6.0） |
 | is_recommend | INTEGER | DEFAULT 0 | 首页推荐位标记（v3.6.0） |
-| item_color | TEXT | | 颜色（选填，**拼入文本向量**）（v3.7.0） |
-| item_brand | TEXT | | 品牌/标识（选填，**拼入文本向量**）（v3.7.0） |
-| item_features | TEXT | | 显著特征（选填，**拼入文本向量** + 详情页高亮）（v3.7.0） |
 | image_vector | TEXT | | CLIP 图像特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
-| text_vector | TEXT | | CLIP 文本特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512）；v3.7.0 起由 `title + 颜色 + 品牌 + 显著特征 + 描述` 编码 |
+| text_vector | TEXT | | CLIP 文本特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
 | contact | TEXT | | 联系方式 |
-| contact_method | TEXT | | 其他联系方式（微信/QQ 等，选填）（v3.7.0） |
 | location | TEXT | | 地点 |
-| occurred_at | TEXT | | 发生时间（选填，**v3.7.0 起参与时间衰减**，缺失回退发布时间） |
 | status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming 为 v3.6.0 新增「认领中」，经表重建迁移） |
 | user_id | INTEGER | FK→users.id | 发布者 |
 | review_status | TEXT | CHECK(3 states) | pending/approved/rejected |
@@ -497,7 +482,6 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 | reject_reason | TEXT | | 驳回理由 (≤200字符) |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 发布时间 |
 | updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
-| view_count | INTEGER | DEFAULT 0 | 浏览计数（详情访问自增）（v3.7.0） |
 
 **索引**: user_id, type, status, review_status, created_at
 
@@ -533,7 +517,7 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 
 | 表 | 关键字段 | 说明 |
 |----|---------|------|
-| announcements | id, title, content, is_pinned, target_role, status(draft/published), admin_id, created_at；v3.7.0 加 type(system/lost/found) + cover_image + view_count | 管理员发布，按可见范围展示；草稿/发布分离（v3.6.0）；类型+封面+浏览数（v3.7.0） |
+| announcements | id, title, content, target_role, created_at | 管理员发布，按可见范围展示（v3.3 引入） |
 | stats_counters | key, value | 持久化计数器（如 `total_claimed`），不受物品删除影响（v3.3） |
 
 ### 6.6 类别（v3.6.0 表驱动）
@@ -565,16 +549,16 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 |------|------|:--:|------|------|
 | `/login` | LoginView | 独立(毛玻璃) | 未登录 | 校园航拍背景 + 半透明卡片 + 登录后按角色自动跳转 |
 | `/register` | RegisterView | 独立(毛玻璃) | 未登录 | 注册表单(用户名/密码/手机/邮箱) |
-| `/items` | HomeView | DefaultLayout | 登录 | 轮播图 + 公告栏 + 统计看板(4卡片+饼图) + **快捷服务 4 卡** + 筛选栏 + 卡片网格 + **双推荐区（失物/招领分列）** + 骨架屏 + 分页 |
-| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区(楼中楼) + 相似推荐 + 认领闭环操作区(申请/审批/脱敏联系方式) + 举报入口 + 编辑/删除 + **浏览计数 + 属性网格(颜色/品牌/特征/发生时间)** |
-| `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 多图上传(1-3 张, 拖拽排序, 首图封面) + **结构化字段(颜色/品牌/显著特征/发生时间/其他联系方式)** + 编辑模式(`?edit=`) |
+| `/items` | HomeView | DefaultLayout | 登录 | 轮播图 + 公告栏 + 统计看板(4卡片+饼图) + 筛选栏 + 卡片网格 + 「为你推荐」+ 骨架屏 + 分页 |
+| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区(楼中楼) + 相似推荐 + 认领闭环操作区(申请/审批/脱敏联系方式) + 举报入口 + 编辑/删除 |
+| `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 多图上传(1-3 张, 拖拽排序, 首图封面) + 编辑模式(`?edit=`) |
 | `/match` | MatchView | DefaultLayout | 登录 | 匹配面板 + 多图上传 + 证据徽章/依据 + 相似度进度条 |
 | `/claims` | ClaimsView | DefaultLayout | 登录 | 双 tab（我的申请/收到的申请）+ 同意(互斥提示)/拒绝(必填理由)/确认完成/撤销 |
 | `/reports/mine` | MyReportsView | DefaultLayout | 登录 | 举报进度卡片 |
 | `/admin` | AdminView | DefaultLayout | 管理员 | 物品审核(批量+设推荐) + 用户管理 + 公告(草稿/发布) + 举报/留言/轮播图/分类管理 |
 | `/admin/stats` | AdminStatsView | DefaultLayout | 管理员 | 指标卡 + 找回率仪表盘 + 发布趋势 + 分类占比（含表格视图） |
 | `/notifications` | NotificationsView | DefaultLayout | 登录 | 通知卡片 + 标记已读 + 一键全部已读 + 链接跳转 |
-| `/profile` | ProfileView | DefaultLayout | 登录 | **快捷导航 chips** + 信息横幅(首字母头像) + Tab分段(账户设置/联系方式/历史记录) + 危险区域(注销) |
+| `/profile` | ProfileView | DefaultLayout | 登录 | 信息横幅(首字母头像) + Tab分段(账户设置/联系方式/历史记录) + 危险区域(注销) |
 
 > ⚠️ **v3.3 变更**：所有页面均需登录（去除访客浏览权限）。个人中心重设计：砍掉头像上传、引入 Tab 分段式布局、新增历史记录模块。
 
@@ -603,7 +587,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 图片 → Image Encoder → 1024维 L2归一化向量（cn_clip ViT-H-14，默认）
                      →  512维 L2归一化向量（open_clip ViT-B-32，回滚）
 文本 → Text Encoder  → 与图像同维（同一联合投影空间；两代向量空间不兼容）
-                        v3.7.0 起文本 = title + 颜色 + 品牌 + 显著特征 + 描述
+图片 → RGB 直方图     → 27维颜色特征（余弦相似度，与模型无关）
 ```
 
 延迟加载：首次调用 `get_image_feature()` 或 `get_text_feature()` 时按 `CLIP_BACKEND` 选择后端并初始化模型。`CLIPService` 为兼容壳，实际编码委托 `app/clip_backend.py`；每个 `encode_*` 在 L2 归一化后经 `_assert_embed_dim` 断言维度。
@@ -624,7 +608,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 
 阶段1 基础加权: Sim = Σ(wᵢ·simᵢ)/Σ(wᵢ)（主证据 0.75 / 辅助证据 0.25；缺失通道动态归一化；全缺 → 0.0）
 阶段2 类别/位置调节: 同类 +5% / 异类 -8%；同地点 +3% / 异地 -4%
-阶段3 时间衰减: 240 天线性衰减至下限 60%（2026-09-21 调温和，原 90天/20%）；**v3.7.0 起按发生时间 occurred_at 口径**（缺失回退发布时间 created_at）
+阶段3 时间衰减: 240 天线性衰减至下限 60%（2026-09-21 调温和，原 90天/20%）
 阶段4 分层阈值: 手动 0.624956 / 自动 0.733952 / 邮件 0.832069（2026-09-21 标定，内容分尺度）
 阶段5 跨模态一致性惩罚: 仅当「文-文 ≥ 0.55 且图-图不高」触发（真·文本撞车）；
               cc = min(可用跨模态方向)；只降权、对 cc 单调，因子 ∈ [0.5, 1.0]；CROSS_PENALTY_ENABLED 可关闭
@@ -634,7 +618,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
   basis 每条依据须通过各自阈值（图-图/文-文 0.606、跨模态映射后 0.513；2026-10-15 起，图-图通道「存在但低」不再进依据）
 ```
 
-> ⚠️ **颜色通道已于 2026-09-16 起废弃不参与打分**：代码不再计算/存储/读取颜色特征；`items.color_vector` 列因 SQLite 迁移成本**保留未删**（残留列，值为 NULL）。
+> ⚠️ **颜色通道已于 2026-10-16 整体移除**（2026-09-16 起已不参与打分）：无颜色向量列、无颜色计算代码。
 >
 > ✅ **三档阈值已标定成功**（2026-09-21 打分口径重构后，扭转此前「AUTO/EMAIL 结构性无解」）；样本量仍小，建议灰度观察（`EMAIL` 召回 19.4%）。旧「阶段5 交叉验证（图文矛盾降权 50%~75%）」已被真跨模态惩罚取代。
 
@@ -709,7 +693,7 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 
 ---
 
-> **文档维护者**：开发团队 | **最后更新**：2026-10-16 | **基于源码版本**：v3.7.0
+> **文档维护者**：开发团队 | **最后更新**：2026-10-16 | **基于源码版本**：v3.6.0
 >
 > **v3.4.0 核心变更摘要**：账户状态语义拆分（C2：`role` 收敛为 user/admin，新增 `status`） | 公开接口账号状态校验（C1：`resolve_optional_viewer`） | 颜色特征持久化（R4：`items.color_vector`） | 邮件异步化（R5）| 路由 `:int` 健壮化（R6）| 去静默异常（R7）| 请求体 Pydantic 化（R9）| 依赖与版本清理（R10）| 自动化测试 70 用例全通过
 >
@@ -718,5 +702,3 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 > **v3.5.0 中文化模型 + 跨模态检索**：新增 `app/clip_backend.py` 双后端抽象（默认 `cn_clip` Chinese-CLIP ViT-H-14 **1024 维** / 回滚 `open_clip` ViT-B-32 **512 维**，未知值抛 `RuntimeError`）| 启用 img·text **跨模态四通道**打分（图-图 0.35 / 跨模态 0.35 / 文-文 0.15 / 色 0.15）| 阶段5 升级为**真跨模态一致性惩罚**（`cc=min(可用跨模态方向)`，≥0.55 触发，只降权 ≤×0.5，可开关）| 阈值重设（手动 0.35 / 自动 0.55 / 邮件 0.70，初值）| `/match` 新增 `match_source` + `legend`（**403/401 契约冻结不变，不新增端点**）| 新增三脚本（`reembed_all_vectors.py` / `calibrate_thresholds.py` / `backfill_color_vectors.py`）| 评测集 **84 对**（42 正 / 42 负，有效 36 正 / 42 负 n=78）| 维度错配运行期防线（编码断言 + 打分前预检 → HTTP 500）| 自动化测试扩至 **209 用例（207 通过 / 2 门控跳过）**。⚠️ **真实权重已下载并端到端验证（真实 `Recall@3 = 1.0` / `Recall@1 = 0.7917`）；但分层阈值仍不可用** —— 评测集扩充轮（84 对，n=78）复标后 Precision 上界仅 0.6889，`AUTO`/`EMAIL` **结构性无解**（详见 `docs/review/threshold-calibration-v3.5.0.md` §5）。✅ **生产库已完成全量重嵌入（2026-09-14，冷备 + `_exit_code` 守卫，6 条全部 1024 维）**，`/match` 实测恢复 HTTP 200（后续于 v3.6.0 完成阈值标定并开启自动推送，见下）
 >
 > **v3.6.0 打分口径重构 + 社区化融合**：按查询形态**三种检索模式**（文字/图片/图文混合）| 权重「主证据 0.75 + 辅助证据 0.25」| 跨模态尺度映射（0.194→0.298）| 证据链 + 三分数分离（`content_score` 判定 / `match_score` 排序 / `reference_score` 展示）| 时间衰减失效修复并调温和（240 天 / 0.6）| **三档阈值首次标定成功**（MANUAL 0.624956 / AUTO 0.733952 / EMAIL 0.832069，内容分尺度）| 自动匹配尺度修正（判定改 `content_score`）| 新增 5 表（claims / reports / comments / banners / categories）+ items 3 列（cover_image / images / is_recommend）+ status 枚举新增 `claiming`（表重建迁移）| 认领闭环 / 举报 / 留言 / 多图 / 管理端统计看板 / 相似推荐 / 内容运营 上线 | 自动化测试 **313 用例（311 通过 / 2 门控跳过）**
->
-> **v3.7.0 交互重构 + 运营增强**：物品结构化字段（`item_color` / `item_brand` / `item_features` / `occurred_at` / `contact_method`，前三者**拼入文本向量**提升 CLIP 文本检索）| 时间衰减口径改用**发生时间**（缺失回退发布时间）| 物品与公告**浏览计数**（`view_count`）| 公告**类型 + 封面**（`type` / `cover_image`）| 首页**双推荐区**（失物 / 招领分列）+ **快捷服务 4 卡** | 个人中心**快捷导航** | 颜色通道 `color_vector` 残留列口径修正；管理员侧边栏重构规划至 **v3.8.0** | `APP_VERSION` → `3.7.0`
