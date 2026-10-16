@@ -106,7 +106,7 @@ lost-found-v3/
 │   ├── pytest.ini          ← pytest 配置
 │   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定）
 │   ├── eval/               ← 评测集（eval_set_v3.5.0.json，84 对构造样本）
-│   ├── tests/              ← 自动化测试套件（308 用例）
+│   ├── tests/              ← 自动化测试套件（313 用例）
 │   │   ├── conftest.py
 │   │   ├── test_auth.py / test_items.py / test_admin.py / test_stats.py
 │   │   ├── test_claims.py / test_reports.py / test_comments.py / test_banners.py / test_categories.py
@@ -189,8 +189,8 @@ lost-found-v3/
 | FR-ITEM-08 | 删除物品（含图片文件） | ✅ DELETE /api/items/{id} | ✅ ItemDetailView | ✅ |
 | FR-ITEM-09 | CLIP 特征提取（图像+文本向量，维度随后端：cn_clip 1024 / open_clip 512；v3.7.0 起文本向量拼入颜色/品牌/显著特征） | ✅ create_item/update_item | — | ✅ |
 | FR-ITEM-10 | 多图上传（1-3 张，首图封面，拖拽排序；**仅封面参与向量检索**） | ✅ create_item/update_item（images / keep） | ✅ PublishView 网格 + 原生拖拽 | ✅ |
-| FR-ITEM-11 | 结构化字段（颜色/品牌/显著特征/发生时间/其他联系方式；**拼入文本向量**提升检索）（v3.7.0） | ✅ items 6 列 + create/update（文本向量拼入） | ✅ PublishView 分区表单 | ✅ |
-| FR-ITEM-12 | 浏览计数（详情访问自增 + 卡片展示）（v3.7.0） | ✅ items.view_count 自增 | ✅ ItemDetailView / HomeView | ✅ |
+| FR-ITEM-11 | 结构化字段（颜色/品牌/显著特征/发生时间/其他联系方式；**拼入文本向量**提升检索）（v3.7.0） | ⏳ items 加 6 列 + create/update | ⏳ PublishView 分区表单 | ⏳ |
+| FR-ITEM-12 | 浏览计数（详情访问自增 + 卡片展示）（v3.7.0） | ⏳ items.view_count | ⏳ ItemDetailView / HomeView | ⏳ |
 
 ### 3.3 智能匹配模块 (FR-MATCH)
 
@@ -261,10 +261,10 @@ lost-found-v3/
 | FR-OPS-01 | 轮播图（排序 / 启停 / 跳转链接 / 图片上传 `banner_` 前缀） | ✅ /api/banners* | ✅ HomeView 轮播 + BannerManage | ✅ |
 | FR-OPS-02 | 分类管理（表驱动 + 排序；**被物品使用的分类拒绝删除**；空表回退常量） | ✅ /api/categories/admin* | ✅ CategoryManage | ✅ |
 | FR-OPS-03 | 公告草稿/发布分离（draft/published + publish/unpublish） | ✅ announcements.status | ✅ AdminView 发布/下架按钮 | ✅ |
-| FR-OPS-04 | 公告类型 + 封面 + 浏览数（type system/lost/found、cover_image、view_count）（v3.7.0） | ✅ announcements 3 列 + 详情/上传端点 | ✅ AdminView 公告表单 + 首页列表 | ✅ |
+| FR-OPS-04 | 公告类型 + 封面 + 浏览数（type system/lost/found、cover_image、view_count）（v3.7.0） | ⏳ announcements 加 3 列 | ⏳ AdminView 公告表单 + 首页列表 | ⏳ |
 | FR-STATS-04 | 管理端统计：总览 / 找回率 / 发布趋势（北京时间口径）/ 分类占比 | ✅ /api/stats/admin/* | ✅ AdminStatsView | ✅ |
 | FR-STATS-05 | 找回率口径：claimed_total = max(计数器, by_type 求和)；rate = claimed/(claimed+active+claiming) | ✅ stats.py | ✅ gauge 展示 | ✅ |
-| FR-STATS-06 | 首页双推荐区（失物/招领分列；复用 recommend?type=）（v3.7.0） | ✅ recommend?type=（v3.6.0 已预留） | ✅ HomeView 分块 | ✅ |
+| FR-STATS-06 | 首页双推荐区（失物/招领分列；复用 recommend?type=）（v3.7.0） | ✅ recommend?type=（v3.6.0 已预留） | ⏳ HomeView 分块 | ⏳ |
 
 ### 3.9 非功能需求覆盖
 
@@ -291,17 +291,17 @@ lost-found-v3/
 | 模块 | 总需求数 | 已实现 | 覆盖率 |
 |------|:------:|:------:|:------:|
 | 用户认证 | 6 | 6 | 100% |
-| 物品管理 | 12 | 12 | 100% |
+| 物品管理（v3.7.0 含 2 项规划中） | 12 | 10 | 83% |
 | 智能匹配 | 10 | 10 | 100% |
 | 管理员审核 | 6 | 6 | 100% |
 | 消息通知 | 6 | 6 | 100% |
 | 认领闭环（v3.6.0） | 6 | 6 | 100% |
 | 社区互动（v3.6.0） | 7 | 7 | 100% |
-| 内容运营与统计 | 7 | 7 | 100% |
+| 内容运营与统计（v3.7.0 含 2 项规划中） | 7 | 5 | 71% |
 | 非功能需求 | 13 | 12 | 92% |
-| **总计** | **73** | **72** | **99%** |
+| **总计** | **73** | **68** | **93%** |
 
-> ✅ **v3.7.0 新增 4 项**（FR-ITEM-11/12、FR-OPS-04、FR-STATS-06）已全部实现并验证（后端 306+2 测试全绿 + 前端构建通过）；剩余 1 项未实现为非功能规划项。
+> ⏳ **v3.7.0 新增 4 项**（FR-ITEM-11/12、FR-OPS-04、FR-STATS-06）当前为「规划态」——文档已对齐、代码待实现；计入总需求、未计入「已实现」。v3.6.0 基线覆盖率 99%（69 需求 / 68 实现）。
 
 ---
 
@@ -942,7 +942,7 @@ with get_db_connection() as conn:
 
 ### 10.2 自动化测试（v3.3.3 新增，v3.5.0 / v3.6.0 扩容）
 
-仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 308 用例（306 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
+仓库自动化测试套件位于 `backend/tests/`，基于 pytest + FastAPI TestClient。**当前 `--collect-only` 收集 313 用例（311 通过 / 2 门控跳过）**〔数值随套件演进，以 `--junitxml` 为准〕。测试通过 `conftest.py` 夹具实现隔离：monkeypatch 数据库路径到临时文件、以确定性假向量桩替换 CLIP（永不加载真实权重）、阻断真实 SMTP、重定向上传目录。
 
 **A. v3.4.1 基线（72 用例）**
 
@@ -976,7 +976,7 @@ with get_db_connection() as conn:
 
 > ⚠️ **门控跳过说明**：`test_real_clip_smoke.py` 的 2 个用例需真实 `cn_clip` 权重与 `RUN_REAL_CLIP=1`。权重（3.83GB）已在本机下载并端到端验证，故设 `RUN_REAL_CLIP=1` 时这 2 例由 **skip 转通过**；不设时仍 skip（供无权重环境 / CI 使用）。
 
-**C. v3.6.0 新增（合计 +75；v3.7.0 收尾阶段总收集 308 = 306 passed / 2 门控 skip）**
+**C. v3.6.0 新增（合计 +75；收尾阶段补至总收集 313 = 311 passed / 2 门控 skip）**
 
 | 文件 | 覆盖重点 | 用例数 |
 |------|----------|:------:|
@@ -1128,15 +1128,15 @@ venv\Scripts\python.exe -m pytest tests/ -v
 - [x] 自动化测试扩至 **313 用例（311 通过 / 2 门控跳过）**
 - [x] `APP_VERSION` → `3.6.0`；PROJECT / SRS / README / docs 索引同步
 
-#### V3.7.0 — 交互重构 + 运营增强 ✅ 已实现（2026-10-16）
-- [x] 物品结构化字段：`item_color` / `item_brand` / `item_features` / `occurred_at` / `contact_method`（items 加 6 列；**前三者拼入文本向量**提升 CLIP 文本检索）
-- [x] 时间衰减口径改用**发生时间 `occurred_at`**（缺失回退发布时间 `created_at`）
-- [x] 浏览计数 `view_count`（items + announcements；详情访问自增，卡片展示）
-- [x] 公告增强：`type`（system/lost/found）+ `cover_image`（announcements 加 3 列）
-- [x] 首页双推荐区（失物/招领分列，复用 `recommend?type=`）+ 快捷服务 4 卡
-- [x] 个人中心快捷导航 chips（我的发布/我的认领/收到的认领/我的留言/我的举报/系统公告）
-- [x] 颜色通道 `color_vector` 残留列口径修正（列保留未删、不参与读写）
-- [x] 测试用例数统一口径：`pytest --collect-only` = 308（306 通过 / 2 门控跳过）
+#### V3.7.0 — 交互重构 + 运营增强 ✅ 规划完成（文档已对齐，代码待实现）
+- [ ] 物品结构化字段：`item_color` / `item_brand` / `item_features` / `occurred_at` / `contact_method`（items 加 6 列；**前三者拼入文本向量**提升 CLIP 文本检索）
+- [ ] 时间衰减口径改用**发生时间 `occurred_at`**（缺失回退发布时间 `created_at`）
+- [ ] 浏览计数 `view_count`（items + announcements；详情访问自增，卡片展示）
+- [ ] 公告增强：`type`（system/lost/found）+ `cover_image`（announcements 加 3 列）
+- [ ] 首页双推荐区（失物/招领分列，复用 `recommend?type=`）+ 快捷服务 4 卡
+- [ ] 个人中心快捷导航 chips（我的发布/我的认领/收到的认领/我的留言/我的举报/系统公告）
+- [ ] 颜色通道 `color_vector` 残留列口径修正（列保留未删、不参与读写）
+- [ ] 测试用例数统一口径（以 `pytest --collect-only` 为准）
 
 #### V3.8.0 — 管理端重构（规划中）
 - [ ] 管理员侧边栏重构：单页 Tab 堆叠 → 独立侧边栏 + 分路由页面（复用 `views/admin/` 现有组件）
