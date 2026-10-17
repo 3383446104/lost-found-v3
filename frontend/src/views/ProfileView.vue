@@ -1,22 +1,14 @@
 <template>
   <div class="page-container">
-    <!-- 顶部：大标题 + 副标题 -->
+    <!-- 顶部标题 -->
     <div class="page-header">
       <h1 class="page-title">个人中心</h1>
       <p class="page-desc">管理您的账户信息与业务入口</p>
     </div>
 
-    <!-- 业务导航 Tabs（胶囊） -->
-    <div class="business-tabs">
-      <button v-for="tab in businessTabs" :key="tab.key" class="biz-tab" @click="goBusinessTab(tab.key)">
-        <el-icon :size="14"><component :is="tab.icon" /></el-icon>
-        <span>{{ tab.label }}</span>
-      </button>
-    </div>
-
-    <!-- 主体：左右分栏 -->
+    <!-- 主体：左右分栏（左 1/4 侧边栏，右 3/4 内容） -->
     <div class="profile-layout">
-      <!-- 左侧：头像卡 + 二级菜单 -->
+      <!-- 左侧：头像卡 + 统一侧边栏 -->
       <aside class="profile-left">
         <div class="card avatar-card">
           <div class="avatar-placeholder">{{ userFirstLetter }}</div>
@@ -25,42 +17,45 @@
 
         <div class="card side-menu">
           <button
+            v-for="item in sideItems"
+            :key="item.key"
             class="side-item"
-            :class="{ active: activeSection === 'info' }"
-            @click="activeSection = 'info'"
+            :class="{ active: activeSection === item.key }"
+            @click="activeSection = item.key"
           >
-            <el-icon :size="16"><User /></el-icon>
-            <span>基本信息</span>
-          </button>
-          <button
-            class="side-item"
-            :class="{ active: activeSection === 'password' }"
-            @click="activeSection = 'password'"
-          >
-            <el-icon :size="16"><Lock /></el-icon>
-            <span>修改密码</span>
+            <el-icon :size="16"><component :is="item.icon" /></el-icon>
+            <span>{{ item.label }}</span>
           </button>
         </div>
       </aside>
 
-      <!-- 右侧：可编辑表单区 -->
+      <!-- 右侧：内容区 -->
       <div class="profile-right">
-        <!-- 基本信息表单 -->
+        <!-- 基本信息（默认）：展示个人账户信息 -->
         <section v-show="activeSection === 'info'" class="card form-card">
           <h3 class="section-title">基本信息</h3>
+          <div class="info-grid">
+            <div class="info-row"><span class="info-label">用户ID</span><span class="info-value">{{ profile.id ?? '—' }}</span></div>
+            <div class="info-row"><span class="info-label">用户名</span><span class="info-value">{{ profile.username || '—' }}</span></div>
+            <div class="info-row"><span class="info-label">昵称</span><span class="info-value">{{ profile.nickname || '未填写' }}</span></div>
+            <div class="info-row"><span class="info-label">学号</span><span class="info-value">{{ profile.student_no || '未填写' }}</span></div>
+            <div class="info-row"><span class="info-label">手机号</span><span class="info-value">{{ profile.phone || '未填写' }}</span></div>
+            <div class="info-row"><span class="info-label">邮箱</span><span class="info-value">{{ profile.email || '未填写' }}</span></div>
+            <div class="info-row"><span class="info-label">角色</span><span class="info-value">{{ profile.role === 'admin' ? '管理员' : '普通用户' }}</span></div>
+            <div class="info-row"><span class="info-label">加入时间</span><span class="info-value">{{ profile.created_at || '—' }}</span></div>
+          </div>
+        </section>
+
+        <!-- 账号设置：修改账户信息 + 注销账号 -->
+        <section v-show="activeSection === 'account'" class="card form-card">
+          <h3 class="section-title">账号设置</h3>
           <el-form ref="infoFormRef" :model="infoForm" :rules="infoRules" label-position="top" class="profile-form">
             <div class="form-grid">
-              <el-form-item label="用户ID">
-                <el-input :model-value="String(infoForm.user_id ?? '')" disabled class="soft-input" />
-              </el-form-item>
               <el-form-item label="用户名" prop="username">
                 <el-input v-model="infoForm.username" maxlength="20" class="soft-input" placeholder="2-20位" />
               </el-form-item>
               <el-form-item label="昵称" prop="nickname" required>
                 <el-input v-model="infoForm.nickname" maxlength="30" class="soft-input" placeholder="请输入昵称" />
-              </el-form-item>
-              <el-form-item label="学号">
-                <el-input :model-value="infoForm.student_no || '未填写'" disabled class="soft-input" />
               </el-form-item>
               <el-form-item label="手机号" prop="phone">
                 <el-input v-model="infoForm.phone" maxlength="11" class="soft-input" placeholder="11位手机号" />
@@ -73,12 +68,9 @@
               <el-button class="save-btn" :loading="infoSaving" @click="saveInfo">保存信息</el-button>
             </div>
           </el-form>
-        </section>
 
-        <!-- 修改密码表单 -->
-        <section v-show="activeSection === 'password'" class="card form-card">
-          <h3 class="section-title">修改密码</h3>
-          <el-form ref="pwFormRef" :model="pwForm" :rules="pwRules" label-position="top" class="profile-form">
+          <el-form ref="pwFormRef" :model="pwForm" :rules="pwRules" label-position="top" class="profile-form pw-form">
+            <h4 class="sub-title">修改密码</h4>
             <div class="form-grid">
               <el-form-item label="新密码" prop="password">
                 <el-input v-model="pwForm.password" type="password" show-password class="soft-input" placeholder="6-30位新密码" />
@@ -100,43 +92,71 @@
           </div>
         </section>
 
-        <!-- 我的发布（历史记录，保留原有逻辑） -->
-        <section ref="historyRef" class="card form-card">
-          <h3 class="section-title">我发布的物品</h3>
-          <div v-if="historyLoading" v-loading="historyLoading" style="min-height:120px"></div>
-          <template v-else>
-            <div v-if="myItems.length === 0 && myClaims.length === 0" class="history-empty">
-              <el-empty description="暂无历史记录">
-                <el-button type="primary" @click="$router.push('/publish')">去发布物品</el-button>
-              </el-empty>
-            </div>
-
-            <div v-if="myItems.length > 0" class="history-group">
-              <h4 class="history-group-title">我发布的物品 ({{ myItems.length }})</h4>
-              <div v-for="item in myItems" :key="'i'+item.id" class="history-item" @click="$router.push(`/items/${item.id}`)">
-                <div class="item-thumb" v-if="item.image_path">
-                  <img :src="`/api/items/uploads/${item.image_path.split('/').pop()}`" :alt="item.title" />
-                </div>
-                <div v-else class="item-thumb placeholder">📄</div>
-                <div class="item-info">
-                  <span class="item-title">{{ item.title }}</span>
-                  <span class="item-meta">{{ item.type === 'lost' ? '失物' : '拾物' }} · {{ item.category || '未分类' }} · {{ item.created_at }}</span>
-                </div>
-                <span :class="['status-tag', statusClass(item.status)]">{{ statusLabel(item.status) }}</span>
+        <!-- 我的发布：查看和管理我发布的物品 -->
+        <section v-show="activeSection === 'publish'" class="card form-card">
+          <h3 class="section-title">我的发布</h3>
+          <div v-if="publishLoading" v-loading="publishLoading" style="min-height:120px"></div>
+          <el-empty v-else-if="!myItems.length" description="暂无发布记录">
+            <el-button type="primary" @click="$router.push('/publish')">去发布物品</el-button>
+          </el-empty>
+          <div v-else class="history-group">
+            <div v-for="item in myItems" :key="item.id" class="history-item">
+              <div class="item-thumb" v-if="item.image_path">
+                <img :src="`/api/items/uploads/${item.image_path.split('/').pop()}`" :alt="item.title" />
+              </div>
+              <div v-else class="item-thumb placeholder">📄</div>
+              <div class="item-info" @click="$router.push(`/items/${item.id}`)">
+                <span class="item-title">{{ item.title }}</span>
+                <span class="item-meta">{{ item.type === 'lost' ? '失物' : '拾物' }} · {{ item.category || '未分类' }} · {{ item.created_at }}</span>
+              </div>
+              <span :class="['status-tag', statusClass(item.status)]">{{ statusLabel(item.status) }}</span>
+              <div class="item-actions">
+                <el-button size="small" text type="primary" @click="editItem(item.id)">编辑</el-button>
+                <el-button
+                  v-if="item.status === 'active'"
+                  size="small" text type="success"
+                  @click="markFound(item)"
+                >{{ item.type === 'lost' ? '标记已找回' : '标记已归还' }}</el-button>
+                <el-button size="small" text type="danger" @click="removeItem(item)">删除</el-button>
               </div>
             </div>
+          </div>
+        </section>
 
-            <div v-if="myClaims.length > 0" class="history-group">
-              <h4 class="history-group-title">我发起的申请 ({{ myClaims.length }})</h4>
-              <div v-for="c in myClaims" :key="'c'+c.id" class="history-item claim-item" @click="goClaimLink(c.link)">
-                <span class="claim-icon">📨</span>
-                <div class="item-info">
-                  <span class="item-title">{{ c.title }}</span>
-                  <span class="item-meta">{{ c.created_at }}</span>
-                </div>
+        <!-- 认领中心：我的申请 + 收到的申请（复用认领面板） -->
+        <section v-show="activeSection === 'claims'" class="card form-card">
+          <h3 class="section-title">认领中心</h3>
+          <ClaimsPanel />
+        </section>
+
+        <!-- 我的留言：查看和管理自己发表的留言 -->
+        <section v-show="activeSection === 'comments'" class="card form-card">
+          <h3 class="section-title">我的留言</h3>
+          <div v-if="commentLoading" v-loading="commentLoading" style="min-height:120px"></div>
+          <el-empty v-else-if="!myCommentList.length" description="暂无留言" />
+          <div v-else class="comment-list">
+            <div v-for="c in myCommentList" :key="c.id" class="comment-item">
+              <div class="comment-head">
+                <el-tag size="small" :type="c.status === 1 ? 'success' : 'info'" effect="plain">
+                  {{ c.status === 1 ? '正常' : '已隐藏' }}
+                </el-tag>
+                <span class="comment-time">{{ c.created_at }}</span>
+              </div>
+              <p class="comment-content">{{ c.content }}</p>
+              <div class="comment-foot">
+                <span class="comment-item-link" @click="$router.push(`/items/${c.item_id}`)">
+                  所属物品：{{ c.item_title || '（已删除）' }}
+                </span>
+                <el-button size="small" text type="danger" @click="removeComment(c)">删除</el-button>
               </div>
             </div>
-          </template>
+          </div>
+        </section>
+
+        <!-- 我的举报：查看举报信息与处理进度（复用举报面板） -->
+        <section v-show="activeSection === 'reports'" class="card form-card">
+          <h3 class="section-title">我的举报</h3>
+          <MyReportsPanel />
         </section>
       </div>
     </div>
@@ -147,9 +167,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { updateProfile, getMe, getHistory, deleteAccount } from '@/api/auth'
+import { updateProfile, getMe, deleteAccount } from '@/api/auth'
+import { getItems, deleteItem, markClaimed } from '@/api/items'
+import { myComments, deleteComment } from '@/api/comments'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User, Lock, Box, Document, Bell, ChatDotSquare, WarningFilled, ChatLineRound } from '@element-plus/icons-vue'
+import { User, Setting, Box, Document, ChatDotSquare, WarningFilled } from '@element-plus/icons-vue'
+import ClaimsPanel from '@/components/ClaimsPanel.vue'
+import MyReportsPanel from '@/components/MyReportsPanel.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -158,36 +182,21 @@ const userFirstLetter = computed(() => (user.value?.username || 'U')[0].toUpperC
 
 const profile = ref({})
 const activeSection = ref('info')
-const historyRef = ref(null)
 
-// 业务导航 Tabs：我的发布滚动到本页历史区，其余跳既有页面
-const businessTabs = [
+// 侧边栏（统一从上到下）
+const sideItems = [
+  { key: 'info', label: '基本信息', icon: User },
+  { key: 'account', label: '账号设置', icon: Setting },
   { key: 'publish', label: '我的发布', icon: Box },
-  { key: 'claims', label: '我的认领', icon: Document },
-  { key: 'received', label: '收到的认领', icon: Bell },
+  { key: 'claims', label: '认领中心', icon: Document },
   { key: 'comments', label: '我的留言', icon: ChatDotSquare },
   { key: 'reports', label: '我的举报', icon: WarningFilled },
-  { key: 'announce', label: '系统公告', icon: ChatLineRound },
 ]
 
-const goBusinessTab = (key) => {
-  const targets = {
-    publish: null,
-    claims: '/claims',
-    received: '/claims?tab=received',
-    comments: '/notifications',
-    reports: '/reports/mine',
-    announce: '/',
-  }
-  const to = targets[key]
-  if (to) router.push(to)
-  else historyRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-// ====== 基本信息表单 ======
+// ====== 账号设置：账户信息表单 ======
 const infoFormRef = ref(null)
 const infoSaving = ref(false)
-const infoForm = reactive({ user_id: null, username: '', nickname: '', student_no: '', phone: '', email: '' })
+const infoForm = reactive({ username: '', nickname: '', phone: '', email: '' })
 
 const infoRules = {
   username: [
@@ -236,7 +245,7 @@ const saveInfo = () => {
   })
 }
 
-// ====== 修改密码表单 ======
+// ====== 修改密码 ======
 const pwFormRef = ref(null)
 const pwSaving = ref(false)
 const pwForm = reactive({ password: '', confirm: '' })
@@ -270,32 +279,73 @@ const savePassword = () => {
   })
 }
 
-// ====== 历史记录（保留原有逻辑） ======
+// ====== 我的发布 ======
 const myItems = ref([])
-const myClaims = ref([])
-const historyLoading = ref(false)
+const publishLoading = ref(false)
 
-const loadHistory = async () => {
-  historyLoading.value = true
+const loadMyItems = async () => {
+  publishLoading.value = true
   try {
-    const res = await getHistory()
-    if (res.data) {
-      myItems.value = res.data.my_items || []
-      myClaims.value = res.data.my_claims || []
-    }
-  } catch {} finally { historyLoading.value = false }
+    const res = await getItems({ user_id: authStore.user?.id, limit: 50 })
+    myItems.value = res.items || []
+  } catch {} finally { publishLoading.value = false }
+}
+
+const editItem = (id) => router.push(`/publish?edit=${id}`)
+
+const removeItem = async (item) => {
+  try {
+    await ElMessageBox.confirm(`确认删除「${item.title}」？此操作不可恢复。`, '删除物品', {
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'error'
+    })
+    await deleteItem(item.id)
+    ElMessage.success('已删除')
+    loadMyItems()
+  } catch {}
+}
+
+const markFound = async (item) => {
+  const label = item.type === 'lost' ? '已找回' : '已归还'
+  try {
+    await ElMessageBox.confirm(`确认将该物品标记为「${label}」？`, `标记${label}`, {
+      confirmButtonText: '确认', cancelButtonText: '取消', type: 'success'
+    })
+    await markClaimed(item.id)
+    ElMessage.success(`已标记为${label}`)
+    loadMyItems()
+  } catch {}
 }
 
 const statusLabel = (s) => {
-  const map = { active: '展示中', pending: '审核中', claimed: '已找回', rejected: '已驳回', closed: '已关闭' }
+  const map = { active: '展示中', pending: '审核中', claiming: '认领中', claimed: '已找回', rejected: '已驳回', closed: '已关闭', done: '已完成' }
   return map[s] || s
 }
 const statusClass = (s) => {
-  const map = { active: 's-active', pending: 's-pending', claimed: 's-claimed', rejected: 's-rejected', closed: 's-closed' }
+  const map = { active: 's-active', pending: 's-pending', claiming: 's-claiming', claimed: 's-claimed', rejected: 's-rejected', closed: 's-closed', done: 's-claimed' }
   return map[s] || ''
 }
-const goClaimLink = (link) => {
-  if (link) window.location.href = link
+
+// ====== 我的留言 ======
+const myCommentList = ref([])
+const commentLoading = ref(false)
+
+const loadMyComments = async () => {
+  commentLoading.value = true
+  try {
+    const res = await myComments({ page: 1, size: 50 })
+    myCommentList.value = res.comments || []
+  } catch {} finally { commentLoading.value = false }
+}
+
+const removeComment = async (c) => {
+  try {
+    await ElMessageBox.confirm('确认删除这条留言？', '删除留言', {
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+    })
+    await deleteComment(c.id)
+    ElMessage.success('已删除')
+    loadMyComments()
+  } catch {}
 }
 
 // ====== 注销账号（保留原有逻辑） ======
@@ -323,48 +373,21 @@ const loadProfile = async () => {
     const res = await getMe()
     if (res.user) {
       profile.value = res.user
-      infoForm.user_id = res.user.id
       infoForm.username = res.user.username || ''
       infoForm.nickname = res.user.nickname || ''
-      infoForm.student_no = res.user.student_no || ''
       infoForm.phone = res.user.phone || ''
       infoForm.email = res.user.email || ''
     }
   } catch {}
 }
 
-onMounted(() => { loadProfile(); loadHistory() })
+onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
 </script>
 
 <style scoped>
 /* ---- 顶部标题 ---- */
 .page-header { margin-bottom: var(--space-4); }
 .page-title { margin-bottom: var(--space-1); }
-
-/* ---- 业务导航 Tabs（胶囊） ---- */
-.business-tabs {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-5);
-}
-.biz-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 18px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-light);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.biz-tab:hover {
-  border-color: var(--el-color-primary);
-  color: var(--el-color-primary);
-}
 
 /* ---- 左右分栏 ---- */
 .profile-layout {
@@ -373,7 +396,7 @@ onMounted(() => { loadProfile(); loadHistory() })
   align-items: flex-start;
 }
 .profile-left { width: 25%; flex-shrink: 0; min-width: 200px; }
-.profile-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-5); }
+.profile-right { flex: 1; min-width: 0; }
 
 /* ---- 通用卡片 ---- */
 .card {
@@ -407,7 +430,7 @@ onMounted(() => { loadProfile(); loadHistory() })
   text-align: center;
 }
 
-/* ---- 二级菜单 ---- */
+/* ---- 侧边栏菜单 ---- */
 .side-menu {
   padding: var(--space-3);
   display: flex;
@@ -438,7 +461,7 @@ onMounted(() => { loadProfile(); loadHistory() })
   background: var(--neutral-100);
 }
 
-/* ---- 表单卡 ---- */
+/* ---- 内容卡 ---- */
 .form-card { padding: var(--space-6); }
 .section-title {
   font-size: var(--text-lg);
@@ -446,7 +469,32 @@ onMounted(() => { loadProfile(); loadHistory() })
   margin: 0 0 var(--space-5);
   color: var(--text-primary);
 }
+.sub-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: var(--space-6) 0 var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-light);
+}
 
+/* ---- 基本信息展示 ---- */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-6);
+}
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.info-label { font-size: var(--text-sm); color: var(--text-tertiary); flex-shrink: 0; }
+.info-value { font-size: var(--text-sm); color: var(--text-primary); font-weight: 500; text-align: right; }
+
+/* ---- 表单 ---- */
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -454,7 +502,6 @@ onMounted(() => { loadProfile(); loadHistory() })
 }
 .form-grid .el-form-item { margin-bottom: var(--space-4); }
 
-/* 输入框：浅灰底 + 去边框 */
 .soft-input :deep(.el-input__wrapper) {
   background: var(--neutral-50);
   box-shadow: 0 0 0 1px var(--border-light) inset;
@@ -462,11 +509,7 @@ onMounted(() => { loadProfile(); loadHistory() })
 .soft-input :deep(.el-input__wrapper.is-focus) {
   box-shadow: 0 0 0 1px var(--el-color-primary) inset;
 }
-.soft-input :deep(.el-input.is-disabled .el-input__wrapper) {
-  background: var(--neutral-100);
-}
 
-/* ---- 保存按钮（深青） ---- */
 .form-actions { margin-top: var(--space-2); }
 .save-btn {
   background: #2c5e5b;
@@ -503,41 +546,84 @@ onMounted(() => { loadProfile(); loadHistory() })
 }
 .danger-desc { font-size: var(--text-sm); color: var(--text-tertiary); margin: 0; flex: 1; min-width: 220px; }
 
-/* ---- 历史记录 ---- */
-.history-empty { padding: var(--space-6) 0; }
-.history-group { margin-bottom: var(--space-6); }
-.history-group-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--space-3); }
+/* ---- 我的发布 ---- */
+.history-group { display: flex; flex-direction: column; gap: var(--space-3); }
 .history-item {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3); border-radius: var(--radius-md);
-  cursor: pointer; transition: background var(--transition-fast);
+  border: 1px solid var(--border-light);
+  transition: background var(--transition-fast);
+  flex-wrap: wrap;
 }
-.history-item:hover { background: var(--neutral-100); }
+.history-item:hover { background: var(--neutral-50); }
 .item-thumb {
   width: 48px; height: 48px; border-radius: var(--radius-md); overflow: hidden;
   background: var(--neutral-100); flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; font-size: 20px;
 }
 .item-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
 .item-title { font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-meta { font-size: var(--text-xs); color: var(--text-tertiary); }
-.claim-icon { font-size: 20px; flex-shrink: 0; }
+.item-actions { display: flex; gap: 2px; flex-shrink: 0; }
 
 .status-tag {
   font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-full); font-weight: 500; white-space: nowrap;
 }
 .s-active { background: #E8F5E9; color: #2E7D32; }
 .s-pending { background: #FFF3E0; color: #ED6C02; }
+.s-claiming { background: #FFF8E1; color: #B26A00; }
 .s-claimed { background: #E8F5E9; color: #1B4D3E; }
 .s-rejected { background: #FFEBEE; color: #D32F2F; }
 .s-closed { background: var(--neutral-100); color: var(--text-tertiary); }
+
+/* ---- 我的留言 ---- */
+.comment-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.comment-item {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--bg-card);
+}
+.comment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.comment-time { font-size: var(--text-xs); color: var(--text-muted); }
+.comment-content {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.7;
+  margin: 0 0 var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.comment-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px dashed var(--border-light);
+  padding-top: var(--space-2);
+}
+.comment-item-link {
+  font-size: var(--text-xs);
+  color: var(--el-color-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comment-item-link:hover { text-decoration: underline; }
 
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .profile-layout { flex-direction: column; }
   .profile-left { width: 100%; min-width: 0; }
   .avatar-card { flex-direction: row; gap: var(--space-4); }
-  .form-grid { grid-template-columns: 1fr; }
+  .form-grid, .info-grid { grid-template-columns: 1fr; }
+  .item-actions { width: 100%; justify-content: flex-end; }
 }
 </style>

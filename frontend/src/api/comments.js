@@ -10,3 +10,5 @@ export const deleteComment = (id) => request.delete(`/comments/${id}`)
 export const adminSetCommentStatus = (id, status) => request.put(`/comments/admin/${id}/status`, { status })
 
 export const adminComments = (params) => request.get('/comments/admin', { params })
+// 我的留言（个人中心）
+export const myComments = (params) => request.get('/comments/mine', { params })

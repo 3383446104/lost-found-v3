@@ -47,6 +47,35 @@ def _fmt(row: dict) -> dict:
 
 
 # ---------- 接口 ----------
+@router.get("/mine")
+async def list_my_comments(
+    current_user: dict = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=50),
+):
+    """我的留言列表（含所属物品标题；个人中心「我的留言」用）"""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) AS total FROM comments WHERE user_id = ?",
+            (current_user['user_id'],),
+        )
+        total = cur.fetchone()["total"]
+        offset = (page - 1) * size
+        cur.execute('''
+            SELECT c.id, c.item_id, c.content, c.parent_id, c.status, c.created_at,
+                   i.title AS item_title
+            FROM comments c LEFT JOIN items i ON c.item_id = i.id
+            WHERE c.user_id = ?
+            ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?
+        ''', (current_user['user_id'], size, offset))
+        comments = [dict(r) for r in cur.fetchall()]
+
+    for cm in comments:
+        cm["created_at"] = format_beijing_time(cm.get("created_at"))
+    return {"total": total, "page": page, "size": size, "comments": comments}
+
+
 @router.get("/item/{item_id:int}")
 async def list_comments(
     item_id: int,

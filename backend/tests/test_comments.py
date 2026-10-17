@@ -141,3 +141,29 @@ def test_admin_list_and_status_filter(client, make_admin, make_user, create_item
 
     resp = client.get("/api/comments/admin?status=0", headers=admin["headers"]).json()
     assert resp["total"] == 0
+
+
+def test_v_mine_comments_list_and_delete(client, make_user, create_item, approve_item):
+    """个人中心「我的留言」：GET /comments/mine 只含本人留言（带物品标题），删除后消失。"""
+    owner = make_user(username="cm_owner")
+    item_id = create_item(owner["headers"], title="留言目标物品")
+    approve_item(item_id)
+
+    me = make_user(username="cm_me")
+    r1 = client.post("/api/comments", json={"item_id": item_id, "content": "我的第一条留言"}, headers=me["headers"])
+    r2 = client.post("/api/comments", json={"item_id": item_id, "content": "我的第二条留言"}, headers=me["headers"])
+    assert r1.status_code == 201 and r2.status_code == 201
+
+    # 他人留言不应出现在「我的留言」
+    client.post("/api/comments", json={"item_id": item_id, "content": "别人的留言"}, headers=owner["headers"])
+
+    resp = client.get("/api/comments/mine", headers=me["headers"])
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert all(c["item_title"] == "留言目标物品" for c in data["comments"])
+
+    # 删除自己的一条 → 剩 1
+    cid = data["comments"][0]["id"]
+    assert client.delete(f"/api/comments/{cid}", headers=me["headers"]).status_code == 200
+    assert client.get("/api/comments/mine", headers=me["headers"]).json()["total"] == 1
