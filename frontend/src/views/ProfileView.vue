@@ -1,96 +1,53 @@
 <template>
   <div class="page-container">
-    <h1 class="page-title">个人中心</h1>
+    <h1 class="page-title">个人信息</h1>
 
-    <!-- 用户信息卡 + 数据统计行 -->
+    <!-- 个人信息横幅 -->
     <div class="profile-banner">
-      <div class="banner-top">
-        <div class="avatar-placeholder">{{ userFirstLetter }}</div>
-        <div class="banner-info">
-          <div class="banner-name-row">
-            <h2 class="user-name">{{ user?.username }}</h2>
-            <span class="role-badge">{{ user?.role === 'admin' ? '管理员' : '普通用户' }}</span>
-          </div>
-          <p class="banner-meta">ID: {{ profile?.id }} · {{ profile?.created_at || '—' }} 加入</p>
+      <div class="avatar-placeholder">{{ userFirstLetter }}</div>
+      <div class="banner-info">
+        <div class="banner-name-row">
+          <h2 class="user-name">{{ user?.username }}</h2>
+          <span class="role-badge">{{ user?.role === 'admin' ? '管理员' : '普通用户' }}</span>
         </div>
-      </div>
-      <div class="profile-stats">
-        <div class="stat-cell" @click="activeSection = 'history'">
-          <span class="stat-num">{{ stats.myItems }}</span>
-          <span class="stat-label">我的发布</span>
-        </div>
-        <div class="stat-cell" @click="$router.push('/claims')">
-          <span class="stat-num">{{ stats.myClaims }}</span>
-          <span class="stat-label">我的认领</span>
-        </div>
-        <div class="stat-cell" @click="$router.push('/notifications')">
-          <span class="stat-num">{{ stats.unread }}</span>
-          <span class="stat-label">未读消息</span>
-        </div>
+        <p class="banner-meta">ID: {{ profile?.id }} · {{ profile?.created_at || '—' }} 加入</p>
       </div>
     </div>
 
+    <!-- 设置区域：桌面端左侧导航 + 右侧内容 / 移动端 Tab 切换 -->
     <div class="settings-layout">
-      <!-- 功能菜单列表 -->
-      <nav class="menu-list">
+      <!-- 桌面端左侧导航 -->
+      <nav class="settings-nav desktop-only">
         <button
-          class="menu-item"
-          :class="{ active: activeSection === 'account' }"
-          @click="activeSection = 'account'"
+          v-for="tab in tabs"
+          :key="tab.key"
+          :class="['nav-item', { active: activeTab === tab.key }]"
+          @click="activeTab = tab.key"
         >
-          <el-icon :size="16"><Setting /></el-icon>
-          <span class="menu-label">账户设置</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
-        </button>
-        <button
-          class="menu-item"
-          :class="{ active: activeSection === 'contact' }"
-          @click="activeSection = 'contact'"
-        >
-          <el-icon :size="16"><Phone /></el-icon>
-          <span class="menu-label">联系方式</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
-        </button>
-        <button
-          class="menu-item"
-          :class="{ active: activeSection === 'history' }"
-          @click="activeSection = 'history'"
-        >
-          <el-icon :size="16"><Box /></el-icon>
-          <span class="menu-label">我的发布</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
-        </button>
-        <button class="menu-item" @click="$router.push('/claims')">
-          <el-icon :size="16"><Document /></el-icon>
-          <span class="menu-label">我的认领</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
-        </button>
-        <button class="menu-item" @click="$router.push('/claims?tab=received')">
-          <el-icon :size="16"><Bell /></el-icon>
-          <span class="menu-label">收到的认领</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
-        </button>
-        <button class="menu-item" @click="$router.push('/reports/mine')">
-          <el-icon :size="16"><WarningFilled /></el-icon>
-          <span class="menu-label">我的举报</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
-        </button>
-        <button class="menu-item" @click="$router.push('/')">
-          <el-icon :size="16"><ChatDotSquare /></el-icon>
-          <span class="menu-label">系统公告</span>
-          <el-icon class="menu-arrow" :size="14"><ArrowRight /></el-icon>
+          <el-icon v-if="tab.icon" :size="16"><component :is="tab.icon" /></el-icon>
+          {{ tab.label }}
         </button>
         <div class="nav-divider"></div>
-        <button class="menu-item danger" @click="handleLogout">
-          <el-icon :size="16"><SwitchButton /></el-icon>
-          <span class="menu-label">退出登录</span>
+        <button
+          :class="['nav-item danger', { active: activeTab === 'danger' }]"
+          @click="activeTab = 'danger'"
+        >
+          <el-icon :size="16"><WarningFilled /></el-icon>
+          危险操作
         </button>
       </nav>
 
-      <!-- 内容面板（账户设置 / 联系方式 / 我的发布） -->
+      <!-- 移动端 Tab -->
+      <div class="mobile-tabs mobile-only">
+        <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+          <el-tab-pane v-for="tab in tabs" :key="tab.key" :label="tab.label" :name="tab.key" />
+        </el-tabs>
+      </div>
+
+      <!-- 右侧内容区 -->
       <div class="settings-content">
         <!-- 账户设置 -->
-        <section v-show="activeSection === 'account'" class="settings-section">
+        <section v-show="activeTab === 'account'" class="settings-section">
           <h3 class="section-title">账户设置</h3>
 
           <div class="settings-row">
@@ -126,17 +83,10 @@
               </template>
             </div>
           </div>
-
-          <div class="danger-zone">
-            <p class="danger-desc">注销账号后所有物品将关闭，账号数据将保留但无法再登录。此操作不可恢复。</p>
-            <el-button type="danger" plain size="small" @click="handleDeleteAccount" :loading="deleting">
-              注销账号
-            </el-button>
-          </div>
         </section>
 
         <!-- 联系方式 -->
-        <section v-show="activeSection === 'contact'" class="settings-section">
+        <section v-show="activeTab === 'contact'" class="settings-section">
           <h3 class="section-title">联系方式</h3>
           <p class="section-hint">手机号将在认领/归还申请中展示给对方，邮箱用于接收匹配通知。</p>
 
@@ -171,9 +121,9 @@
           </div>
         </section>
 
-        <!-- 我的发布 -->
-        <section v-show="activeSection === 'history'" class="settings-section">
-          <h3 class="section-title">我的发布</h3>
+        <!-- 历史记录 -->
+        <section v-show="activeTab === 'history'" class="settings-section">
+          <h3 class="section-title">历史记录</h3>
           <div v-if="historyLoading" v-loading="historyLoading" style="min-height:120px"></div>
           <template v-else>
             <div v-if="myItems.length === 0 && myClaims.length === 0" class="history-empty">
@@ -209,6 +159,17 @@
             </div>
           </template>
         </section>
+
+        <!-- 危险操作 -->
+        <section v-show="activeTab === 'danger'" class="settings-section danger-zone">
+          <h3 class="section-title" style="color:var(--el-color-danger)"><el-icon><WarningFilled /></el-icon> 危险操作</h3>
+          <div class="danger-card">
+            <p class="danger-desc">注销账号后所有物品将关闭，账号数据将保留但无法再登录。此操作不可恢复。</p>
+            <el-button type="danger" @click="handleDeleteAccount" :loading="deleting" size="large">
+              确认注销账号
+            </el-button>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -216,45 +177,23 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { updateProfile, getMe, getHistory, deleteAccount } from '@/api/auth'
-import { getItems } from '@/api/items'
-import { myClaims as fetchMyClaims } from '@/api/claims'
-import { getUnreadCount } from '@/api/notifications'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  User, Phone, Box, Document, Bell, WarningFilled, ChatDotSquare,
-  Setting, ArrowRight, SwitchButton,
-} from '@element-plus/icons-vue'
+import { User, Phone, Clock, WarningFilled, Camera } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
-const router = useRouter()
 const user = computed(() => authStore.user)
 const userFirstLetter = computed(() => (user.value?.username || 'U')[0].toUpperCase())
 
 const profile = ref({})
-const activeSection = ref('account')
+const activeTab = ref('account')
 
-// 数据统计行：我的发布 / 我的认领 / 未读消息
-const stats = ref({ myItems: 0, myClaims: 0, unread: 0 })
-const loadStats = async () => {
-  try {
-    const [itemsRes, claimsRes, unreadRes] = await Promise.all([
-      getItems({ user_id: authStore.user?.id, limit: 1 }),
-      fetchMyClaims({ size: 1 }),
-      getUnreadCount(),
-    ])
-    stats.value.myItems = itemsRes.total || 0
-    stats.value.myClaims = claimsRes.total || 0
-    stats.value.unread = unreadRes.count || 0
-  } catch { /* 统计失败不阻塞页面 */ }
-}
-
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
-}
+const tabs = [
+  { key: 'account', label: '账户设置', icon: User },
+  { key: 'contact', label: '联系方式', icon: Phone },
+  { key: 'history', label: '历史记录', icon: Clock },
+]
 
 // ====== Account ======
 const editingUsername = ref(false)
@@ -318,7 +257,7 @@ const saveContact = async (field) => {
   } catch {} finally { contactLoading.value = false }
 }
 
-// ====== History（我的发布）======
+// ====== History ======
 const myItems = ref([])
 const myClaims = ref([])
 const historyLoading = ref(false)
@@ -377,24 +316,21 @@ const loadProfile = async () => {
   } catch {}
 }
 
-onMounted(() => { loadProfile(); loadHistory(); loadStats() })
+onMounted(() => { loadProfile(); loadHistory() })
 </script>
 
 <style scoped>
-/* ---- 用户信息卡 ---- */
+/* ---- Banner ---- */
 .profile-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
   box-shadow: var(--shadow-xs);
-}
-
-.banner-top {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
 }
 
 .avatar-placeholder {
@@ -416,68 +352,27 @@ onMounted(() => { loadProfile(); loadHistory(); loadStats() })
 }
 .banner-meta { font-size: var(--text-sm); color: var(--text-tertiary); margin: 0; }
 
-/* ---- 统计行 ---- */
-.profile-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
-  margin-top: var(--space-5);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border-light);
-}
+/* ---- Settings Layout ---- */
+.settings-layout { display: flex; gap: var(--space-6); align-items: flex-start; }
+.settings-nav { width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; }
+.desktop-only { display: flex; }
+.mobile-only { display: none; }
 
-.stat-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-.stat-cell:hover { background: var(--neutral-100); }
-.stat-num { font-size: var(--text-xl); font-weight: 700; color: var(--el-color-primary); }
-.stat-label { font-size: var(--text-xs); color: var(--text-tertiary); }
-
-/* ---- 菜单 + 内容 ---- */
-.settings-layout { display: flex; gap: var(--space-5); align-items: flex-start; }
-.menu-list {
-  width: 200px;
-  flex-shrink: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  box-shadow: var(--shadow-xs);
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-3);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
+.nav-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none; border-radius: var(--radius-md);
+  background: transparent; color: var(--text-secondary);
+  font-size: var(--text-sm); font-weight: 500; cursor: pointer;
   transition: all var(--transition-fast);
   text-align: left;
-  width: 100%;
 }
-.menu-item:hover { background: var(--neutral-100); color: var(--text-primary); }
-.menu-item.active { background: var(--neutral-100); color: var(--el-color-primary); font-weight: 600; }
-.menu-item.danger { color: var(--el-color-danger); }
-.menu-label { flex: 1; }
-.menu-arrow { color: var(--text-muted); }
+.nav-item:hover { background: var(--neutral-100); color: var(--text-primary); }
+.nav-item.active { background: var(--neutral-100); color: var(--el-color-primary); font-weight: 600; }
+.nav-item.danger.active { color: var(--el-color-danger); }
 .nav-divider { height: 1px; background: var(--border-light); margin: var(--space-2) 0; }
 
+/* ---- Settings Content ---- */
 .settings-content { flex: 1; min-width: 0; }
 .settings-section {
   background: var(--bg-card); border: 1px solid var(--border-light);
@@ -498,21 +393,6 @@ onMounted(() => { loadProfile(); loadHistory(); loadStats() })
 .pw-fields { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; }
 .row-actions { display: flex; gap: var(--space-2); }
 
-/* ---- 危险操作（账户设置面板内） ---- */
-.danger-zone {
-  margin-top: var(--space-5);
-  border: 1px solid #FFCDD2;
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  background: #FFF5F5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-.danger-desc { font-size: var(--text-sm); color: var(--text-tertiary); margin: 0; flex: 1; min-width: 220px; }
-
 /* ---- History ---- */
 .history-empty { padding: var(--space-6) 0; }
 .history-group { margin-bottom: var(--space-6); }
@@ -532,7 +412,6 @@ onMounted(() => { loadProfile(); loadHistory(); loadStats() })
 .item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .item-title { font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-meta { font-size: var(--text-xs); color: var(--text-tertiary); }
-.claim-icon { font-size: 20px; flex-shrink: 0; }
 
 .status-tag {
   font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-full); font-weight: 500; white-space: nowrap;
@@ -543,12 +422,20 @@ onMounted(() => { loadProfile(); loadHistory(); loadStats() })
 .s-rejected { background: #FFEBEE; color: #D32F2F; }
 .s-closed { background: var(--neutral-100); color: var(--text-tertiary); }
 
+/* ---- Danger Zone ---- */
+.danger-zone .danger-card {
+  border: 1px solid #FFCDD2; border-radius: var(--radius-md); padding: var(--space-5);
+  background: #FFF5F5;
+}
+.danger-desc { font-size: var(--text-sm); color: var(--text-tertiary); margin: 0 0 var(--space-4); }
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .profile-banner { padding: var(--space-4); }
   .avatar-placeholder { width: 48px; height: 48px; font-size: 18px; }
+  .desktop-only { display: none; }
+  .mobile-only { display: block; }
   .settings-layout { flex-direction: column; }
-  .menu-list { width: 100%; }
   .settings-content { width: 100%; }
   .settings-row { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
   .row-label { width: auto; }
