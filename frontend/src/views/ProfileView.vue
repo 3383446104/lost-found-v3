@@ -30,27 +30,50 @@
         <section v-show="activeSection === 'info'" class="card form-card">
           <h3 class="section-title">基本信息</h3>
           <div class="avatar-row">
-            <img v-if="profile.avatar_path" :src="getImageUrl(profile.avatar_path)" class="avatar-img" alt="头像" />
-            <div v-else class="avatar-placeholder">{{ userFirstLetter }}</div>
-            <div class="avatar-actions">
+            <div
+              class="avatar-box"
+              @mouseenter="avatarHover = true"
+              @mouseleave="avatarHover = false"
+              @click="avatarDialogVisible = true"
+            >
+              <img v-if="profile.avatar_path" :src="getImageUrl(profile.avatar_path)" class="avatar-img" alt="头像" />
+              <img v-else src="/avatar-default.jpg" class="avatar-img" alt="默认头像" />
+              <div v-show="avatarHover" class="avatar-camera">
+                <img src="/avatar-camera.jpg" alt="更换头像" />
+              </div>
+            </div>
+            <p class="avatar-hint">支持 JPG/PNG，建议 1:1 比例</p>
+          </div>
+
+          <!-- 上传头像弹窗 -->
+          <el-dialog v-model="avatarDialogVisible" title="上传头像" width="420px" :close-on-click-modal="false" @closed="clearAvatarPick">
+            <div class="avatar-dialog-body">
+              <img
+                :src="avatarPreview || (profile.avatar_path ? getImageUrl(profile.avatar_path) : '/avatar-default.jpg')"
+                class="avatar-dialog-preview"
+                alt="头像预览"
+              />
               <input
                 ref="avatarInput"
                 type="file"
                 accept=".jpg,.jpeg,.png"
                 style="display:none"
-                @change="handleAvatarChange"
+                @change="handleAvatarPick"
               />
-              <el-button size="small" :loading="avatarUploading" @click="avatarInput?.click()">
-                {{ profile.avatar_path ? '更换头像' : '上传头像' }}
-              </el-button>
+              <el-button @click="avatarInput?.click()">选择图片</el-button>
               <p class="avatar-hint">支持 JPG/PNG，建议 1:1 比例</p>
             </div>
-          </div>
+            <template #footer>
+              <el-button @click="avatarDialogVisible = false">取消</el-button>
+              <el-button type="primary" :disabled="!pickedFile" :loading="avatarUploading" @click="confirmUpload">
+                确认上传
+              </el-button>
+            </template>
+          </el-dialog>
+
           <div class="info-grid">
             <div class="info-row"><span class="info-label">用户ID</span><span class="info-value">{{ profile.id ?? '—' }}</span></div>
             <div class="info-row"><span class="info-label">用户名</span><span class="info-value">{{ profile.username || '—' }}</span></div>
-            <div class="info-row"><span class="info-label">昵称</span><span class="info-value">{{ profile.nickname || '未填写' }}</span></div>
-            <div class="info-row"><span class="info-label">学号</span><span class="info-value">{{ profile.student_no || '未填写' }}</span></div>
             <div class="info-row"><span class="info-label">手机号</span><span class="info-value">{{ profile.phone || '未填写' }}</span></div>
             <div class="info-row"><span class="info-label">邮箱</span><span class="info-value">{{ profile.email || '未填写' }}</span></div>
             <div class="info-row"><span class="info-label">角色</span><span class="info-value">{{ profile.role === 'admin' ? '管理员' : '普通用户' }}</span></div>
@@ -65,9 +88,6 @@
             <div class="form-grid">
               <el-form-item label="用户名" prop="username">
                 <el-input v-model="infoForm.username" maxlength="20" class="soft-input" placeholder="2-20位" />
-              </el-form-item>
-              <el-form-item label="昵称" prop="nickname" required>
-                <el-input v-model="infoForm.nickname" maxlength="30" class="soft-input" placeholder="请输入昵称" />
               </el-form-item>
               <el-form-item label="手机号" prop="phone">
                 <el-input v-model="infoForm.phone" maxlength="11" class="soft-input" placeholder="11位手机号" />
@@ -191,28 +211,45 @@ import MyReportsPanel from '@/components/MyReportsPanel.vue'
 const authStore = useAuthStore()
 const router = useRouter()
 const user = computed(() => authStore.user)
-const userFirstLetter = computed(() => (user.value?.username || 'U')[0].toUpperCase())
 
 const profile = ref({})
 const activeSection = ref('info')
 
-// ====== 头像上传 ======
+// ====== 头像上传（悬浮相机图标 → 弹窗） ======
 const avatarInput = ref(null)
 const avatarUploading = ref(false)
+const avatarHover = ref(false)
+const avatarDialogVisible = ref(false)
+const avatarPreview = ref('')
+const pickedFile = ref(null)
 
-const handleAvatarChange = async (e) => {
+const handleAvatarPick = (e) => {
   const file = e.target.files[0]
   if (!file) return
+  pickedFile.value = file
+  if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value)
+  avatarPreview.value = URL.createObjectURL(file)
+}
+
+const clearAvatarPick = () => {
+  pickedFile.value = null
+  if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value)
+  avatarPreview.value = ''
+  if (avatarInput.value) avatarInput.value.value = ''
+}
+
+const confirmUpload = async () => {
+  if (!pickedFile.value) return
   avatarUploading.value = true
   try {
-    await uploadAvatar(file)
+    await uploadAvatar(pickedFile.value)
     ElMessage.success('头像已更新')
+    avatarDialogVisible.value = false
     loadProfile()
   } catch {
     ElMessage.error('头像上传失败')
   } finally {
     avatarUploading.value = false
-    if (avatarInput.value) avatarInput.value.value = ''
   }
 }
 
@@ -229,14 +266,13 @@ const sideItems = [
 // ====== 账号设置：账户信息表单 ======
 const infoFormRef = ref(null)
 const infoSaving = ref(false)
-const infoForm = reactive({ username: '', nickname: '', phone: '', email: '' })
+const infoForm = reactive({ username: '', phone: '', email: '' })
 
 const infoRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 2, max: 20, message: '用户名长度 2-20 位', trigger: 'blur' },
   ],
-  nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
   phone: [{
     validator: (rule, value, callback) => {
       if (!value || /^1[3-9]\d{9}$/.test(value)) callback()
@@ -261,7 +297,6 @@ const saveInfo = () => {
       const unameChanged = infoForm.username.trim() !== (profile.value.username || '')
       await updateProfile({
         username: infoForm.username.trim(),
-        nickname: infoForm.nickname.trim(),
         phone: infoForm.phone.trim(),
         email: infoForm.email.trim(),
       })
@@ -407,7 +442,6 @@ const loadProfile = async () => {
     if (res.user) {
       profile.value = res.user
       infoForm.username = res.user.username || ''
-      infoForm.nickname = res.user.nickname || ''
       infoForm.phone = res.user.phone || ''
       infoForm.email = res.user.email || ''
     }
@@ -439,7 +473,7 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
   box-shadow: var(--shadow-xs);
 }
 
-/* ---- 头像区（基本信息内） ---- */
+/* ---- 头像区（基本信息内，悬浮相机） ---- */
 .avatar-row {
   display: flex;
   align-items: center;
@@ -448,32 +482,51 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
   padding-bottom: var(--space-5);
   border-bottom: 1px solid var(--border-light);
 }
-.avatar-placeholder {
+.avatar-box {
+  position: relative;
   width: 84px; height: 84px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--el-color-primary), var(--el-color-primary-light-2));
-  color: white;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 32px; font-weight: 700;
+  overflow: hidden;
+  cursor: pointer;
   flex-shrink: 0;
+  border: 1px solid var(--border-light);
 }
 .avatar-img {
-  width: 84px; height: 84px;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.avatar-camera {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-camera img {
+  width: 36px; height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid var(--border-light);
-  flex-shrink: 0;
-}
-.avatar-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
 }
 .avatar-hint {
   font-size: 11px;
   color: var(--text-muted);
   margin: 0;
+}
+
+/* ---- 上传头像弹窗 ---- */
+.avatar-dialog-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+.avatar-dialog-preview {
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-light);
 }
 
 /* ---- 侧边栏菜单 ---- */
