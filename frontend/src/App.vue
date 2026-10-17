@@ -1,13 +1,20 @@
 <template>
-  <AdminLayout v-if="isAdminRoute" />
-  <DefaultLayout v-else-if="!isAuthRoute">
+  <DefaultLayout v-if="!isAuthRoute && !isAdminRoute">
     <router-view v-slot="{ Component }">
       <transition name="page" mode="out-in">
         <component :is="Component" />
       </transition>
     </router-view>
   </DefaultLayout>
-  <div v-else class="auth-standalone">
+  <div v-else-if="isAuthRoute" class="auth-standalone">
+    <router-view v-slot="{ Component }">
+      <transition name="page" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
+  </div>
+  <!-- 后台路由：经本 router-view 渲染 AdminLayout（其内部 router-view 深度+1 渲染子页面） -->
+  <div v-else class="admin-standalone">
     <router-view v-slot="{ Component }">
       <transition name="page" mode="out-in">
         <component :is="Component" />
@@ -31,6 +38,10 @@ const isAdminRoute = computed(() => route.meta.layout === 'admin')
 
 <style>
 .auth-standalone {
+  min-height: 100vh;
+}
+
+.admin-standalone {
   min-height: 100vh;
 }
 </style>
