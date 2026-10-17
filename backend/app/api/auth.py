@@ -19,21 +19,31 @@ MAX_UPLOAD_SIZE = getattr(settings, "MAX_UPLOAD_SIZE", 5 * 1024 * 1024)
 
 
 def check_unique_contact(conn, phone: str, email: str, exclude_user_id: int = None):
-    """校验手机号和邮箱唯一性（空值跳过）。exclude_user_id 用于更新时排除自身"""
+    """校验手机号和邮箱唯一性（空值跳过；注销账号不占号）。
+
+    exclude_user_id 用于更新时排除自身。**注销（status='deleted'）的账号释放联系方式**：
+    历史软删除测试账号不再挡住新注册与「改回原联系方式」。
+    """
     if phone:
         cur = conn.cursor()
         if exclude_user_id:
-            cur.execute("SELECT id FROM users WHERE phone=? AND id!=?", (phone, exclude_user_id))
+            cur.execute(
+                "SELECT id FROM users WHERE phone=? AND id!=? AND status != 'deleted'",
+                (phone, exclude_user_id),
+            )
         else:
-            cur.execute("SELECT id FROM users WHERE phone=?", (phone,))
+            cur.execute("SELECT id FROM users WHERE phone=? AND status != 'deleted'", (phone,))
         if cur.fetchone():
             raise HTTPException(400, "该手机号已被其他账户使用")
     if email:
         cur = conn.cursor()
         if exclude_user_id:
-            cur.execute("SELECT id FROM users WHERE email=? AND id!=?", (email, exclude_user_id))
+            cur.execute(
+                "SELECT id FROM users WHERE email=? AND id!=? AND status != 'deleted'",
+                (email, exclude_user_id),
+            )
         else:
-            cur.execute("SELECT id FROM users WHERE email=?", (email,))
+            cur.execute("SELECT id FROM users WHERE email=? AND status != 'deleted'", (email,))
         if cur.fetchone():
             raise HTTPException(400, "该邮箱已被其他账户使用")
 

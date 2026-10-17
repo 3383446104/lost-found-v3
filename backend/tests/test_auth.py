@@ -122,3 +122,26 @@ def test_avatar_upload_and_me_reflects(client, make_user):
         headers=user["headers"],
     )
     assert bad.status_code == 400
+
+
+def test_deleted_account_releases_contact_uniqueness(client):
+    """注销账号释放手机/邮箱：新注册与「改回原联系方式」均不再被软删除行挡住。"""
+    p = "13987654321"
+    e = "released@test.com"
+
+    # 账号 A：注册后注销
+    r1 = client.post("/api/register", json={"username": "release_a", "password": "test123456", "phone": p, "email": e})
+    assert r1.status_code == 201
+    token_a = r1.json()["token"]
+    assert client.delete("/api/me", headers={"Authorization": f"Bearer {token_a}"}).status_code == 200
+
+    # 注销后同手机/邮箱可重新注册（修复前 400「已被其他账户使用」）
+    r2 = client.post("/api/register", json={"username": "release_b", "password": "test123456", "phone": p, "email": e})
+    assert r2.status_code == 201, f"注销账号仍占用联系方式: {r2.status_code} {r2.text}"
+
+    # 「改回」场景：B 改走再改回（A 已注销，不得再拦）
+    token_b = r2.json()["token"]
+    h = {"Authorization": f"Bearer {token_b}"}
+    assert client.put("/api/me", json={"phone": "13987650000", "email": "changed@test.com"}, headers=h).status_code == 200
+    back = client.put("/api/me", json={"phone": p, "email": e}, headers=h)
+    assert back.status_code == 200, f"改回原联系方式被拦: {back.status_code} {back.text}"
