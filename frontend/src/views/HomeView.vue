@@ -1,9 +1,10 @@
 <template>
   <div class="page-container">
-    <div class="page-header">
+    <!-- 首页为纯展示页：无标题与发布按钮；大厅保留标题与发布入口 -->
+    <div class="page-header" v-if="hallType">
       <div>
-        <h1 class="page-title">{{ hallType === 'lost' ? '失物大厅' : hallType === 'found' ? '招领大厅' : '发现物品' }}</h1>
-        <p class="page-desc">{{ hallType === 'lost' ? '浏览所有已发布的失物信息' : hallType === 'found' ? '浏览所有已发布的拾物信息' : '浏览所有已发布的失物与拾物信息' }}</p>
+        <h1 class="page-title">{{ hallType === 'lost' ? '失物大厅' : '招领大厅' }}</h1>
+        <p class="page-desc">{{ hallType === 'lost' ? '浏览所有已发布的失物信息' : '浏览所有已发布的拾物信息' }}</p>
       </div>
       <el-button type="primary" @click="$router.push('/publish')" class="publish-cta">
         <el-icon><Plus /></el-icon>发布物品
