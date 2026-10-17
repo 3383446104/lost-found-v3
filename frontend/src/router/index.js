@@ -40,9 +40,19 @@ const routes = [
   },
   {
     path: '/admin',
-    name: 'Admin',
-    component: () => import('@/views/AdminView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    component: () => import('@/layouts/AdminLayout.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, layout: 'admin' },
+    children: [
+      { path: '', redirect: '/admin/items' },
+      { path: 'items', name: 'AdminItems', component: () => import('@/views/admin/ItemManage.vue') },
+      { path: 'users', name: 'AdminUsers', component: () => import('@/views/admin/UserManage.vue') },
+      { path: 'announcements', name: 'AdminAnnouncements', component: () => import('@/views/admin/AnnouncementManage.vue') },
+      { path: 'reports', name: 'AdminReports', component: () => import('@/views/admin/ReportManage.vue') },
+      { path: 'comments', name: 'AdminComments', component: () => import('@/views/admin/CommentManage.vue') },
+      { path: 'banners', name: 'AdminBanners', component: () => import('@/views/admin/BannerManage.vue') },
+      { path: 'categories', name: 'AdminCategories', component: () => import('@/views/admin/CategoryManage.vue') },
+      { path: 'stats', name: 'AdminStats', component: () => import('@/views/AdminStatsView.vue') }
+    ]
   },
   {
     path: '/notifications',
@@ -67,12 +77,6 @@ const routes = [
     name: 'MyReports',
     component: () => import('@/views/MyReportsView.vue'),
     meta: { requiresAuth: true }
-  },
-  {
-    path: '/admin/stats',
-    name: 'AdminStats',
-    component: () => import('@/views/AdminStatsView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/',

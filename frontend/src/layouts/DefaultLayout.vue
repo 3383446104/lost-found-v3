@@ -38,7 +38,7 @@
           </router-link>
           <router-link v-if="isAdmin" to="/admin" class="nav-link" :class="{ active: isActive('/admin') }">
             <el-icon :size="18"><Setting /></el-icon>
-            <span>审核</span>
+            <span>管理后台</span>
           </router-link>
         </nav>
 
@@ -94,7 +94,7 @@
             <span v-if="unreadCount > 0" class="nav-badge">{{ unreadCount }}</span>
           </router-link>
           <router-link v-if="isAdmin" to="/admin" class="nav-link" @click="showMobileMenu = false">
-            <el-icon :size="18"><Setting /></el-icon>审核管理
+            <el-icon :size="18"><Setting /></el-icon>管理后台
           </router-link>
         </nav>
       </transition>
