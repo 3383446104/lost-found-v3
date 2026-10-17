@@ -2,16 +2,16 @@
   <div class="page-container">
     <div class="page-header">
       <div>
-        <h1 class="page-title">发现物品</h1>
-        <p class="page-desc">浏览所有已发布的失物与拾物信息</p>
+        <h1 class="page-title">{{ hallType === 'lost' ? '失物大厅' : hallType === 'found' ? '招领大厅' : '发现物品' }}</h1>
+        <p class="page-desc">{{ hallType === 'lost' ? '浏览所有已发布的失物信息' : hallType === 'found' ? '浏览所有已发布的拾物信息' : '浏览所有已发布的失物与拾物信息' }}</p>
       </div>
       <el-button type="primary" @click="$router.push('/publish')" class="publish-cta">
         <el-icon><Plus /></el-icon>发布物品
       </el-button>
     </div>
 
-    <!-- v3.6.0：轮播图（管理员运营位） -->
-    <div v-if="banners.length" class="banner-carousel">
+    <!-- v3.6.0：轮播图（管理员运营位；首页专属，大厅不展示） -->
+    <div v-if="!hallType && banners.length" class="banner-carousel">
       <el-carousel height="220px" :interval="5000" arrow="hover" indicator-position="none">
         <el-carousel-item v-for="b in banners" :key="b.id">
           <div class="banner-item" @click="bannerClick(b)">
@@ -25,8 +25,8 @@
       </el-carousel>
     </div>
 
-    <!-- 数据看板（统计卡片 + 饼图合一） -->
-    <div class="dashboard" v-if="stats">
+    <!-- 数据看板（统计卡片 + 饼图合一；首页专属） -->
+    <div class="dashboard" v-if="!hallType && stats">
       <div class="dashboard-left">
         <div class="stat-grid">
           <div class="stat-item">
@@ -52,8 +52,8 @@
       </div>
     </div>
 
-    <!-- 公告入口卡片 -->
-    <div class="announce-card" v-if="announcements.length" @click="annDrawerVisible = true">
+    <!-- 公告入口卡片（首页专属） -->
+    <div class="announce-card" v-if="!hallType && announcements.length" @click="annDrawerVisible = true">
       <div class="announce-card-icon">
         <el-icon :size="20"><Bell /></el-icon>
       </div>
@@ -66,7 +66,7 @@
     </div>
 
     <!-- 公告抽屉 -->
-    <el-drawer v-model="annDrawerVisible" title="系统公告" size="420px" direction="rtl">
+    <el-drawer v-if="!hallType" v-model="annDrawerVisible" title="系统公告" size="420px" direction="rtl">
       <div class="ann-drawer-list">
         <div v-for="a in announcements" :key="a.id" class="ann-drawer-item" :class="{ pinned: a.is_pinned }">
           <div class="ann-drawer-head" @click="a._open = !a._open">
@@ -82,8 +82,8 @@
       </div>
     </el-drawer>
 
-    <!-- v3.6.0：为你推荐（管理员审核时勾选的推荐位） -->
-    <div v-if="recommends.length" class="recommend-section">
+    <!-- v3.6.0：为你推荐（管理员审核时勾选的推荐位；首页专属） -->
+    <div v-if="!hallType && recommends.length" class="recommend-section">
       <div class="recommend-head">
         <h2 class="recommend-title">
           <el-icon><StarFilled /></el-icon>为你推荐
@@ -106,13 +106,11 @@
       </div>
     </div>
 
-    <!-- 筛选栏 -->
-    <div class="filter-bar">
-      <el-radio-group v-model="filters.type" @change="loadItems" size="default">
-        <el-radio-button value="">全部</el-radio-button>
-        <el-radio-button value="lost">失物</el-radio-button>
-        <el-radio-button value="found">拾物</el-radio-button>
-      </el-radio-group>
+    <!-- 筛选栏（大厅专属；类型由路由锁定） -->
+    <div class="filter-bar" v-if="hallType">
+      <el-tag size="large" :type="hallType === 'lost' ? 'danger' : 'success'" effect="dark">
+        {{ hallType === 'lost' ? '失物大厅' : '招领大厅' }}
+      </el-tag>
       <div class="filter-right">
         <el-select v-model="filters.category" placeholder="全部分类" clearable @change="loadItems" style="width:150px">
           <el-option label="全部分类" value="" />
@@ -136,13 +134,13 @@
       </div>
     </div>
 
-    <!-- 骨架屏加载 -->
+    <!-- 大厅物品列表（骨架屏 / 空状态 / 卡片网格） -->
+    <template v-if="hallType">
     <div v-if="loading" class="card-grid">
       <SkeletonCard v-for="i in 6" :key="i" />
     </div>
 
-    <!-- 空状态 -->
-    <el-empty v-else-if="items.length === 0" description="暂无物品，去发布第一条吧">
+    <el-empty v-else-if="items.length === 0" :description="`暂无${hallType === 'lost' ? '失物' : '拾物'}，去发布第一条吧`">
       <el-button type="primary" @click="$router.push('/publish')">发布物品</el-button>
     </el-empty>
 
@@ -210,12 +208,13 @@
         @current-change="loadItems"
       />
     </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories, getRecommend } from '@/api/items'
 import { publicBanners } from '@/api/banners'
@@ -227,12 +226,16 @@ import { getAnnouncements } from '@/api/announcements'
 import { Bell, ArrowRight } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 
+const route = useRoute()
+// 大厅模式：/hall/lost、/hall/found 复用本组件，类型由路由 meta 锁定
+const hallType = computed(() => route.meta.hallType || '')
+
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
-const filters = ref({ type: '', category: '', keyword: '' })
+const filters = ref({ type: hallType.value, category: '', keyword: '' })
 const categories = ref([])
 const showMine = ref(false)
 const stats = ref(null)
@@ -337,13 +340,25 @@ const loadRecommends = async () => {
   try { const res = await getRecommend({ limit: 8 }); recommends.value = res.items || [] } catch { }
 }
 
+// 大厅之间切换（组件复用，onMounted 不重跑）：同步锁定类型并重载
+watch(() => route.meta.hallType, (t) => {
+  if (t) {
+    filters.value.type = t
+    page.value = 1
+    loadItems()
+  }
+})
+
 onMounted(() => {
   getCategories().then(res => { categories.value = res.categories || [] }).catch(() => {})
   loadItems()
-  loadStats()
-  loadAnnouncements()
-  loadBanners()
-  loadRecommends()
+  // 轮播/统计/公告/推荐为首页专属，大厅只加载物品列表
+  if (!hallType.value) {
+    loadStats()
+    loadAnnouncements()
+    loadBanners()
+    loadRecommends()
+  }
 })
 
 onUnmounted(() => {

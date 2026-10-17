@@ -27,6 +27,18 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/hall/lost',
+    name: 'HallLost',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { requiresAuth: true, hallType: 'lost' }
+  },
+  {
+    path: '/hall/found',
+    name: 'HallFound',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { requiresAuth: true, hallType: 'found' }
+  },
+  {
     path: '/publish',
     name: 'Publish',
     component: () => import('@/views/PublishView.vue'),

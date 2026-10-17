@@ -18,8 +18,16 @@
         <!-- 桌面端导航 -->
         <nav class="nav-desktop">
           <router-link to="/items" class="nav-link" :class="{ active: isActive('/items') }">
-            <el-icon :size="18"><Compass /></el-icon>
-            <span>发现</span>
+            <el-icon :size="18"><HomeFilled /></el-icon>
+            <span>首页</span>
+          </router-link>
+          <router-link to="/hall/lost" class="nav-link" :class="{ active: isActive('/hall/lost') }">
+            <el-icon :size="18"><Box /></el-icon>
+            <span>失物大厅</span>
+          </router-link>
+          <router-link to="/hall/found" class="nav-link" :class="{ active: isActive('/hall/found') }">
+            <el-icon :size="18"><ShoppingBag /></el-icon>
+            <span>招领大厅</span>
           </router-link>
           <router-link to="/publish" class="nav-link" :class="{ active: isActive('/publish') }">
             <el-icon :size="18"><Plus /></el-icon>
@@ -81,7 +89,13 @@
       <transition name="mobile-menu">
         <nav v-if="showMobileMenu" class="nav-mobile">
           <router-link to="/items" class="nav-link" @click="showMobileMenu = false">
-            <el-icon :size="18"><Compass /></el-icon>发现
+            <el-icon :size="18"><HomeFilled /></el-icon>首页
+          </router-link>
+          <router-link to="/hall/lost" class="nav-link" @click="showMobileMenu = false">
+            <el-icon :size="18"><Box /></el-icon>失物大厅
+          </router-link>
+          <router-link to="/hall/found" class="nav-link" @click="showMobileMenu = false">
+            <el-icon :size="18"><ShoppingBag /></el-icon>招领大厅
           </router-link>
           <router-link to="/publish" class="nav-link" @click="showMobileMenu = false">
             <el-icon :size="18"><Plus /></el-icon>发布
@@ -127,7 +141,8 @@ import { useNotificationStore } from '@/stores/notification'
 import { ElMessage } from 'element-plus'
 import {
   Compass, Plus, Connection, Bell, Setting,
-  ArrowDown, User, SwitchButton, Moon, Sunny
+  ArrowDown, User, SwitchButton, Moon, Sunny,
+  HomeFilled, Box, ShoppingBag
 } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
 
