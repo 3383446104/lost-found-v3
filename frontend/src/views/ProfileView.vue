@@ -8,13 +8,8 @@
 
     <!-- 主体：左右分栏（左 1/4 侧边栏，右 3/4 内容） -->
     <div class="profile-layout">
-      <!-- 左侧：头像卡 + 统一侧边栏 -->
+      <!-- 左侧：统一侧边栏 -->
       <aside class="profile-left">
-        <div class="card avatar-card">
-          <div class="avatar-placeholder">{{ userFirstLetter }}</div>
-          <p class="avatar-hint">支持 JPG/PNG，建议 1:1 比例</p>
-        </div>
-
         <div class="card side-menu">
           <button
             v-for="item in sideItems"
@@ -31,9 +26,26 @@
 
       <!-- 右侧：内容区 -->
       <div class="profile-right">
-        <!-- 基本信息（默认）：展示个人账户信息 -->
+        <!-- 基本信息（默认）：头像 + 个人账户信息 -->
         <section v-show="activeSection === 'info'" class="card form-card">
           <h3 class="section-title">基本信息</h3>
+          <div class="avatar-row">
+            <img v-if="profile.avatar_path" :src="getImageUrl(profile.avatar_path)" class="avatar-img" alt="头像" />
+            <div v-else class="avatar-placeholder">{{ userFirstLetter }}</div>
+            <div class="avatar-actions">
+              <input
+                ref="avatarInput"
+                type="file"
+                accept=".jpg,.jpeg,.png"
+                style="display:none"
+                @change="handleAvatarChange"
+              />
+              <el-button size="small" :loading="avatarUploading" @click="avatarInput?.click()">
+                {{ profile.avatar_path ? '更换头像' : '上传头像' }}
+              </el-button>
+              <p class="avatar-hint">支持 JPG/PNG，建议 1:1 比例</p>
+            </div>
+          </div>
           <div class="info-grid">
             <div class="info-row"><span class="info-label">用户ID</span><span class="info-value">{{ profile.id ?? '—' }}</span></div>
             <div class="info-row"><span class="info-label">用户名</span><span class="info-value">{{ profile.username || '—' }}</span></div>
@@ -167,9 +179,10 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { updateProfile, getMe, deleteAccount } from '@/api/auth'
+import { updateProfile, getMe, deleteAccount, uploadAvatar } from '@/api/auth'
 import { getItems, deleteItem, markClaimed } from '@/api/items'
 import { myComments, deleteComment } from '@/api/comments'
+import { getImageUrl } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Setting, Box, Document, ChatDotSquare, WarningFilled } from '@element-plus/icons-vue'
 import ClaimsPanel from '@/components/ClaimsPanel.vue'
@@ -182,6 +195,26 @@ const userFirstLetter = computed(() => (user.value?.username || 'U')[0].toUpperC
 
 const profile = ref({})
 const activeSection = ref('info')
+
+// ====== 头像上传 ======
+const avatarInput = ref(null)
+const avatarUploading = ref(false)
+
+const handleAvatarChange = async (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+  avatarUploading.value = true
+  try {
+    await uploadAvatar(file)
+    ElMessage.success('头像已更新')
+    loadProfile()
+  } catch {
+    ElMessage.error('头像上传失败')
+  } finally {
+    avatarUploading.value = false
+    if (avatarInput.value) avatarInput.value.value = ''
+  }
+}
 
 // 侧边栏（统一从上到下）
 const sideItems = [
@@ -406,14 +439,14 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
   box-shadow: var(--shadow-xs);
 }
 
-/* ---- 头像卡 ---- */
-.avatar-card {
-  padding: var(--space-6) var(--space-4);
+/* ---- 头像区（基本信息内） ---- */
+.avatar-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-light);
 }
 .avatar-placeholder {
   width: 84px; height: 84px;
@@ -422,12 +455,25 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
   color: white;
   display: flex; align-items: center; justify-content: center;
   font-size: 32px; font-weight: 700;
+  flex-shrink: 0;
+}
+.avatar-img {
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 .avatar-hint {
   font-size: 11px;
   color: var(--text-muted);
   margin: 0;
-  text-align: center;
 }
 
 /* ---- 侧边栏菜单 ---- */
@@ -622,7 +668,6 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
 @media (max-width: 768px) {
   .profile-layout { flex-direction: column; }
   .profile-left { width: 100%; min-width: 0; }
-  .avatar-card { flex-direction: row; gap: var(--space-4); }
   .form-grid, .info-grid { grid-template-columns: 1fr; }
   .item-actions { width: 100%; justify-content: flex-end; }
 }

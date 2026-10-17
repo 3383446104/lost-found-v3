@@ -88,3 +88,37 @@ def test_protected_endpoint_without_token_is_rejected(client):
     """HTTPBearer 无凭证访问受保护接口应被拒绝。"""
     resp = client.get("/api/me")
     assert resp.status_code in (401, 403)
+
+
+def test_avatar_upload_and_me_reflects(client, make_user):
+    """头像上传：JPG/PNG 入库并回显于 /me；静态路由可访问；非法类型 400。"""
+    PNG_1X1 = (
+        b"\x89PNG\r\n\x1a\n"
+        b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    user = make_user(username="avatar_user")
+
+    resp = client.post(
+        "/api/me/avatar",
+        files={"image": ("a.png", PNG_1X1, "image/png")},
+        headers=user["headers"],
+    )
+    assert resp.status_code == 200, f"上传失败: {resp.status_code} {resp.text}"
+    path = resp.json()["path"]
+    assert path.startswith("avatar_") and path.endswith(".png")
+
+    me = client.get("/api/me", headers=user["headers"]).json()["user"]
+    assert me["avatar_path"] == path
+
+    # 复用 /items/uploads/ 静态路由
+    assert client.get(f"/api/items/uploads/{path}").status_code == 200
+
+    # 非图片类型 → 400
+    bad = client.post(
+        "/api/me/avatar",
+        files={"image": ("a.txt", b"hello world", "text/plain")},
+        headers=user["headers"],
+    )
+    assert bad.status_code == 400

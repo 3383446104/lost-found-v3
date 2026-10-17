@@ -1,4 +1,7 @@
 # app/api/auth.py
+import os
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
 from ..models.user import UserRegister, UserLogin, ProfileUpdate
@@ -6,10 +9,13 @@ from ..database import get_db_connection
 from ..dependencies.auth import create_access_token, get_current_user
 from ..config import settings
 from ..utils.file import allowed_file
+from ..logger import logger
 import bcrypt
 import sqlite3
 
 router = APIRouter(tags=["认证"])
+
+MAX_UPLOAD_SIZE = getattr(settings, "MAX_UPLOAD_SIZE", 5 * 1024 * 1024)
 
 
 def check_unique_contact(conn, phone: str, email: str, exclude_user_id: int = None):
@@ -102,7 +108,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """获取当前用户信息"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, nickname, student_no, role, status, phone, email, created_at FROM users WHERE id = ?', (current_user['user_id'],))
+        cursor.execute('SELECT id, username, nickname, student_no, avatar_path, role, status, phone, email, created_at FROM users WHERE id = ?', (current_user['user_id'],))
         user = cursor.fetchone()
 
     return {
@@ -111,6 +117,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
             "username": user['username'],
             "nickname": user['nickname'],
             "student_no": user['student_no'],
+            "avatar_path": user['avatar_path'],
             "role": user['role'],
             "status": user['status'],
             "phone": user['phone'],
@@ -198,6 +205,48 @@ async def update_profile(
         )
 
     return {"success": True, "message": "资料更新成功"}
+
+
+@router.post("/me/avatar")
+async def upload_avatar(
+    image: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """上传头像（avatar_ 前缀持久文件，存 uploads 根目录，复用 /items/uploads/ 静态路由）"""
+    if not image or not image.filename:
+        raise HTTPException(400, "请选择图片")
+    content = await image.read()
+    if not allowed_file(image.filename, content):
+        raise HTTPException(400, "仅支持 JPG/PNG 图片")
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(400, f"图片大小不能超过 {MAX_UPLOAD_SIZE // 1024 // 1024}MB")
+
+    ext = os.path.splitext(image.filename)[1][1:].lower()
+    filename = f"avatar_{uuid.uuid4().hex}.{ext}"
+    file_path = os.path.join(settings.UPLOAD_FOLDER, filename)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"头像保存失败: {e}")
+        raise HTTPException(500, "文件保存失败")
+
+    # 更新头像路径并清理旧头像文件
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        row = cur.execute("SELECT avatar_path FROM users WHERE id = ?", (current_user['user_id'],)).fetchone()
+        old_avatar = row["avatar_path"] if row else None
+        cur.execute("UPDATE users SET avatar_path = ? WHERE id = ?", (filename, current_user['user_id']))
+
+    if old_avatar and old_avatar != filename:
+        old_path = os.path.join(settings.UPLOAD_FOLDER, os.path.basename(old_avatar))
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except OSError:
+                logger.warning(f"旧头像清理失败: {old_path}")
+
+    return {"success": True, "path": filename}
 
 
 @router.delete("/me")
