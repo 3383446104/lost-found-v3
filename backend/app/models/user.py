@@ -37,6 +37,7 @@ class ProfileUpdate(BaseModel):
     （空字典 → 400「没有需要更新的字段」；长度/格式校验仍由 handler 抛出 400）。
     """
     username: Optional[str] = None
+    nickname: Optional[str] = None
     password: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None

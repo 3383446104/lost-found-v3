@@ -134,6 +134,16 @@ def init_db():
             cursor.execute("UPDATE users SET status='active'                  WHERE status IS NULL")
             logger.info("迁移成功：users 表已添加 status 列并完成一次性数据映射")
 
+        # ---------- 迁移：users 新增昵称/学号（个人中心改版）----------
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols_pc = [row['name'] for row in cursor.fetchall()]
+        if 'nickname' not in user_cols_pc:
+            cursor.execute("ALTER TABLE users ADD COLUMN nickname TEXT")
+        if 'student_no' not in user_cols_pc:
+            cursor.execute("ALTER TABLE users ADD COLUMN student_no TEXT")
+        if not {'nickname', 'student_no'} <= set(user_cols_pc):
+            logger.info("迁移成功：users 表已添加 nickname / student_no 列")
+
         # =====================================================================
         # v3.6.0 融合迁移：认领/举报/留言/轮播/分类 五张新表
         # =====================================================================

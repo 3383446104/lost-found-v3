@@ -102,13 +102,15 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """获取当前用户信息"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, username, role, status, phone, email, created_at FROM users WHERE id = ?', (current_user['user_id'],))
+        cursor.execute('SELECT id, username, nickname, student_no, role, status, phone, email, created_at FROM users WHERE id = ?', (current_user['user_id'],))
         user = cursor.fetchone()
 
     return {
         "user": {
             "id": user['id'],
             "username": user['username'],
+            "nickname": user['nickname'],
+            "student_no": user['student_no'],
             "role": user['role'],
             "status": user['status'],
             "phone": user['phone'],
@@ -129,6 +131,14 @@ async def update_profile(
     user_id = current_user['user_id']
     updates = []
     params = []
+
+    # 更新昵称
+    if 'nickname' in payload:
+        nickname = payload['nickname'].strip()
+        if len(nickname) < 1 or len(nickname) > 30:
+            raise HTTPException(400, "昵称长度 1-30 位")
+        updates.append("nickname = ?")
+        params.append(nickname)
 
     # 更新用户名
     if 'username' in payload and payload['username']:
