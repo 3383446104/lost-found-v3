@@ -81,45 +81,34 @@
           </div>
         </section>
 
-        <!-- 账号设置：修改账户信息 + 注销账号 -->
+        <!-- 账号设置：用户名 → 手机号 → 邮箱 → 密码 → 账号注销 -->
         <section v-show="activeSection === 'account'" class="card form-card">
           <h3 class="section-title">账号设置</h3>
-          <el-form ref="infoFormRef" :model="infoForm" :rules="infoRules" label-position="top" class="profile-form">
-            <div class="form-grid">
-              <el-form-item label="用户名" prop="username">
-                <el-input v-model="infoForm.username" maxlength="20" class="soft-input" placeholder="2-20位" />
-              </el-form-item>
-              <el-form-item label="手机号" prop="phone">
-                <el-input v-model="infoForm.phone" maxlength="11" class="soft-input" placeholder="11位手机号" />
-              </el-form-item>
-              <el-form-item label="邮箱" prop="email">
-                <el-input v-model="infoForm.email" class="soft-input" placeholder="用于接收匹配通知" />
-              </el-form-item>
-            </div>
+          <el-form ref="accountFormRef" :model="accountForm" :rules="accountRules" label-position="top" class="profile-form account-form">
+            <el-form-item label="用户名" prop="username">
+              <el-input v-model="accountForm.username" maxlength="20" class="soft-input" placeholder="2-20位" />
+            </el-form-item>
+            <el-form-item label="手机号" prop="phone">
+              <el-input v-model="accountForm.phone" maxlength="11" class="soft-input" placeholder="11位手机号" />
+            </el-form-item>
+            <el-form-item label="邮箱" prop="email">
+              <el-input v-model="accountForm.email" class="soft-input" placeholder="用于接收匹配通知" />
+            </el-form-item>
+            <el-form-item label="密码" prop="password">
+              <el-input v-model="accountForm.password" type="password" show-password class="soft-input" placeholder="不修改请留空（6-30位）" />
+            </el-form-item>
+            <el-form-item label="确认新密码" prop="confirm">
+              <el-input v-model="accountForm.confirm" type="password" show-password class="soft-input" placeholder="再次输入新密码" />
+            </el-form-item>
             <div class="form-actions">
-              <el-button class="save-btn" :loading="infoSaving" @click="saveInfo">保存信息</el-button>
-            </div>
-          </el-form>
-
-          <el-form ref="pwFormRef" :model="pwForm" :rules="pwRules" label-position="top" class="profile-form pw-form">
-            <h4 class="sub-title">修改密码</h4>
-            <div class="form-grid">
-              <el-form-item label="新密码" prop="password">
-                <el-input v-model="pwForm.password" type="password" show-password class="soft-input" placeholder="6-30位新密码" />
-              </el-form-item>
-              <el-form-item label="确认新密码" prop="confirm">
-                <el-input v-model="pwForm.confirm" type="password" show-password class="soft-input" placeholder="再次输入新密码" />
-              </el-form-item>
-            </div>
-            <div class="form-actions">
-              <el-button class="save-btn" :loading="pwSaving" @click="savePassword">保存密码</el-button>
+              <el-button class="save-btn" :loading="accountSaving" @click="saveAccount">保存信息</el-button>
             </div>
           </el-form>
 
           <div class="danger-zone">
             <p class="danger-desc">注销账号后所有物品将关闭，账号数据将保留但无法再登录。此操作不可恢复。</p>
             <el-button type="danger" plain size="small" :loading="deleting" @click="handleDeleteAccount">
-              注销账号
+              账号注销
             </el-button>
           </div>
         </section>
@@ -263,12 +252,12 @@ const sideItems = [
   { key: 'reports', label: '我的举报', icon: WarningFilled },
 ]
 
-// ====== 账号设置：账户信息表单 ======
-const infoFormRef = ref(null)
-const infoSaving = ref(false)
-const infoForm = reactive({ username: '', phone: '', email: '' })
+// ====== 账号设置：用户名 → 手机号 → 邮箱 → 密码（统一表单） ======
+const accountFormRef = ref(null)
+const accountSaving = ref(false)
+const accountForm = reactive({ username: '', phone: '', email: '', password: '', confirm: '' })
 
-const infoRules = {
+const accountRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 2, max: 20, message: '用户名长度 2-20 位', trigger: 'blur' },
@@ -287,63 +276,49 @@ const infoRules = {
     },
     trigger: 'blur',
   }],
+  password: [{
+    validator: (rule, value, callback) => {
+      if (!value || (value.length >= 6 && value.length <= 30)) callback()
+      else callback(new Error('密码长度 6-30 位'))
+    },
+    trigger: 'blur',
+  }],
+  confirm: [{
+    validator: (rule, value, callback) => {
+      if (!accountForm.password && !value) callback()
+      else if (accountForm.password && value === accountForm.password) callback()
+      else callback(new Error('两次输入的密码不一致'))
+    },
+    trigger: 'blur',
+  }],
 }
 
-const saveInfo = () => {
-  infoFormRef.value.validate(async (valid) => {
+const saveAccount = () => {
+  accountFormRef.value.validate(async (valid) => {
     if (!valid) return
-    infoSaving.value = true
+    accountSaving.value = true
     try {
-      const unameChanged = infoForm.username.trim() !== (profile.value.username || '')
-      await updateProfile({
-        username: infoForm.username.trim(),
-        phone: infoForm.phone.trim(),
-        email: infoForm.email.trim(),
-      })
-      if (unameChanged) {
-        // 用户名入 JWT：变更后需重新登录（保留原有逻辑）
-        ElMessage.success('信息已保存，用户名已更新，请重新登录')
+      const unameChanged = accountForm.username.trim() !== (profile.value.username || '')
+      const pwChanged = !!accountForm.password
+      const payload = {
+        username: accountForm.username.trim(),
+        phone: accountForm.phone.trim(),
+        email: accountForm.email.trim(),
+      }
+      if (pwChanged) payload.password = accountForm.password
+      await updateProfile(payload)
+      if (unameChanged || pwChanged) {
+        // 用户名入 JWT / 密码变更：需重新登录（保留原有逻辑）
+        ElMessage.success('信息已保存，请重新登录')
+        accountForm.password = ''
+        accountForm.confirm = ''
         setTimeout(() => { authStore.logout(); window.location.href = '/login' }, 1500)
       } else {
         ElMessage.success('保存成功')
         authStore.fetchUser()
         loadProfile()
       }
-    } catch {} finally { infoSaving.value = false }
-  })
-}
-
-// ====== 修改密码 ======
-const pwFormRef = ref(null)
-const pwSaving = ref(false)
-const pwForm = reactive({ password: '', confirm: '' })
-
-const pwRules = {
-  password: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, max: 30, message: '密码长度 6-30 位', trigger: 'blur' },
-  ],
-  confirm: [{
-    validator: (rule, value, callback) => {
-      if (!value) callback(new Error('请再次输入新密码'))
-      else if (value !== pwForm.password) callback(new Error('两次输入的密码不一致'))
-      else callback()
-    },
-    trigger: 'blur',
-  }],
-}
-
-const savePassword = () => {
-  pwFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    pwSaving.value = true
-    try {
-      await updateProfile({ password: pwForm.password })
-      ElMessage.success('密码已更新，请重新登录')
-      pwForm.password = ''
-      pwForm.confirm = ''
-      setTimeout(() => { authStore.logout(); window.location.href = '/login' }, 1500)
-    } catch {} finally { pwSaving.value = false }
+    } catch {} finally { accountSaving.value = false }
   })
 }
 
@@ -441,9 +416,9 @@ const loadProfile = async () => {
     const res = await getMe()
     if (res.user) {
       profile.value = res.user
-      infoForm.username = res.user.username || ''
-      infoForm.phone = res.user.phone || ''
-      infoForm.email = res.user.email || ''
+      accountForm.username = res.user.username || ''
+      accountForm.phone = res.user.phone || ''
+      accountForm.email = res.user.email || ''
     }
   } catch {}
 }
@@ -568,15 +543,6 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
   margin: 0 0 var(--space-5);
   color: var(--text-primary);
 }
-.sub-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: var(--space-6) 0 var(--space-4);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border-light);
-}
-
 /* ---- 基本信息展示 ---- */
 .info-grid {
   display: grid;
@@ -593,13 +559,9 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
 .info-label { font-size: var(--text-sm); color: var(--text-tertiary); flex-shrink: 0; }
 .info-value { font-size: var(--text-sm); color: var(--text-primary); font-weight: 500; text-align: right; }
 
-/* ---- 表单 ---- */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 var(--space-5);
-}
-.form-grid .el-form-item { margin-bottom: var(--space-4); }
+/* ---- 表单（纵向单列） ---- */
+.account-form { max-width: 480px; }
+.account-form .el-form-item { margin-bottom: var(--space-4); }
 
 .soft-input :deep(.el-input__wrapper) {
   background: var(--neutral-50);
@@ -721,7 +683,7 @@ onMounted(() => { loadProfile(); loadMyItems(); loadMyComments() })
 @media (max-width: 768px) {
   .profile-layout { flex-direction: column; }
   .profile-left { width: 100%; min-width: 0; }
-  .form-grid, .info-grid { grid-template-columns: 1fr; }
+  .info-grid { grid-template-columns: 1fr; }
   .item-actions { width: 100%; justify-content: flex-end; }
 }
 </style>
