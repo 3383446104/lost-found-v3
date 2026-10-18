@@ -85,17 +85,29 @@
       </div>
       <div class="recommend-grid">
         <div
-          v-for="r in recommends"
+          v-for="r in recommends.slice(0, 5)"
           :key="r.id"
           class="recommend-card"
           @click="$router.push(`/items/${r.id}`)"
         >
           <img v-if="r.image_path" :src="getImageUrl(r.image_path)" :alt="r.title" loading="lazy" />
-          <div v-else class="img-placeholder"><el-icon :size="28"><PictureFilled /></el-icon></div>
+          <div v-else class="img-placeholder">
+            <el-icon :size="28"><PictureFilled /></el-icon>
+            <span>暂无图片</span>
+          </div>
           <div class="recommend-body">
             <span class="recommend-item-title">{{ r.title }}</span>
             <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
           </div>
+        </div>
+        <!-- 行末尾：大厅引导入口 -->
+        <div class="recommend-more">
+          <router-link to="/hall/lost" class="recommend-more-link">
+            前往失物大厅 <el-icon :size="12"><ArrowRight /></el-icon>
+          </router-link>
+          <router-link to="/hall/found" class="recommend-more-link">
+            前往招领大厅 <el-icon :size="12"><ArrowRight /></el-icon>
+          </router-link>
         </div>
       </div>
     </div>
@@ -213,7 +225,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories, getRecommend } from '@/api/items'
 import { publicBanners } from '@/api/banners'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
-import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled } from '@element-plus/icons-vue'
+import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled, ArrowRight } from '@element-plus/icons-vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
 import { getAnnouncements } from '@/api/announcements'
@@ -332,7 +344,8 @@ const bannerClick = (b) => {
   }
 }
 const loadRecommends = async () => {
-  try { const res = await getRecommend({ limit: 8 }); recommends.value = res.items || [] } catch { }
+  // 首页推荐一排 5 条（最近审核通过）
+  try { const res = await getRecommend({ limit: 5 }); recommends.value = res.items || [] } catch { }
 }
 
 // 大厅 ↔ 首页切换（组件复用，onMounted 不重跑）
@@ -485,11 +498,37 @@ onUnmounted(() => {
 .recommend-card .img-placeholder {
   aspect-ratio: 4 / 3;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-1);
   color: var(--text-muted);
+  font-size: var(--text-xs);
   background: var(--neutral-100);
 }
+
+/* 推荐行末尾：大厅引导入口 */
+.recommend-more {
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  min-height: 100%;
+}
+.recommend-more-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+.recommend-more-link:hover { text-decoration: underline; }
 
 .recommend-body {
   padding: var(--space-3);
