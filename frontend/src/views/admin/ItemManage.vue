@@ -144,24 +144,6 @@
       </template>
     </el-dialog>
 
-    <!-- v3.6.0：审核通过对话框（推荐位开关） -->
-    <el-dialog v-model="approveDialogVisible" title="审核通过" width="440px" :close-on-click-modal="false">
-      <p style="margin:0 0 12px;color:var(--text-secondary);font-size:var(--text-sm)">
-        通过后将自动进行智能匹配并通知相关用户。
-      </p>
-      <el-switch
-        v-model="approveRecommend"
-        active-text="设为首页推荐"
-        inactive-text="不推荐"
-      />
-      <p style="margin:12px 0 0;color:var(--text-tertiary);font-size:var(--text-xs)">
-        推荐物品将出现在首页「为你推荐」板块。
-      </p>
-      <template #footer>
-        <el-button @click="approveDialogVisible=false">取消</el-button>
-        <el-button type="success" @click="confirmApprove">确认通过</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -171,11 +153,6 @@ import { reviewItem, getAllItems, updateItemStatus, batchItems } from '@/api/adm
 import { getImageUrl, ITEM_TYPE_MAP } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { PictureFilled, Search, ArrowDown } from '@element-plus/icons-vue'
-
-// v3.6.0：审核通过对话框（含推荐位开关）
-const approveDialogVisible = ref(false)
-const approveId = ref(null)
-const approveRecommend = ref(false)
 
 const items = ref([])
 const total = ref(0)
@@ -238,18 +215,11 @@ const handleBatch = async (action) => {
   } catch { } finally { batchLoading.value = false }
 }
 
-const approve = (id) => {
-  // v3.6.0：通过前弹窗选择是否设为首页推荐
-  approveId.value = id
-  approveRecommend.value = false
-  approveDialogVisible.value = true
-}
-
-const confirmApprove = async () => {
+// 审核通过：直接执行（首页推荐位已改为自动展示最近通过物品，不再手动勾选）
+const approve = async (id) => {
   try {
-    await reviewItem(approveId.value, { action: 'approved', is_recommend: approveRecommend.value })
+    await reviewItem(id, { action: 'approved' })
     ElMessage.success('审核通过，已自动匹配并通知相关用户')
-    approveDialogVisible.value = false
     loadItems()
   } catch {
     // 错误已在拦截器处理

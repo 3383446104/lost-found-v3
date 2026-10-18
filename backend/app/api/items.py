@@ -355,12 +355,12 @@ async def recommend_items(
     limit: int = Query(8, ge=1, le=20),
     type: Optional[str] = Query(None, description="可选：仅推荐 lost / found")
 ):
-    """首页「为你推荐」（v3.6.0：管理员审核时勾选的推荐位物品）
+    """首页「为你推荐」：自动展示一排**最近审核通过**的物品（review_time 降序，缺失回退发布时间）。
 
     注意：本路由须注册在 ``/{item_id:int}`` 之前（静态路径优先）。
     """
     params: List = []
-    where = "is_recommend = 1 AND status = 'active' AND review_status = 'approved'"
+    where = "status = 'active' AND review_status = 'approved'"
     if type:
         if type not in ("lost", "found"):
             raise HTTPException(400, "type 必须为 lost 或 found")
@@ -373,7 +373,7 @@ async def recommend_items(
             f"""SELECT id, type, title, description, category, image_path, cover_image,
                        images, location, created_at
                 FROM items WHERE {where}
-                ORDER BY created_at DESC LIMIT ?""",
+                ORDER BY COALESCE(review_time, created_at) DESC LIMIT ?""",
             params + [limit],
         )
         items = [dict(r) for r in cursor.fetchall()]

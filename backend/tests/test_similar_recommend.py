@@ -71,18 +71,22 @@ def test_similar_requires_vectors(client, make_user):
     assert resp.json()["items"] == []
 
 
-def test_recommend_only_flagged(client, make_user, create_item_row):
+def test_recommend_latest_approved_first(client, make_user, create_item_row):
+    """推荐位新口径：自动展示最近审核通过的物品（review_time 降序），无需手动勾选。"""
     owner = make_user(username="sr_owner4")
-    flagged = create_item_row(owner["id"], type="lost", status="active", review_status="approved")
-    create_item_row(owner["id"], type="found", status="active", review_status="approved")
+    early = create_item_row(owner["id"], type="lost", status="active", review_status="approved", title="先通过")
+    late = create_item_row(owner["id"], type="lost", status="active", review_status="approved", title="后通过")
+    pending = create_item_row(owner["id"], type="lost", status="pending", review_status="pending", title="未审核")
 
     with db_module.get_db_connection() as conn:
-        conn.execute("UPDATE items SET is_recommend=1 WHERE id=?", (flagged,))
+        conn.execute("UPDATE items SET review_time='2026-10-01 00:00:00' WHERE id=?", (early,))
+        conn.execute("UPDATE items SET review_time='2026-10-02 00:00:00' WHERE id=?", (late,))
 
     resp = client.get("/api/items/recommend")
     assert resp.status_code == 200
     items = resp.json()["items"]
-    assert [i["id"] for i in items] == [flagged]
+    assert [i["id"] for i in items] == [late, early], f"应按最近通过排序: {[i['id'] for i in items]}"
+    assert pending not in [i["id"] for i in items]
 
     # 类型过滤
     resp = client.get("/api/items/recommend?type=found")
