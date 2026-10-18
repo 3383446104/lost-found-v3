@@ -335,12 +335,19 @@ const loadRecommends = async () => {
   try { const res = await getRecommend({ limit: 8 }); recommends.value = res.items || [] } catch { }
 }
 
-// 大厅之间切换（组件复用，onMounted 不重跑）：同步锁定类型并重载
+// 大厅 ↔ 首页切换（组件复用，onMounted 不重跑）
 watch(() => route.meta.hallType, (t) => {
   if (t) {
+    // 进入大厅：锁定类型并重载物品列表
     filters.value.type = t
     page.value = 1
     loadItems()
+  } else {
+    // 从大厅返回首页：补齐轮播/统计/公告/推荐数据（否则首页空白）
+    loadStats()
+    loadBanners()
+    loadAnnouncements()
+    loadRecommends()
   }
 })
 
