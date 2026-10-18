@@ -69,6 +69,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="id" label="ID" width="60" align="center" />
+        <el-table-column label="图片" width="86" align="center">
+          <template #default="{ row }">
+            <img v-if="row.image_path" :src="getImageUrl(row.image_path)" class="row-thumb" :alt="row.title" loading="lazy" />
+            <span v-else class="row-thumb-empty">—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="title" label="标题" min-width="160">
           <template #default="{ row }"><router-link :to="`/items/${row.id}`" class="item-link">{{ row.title }}</router-link></template>
         </el-table-column>
@@ -184,8 +190,8 @@ const rejecting = ref(false)
 const selectedIds = ref([])
 const batchLoading = ref(false)
 
-// 物品筛选
-const itemFilter = ref({ keyword: '', review: 'pending', status: '', type: '' })
+// 物品筛选：默认展示所有物品（不预设待审核）
+const itemFilter = ref({ keyword: '', review: '', status: '', type: '' })
 let itemFilterTimer = null
 
 const loadItems = async () => {
@@ -327,6 +333,21 @@ onMounted(loadItems)
   color: var(--el-color-primary);
   text-decoration: none;
   font-weight: 500;
+}
+
+/* 列表行内缩略图 */
+.row-thumb {
+  width: 60px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 4px);
+  display: block;
+  margin: 0 auto;
+  border: 1px solid var(--border-light);
+}
+.row-thumb-empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .item-link:hover {
