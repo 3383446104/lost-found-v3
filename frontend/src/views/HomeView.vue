@@ -91,11 +91,12 @@
           @click="$router.push(`/items/${r.id}`)"
         >
           <img v-if="r.image_path" :src="getImageUrl(r.image_path)" :alt="r.title" loading="lazy" />
-          <div v-else class="img-placeholder">
-            <el-icon :size="28"><PictureFilled /></el-icon>
-            <span>暂无图片</span>
+          <div v-else class="img-placeholder recommend-ph">
+            <el-icon :size="26"><PictureFilled /></el-icon>
+            <span class="recommend-ph-title">{{ r.title }}</span>
+            <span class="recommend-ph-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
           </div>
-          <div class="recommend-body">
+          <div class="recommend-body" v-if="r.image_path">
             <span class="recommend-item-title">{{ r.title }}</span>
             <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
           </div>
@@ -505,6 +506,22 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: var(--text-xs);
   background: var(--neutral-100);
+  padding: var(--space-2);
+}
+
+/* 无图卡片：标题与分类直接展示在图片区域内 */
+.recommend-ph-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.recommend-ph-meta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
 /* 推荐行末尾：大厅引导入口 */
