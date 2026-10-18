@@ -53,14 +53,6 @@ class ClaimReject(BaseModel):
 
 
 # ---------- 辅助函数 ----------
-def mask_phone(phone: Optional[str]) -> Optional[str]:
-    """手机号脱敏：中间四位打码（138****1234）；过短则整体打码。"""
-    if not phone:
-        return None
-    phone = phone.strip()
-    if len(phone) >= 7:
-        return f"{phone[:3]}****{phone[-4:]}"
-    return "****"
 
 
 def _claim_row_to_dict(row, *, time_fields=("created_at", "reviewed_at", "completed_at")) -> dict:
@@ -282,8 +274,8 @@ async def get_claim(
 ):
     """认领申请详情（申请人/发布者/管理员三方可见）
 
-    隐私规则（参考项目「已通过可见联系方式」）：
-    - 申请人：status ∈ (1, 3) 时可见**脱敏后**的发布者联系方式（item.contact）；
+    隐私规则（分级可见）：
+    - 申请人：status ∈ (1, 3) 时可见发布者**完整**联系方式（item.contact），此前为 null；
     - 发布者/管理员：可见申请人完整电话（contact_phone 快照）。
     """
     with get_db_connection() as conn:
@@ -318,14 +310,14 @@ async def get_claim(
 
     # 隐私裁剪
     if is_claimer:
-        # 申请人视角：仅申请已通过/已完成时可见发布者脱敏联系方式
+        # 申请人视角：申请通过/完成后可见发布者**完整**联系方式（用于线下交接）
         if row["status"] in (CLAIM_APPROVED, CLAIM_COMPLETED):
-            result["owner_contact_masked"] = mask_phone(row["contact"])
+            result["owner_contact"] = row["contact"]
         else:
-            result["owner_contact_masked"] = None
+            result["owner_contact"] = None
         result.pop("contact_phone", None)
     elif is_owner or is_admin:
-        result["owner_contact_masked"] = None  # 本人当然知道自己的联系方式
+        result["owner_contact"] = None  # 本人当然知道自己的联系方式
     result.pop("contact", None)
 
     return {"claim": result}

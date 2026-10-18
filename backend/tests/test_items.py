@@ -114,6 +114,39 @@ def test_get_item_approved_active_non_owner_hides_user_id(
     assert "text_vector" not in item
 
 
+def test_get_item_masks_contact_for_non_owner(client, make_user, create_item, approve_item):
+    """联系方式脱敏（FR-CLAIM-11 同口径）：非发布者/非管理员只看到 138****8000。"""
+    owner = make_user(username="mask_owner")
+    other = make_user(username="mask_other")
+    item_id = create_item(owner["headers"], contact="13800138000")
+    approve_item(item_id)
+
+    # 匿名访客
+    anon = client.get(f"/api/items/{item_id}")
+    assert anon.status_code == 200
+    assert anon.json()["item"]["contact"] == "138****8000"
+
+    # 其他登录用户
+    resp = client.get(f"/api/items/{item_id}", headers=other["headers"])
+    assert resp.status_code == 200
+    assert resp.json()["item"]["contact"] == "138****8000"
+
+    # 发布者本人：完整号码
+    own = client.get(f"/api/items/{item_id}", headers=owner["headers"])
+    assert own.json()["item"]["contact"] == "13800138000"
+
+
+def test_list_masks_contact_for_others(client, make_user, create_item, approve_item):
+    """列表接口同样不得下发完整联系方式。"""
+    owner = make_user(username="mask_owner2")
+    item_id = create_item(owner["headers"], title="脱敏列表物品", contact="13900139000")
+    approve_item(item_id)
+
+    items = client.get("/api/items/").json()["items"]
+    target = next(it for it in items if it["id"] == item_id)
+    assert target["contact"] == "139****9000"
+
+
 def test_get_item_owner_includes_user_id(client, make_user, create_item, approve_item):
     owner = make_user(username="appr_owner2")
     item_id = create_item(owner["headers"])

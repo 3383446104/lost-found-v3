@@ -82,6 +82,10 @@
         <h2 class="recommend-title">
           <el-icon><StarFilled /></el-icon>为你推荐
         </h2>
+        <!-- 标题行右侧：更多入口，链接落在「失物」「招领」两字上 -->
+        <span class="recommend-guide">
+          更多前往<router-link to="/hall/lost" class="recommend-guide-link">失物</router-link><span class="recommend-guide-sep">/</span><router-link to="/hall/found" class="recommend-guide-link">招领</router-link>大厅
+        </span>
       </div>
       <div class="recommend-grid">
         <div
@@ -99,15 +103,6 @@
             <span class="recommend-item-title">{{ r.title }}</span>
             <span class="recommend-meta">{{ ITEM_TYPE_MAP[r.type]?.label }}{{ r.category ? ' · ' + r.category : '' }}</span>
           </div>
-        </div>
-        <!-- 行末尾：大厅引导入口 -->
-        <div class="recommend-more">
-          <router-link to="/hall/lost" class="recommend-more-link">
-            前往失物大厅 <el-icon :size="12"><ArrowRight /></el-icon>
-          </router-link>
-          <router-link to="/hall/found" class="recommend-more-link">
-            前往招领大厅 <el-icon :size="12"><ArrowRight /></el-icon>
-          </router-link>
         </div>
       </div>
     </div>
@@ -225,7 +220,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories, getRecommend } from '@/api/items'
 import { publicBanners } from '@/api/banners'
 import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
-import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled, ArrowRight } from '@element-plus/icons-vue'
+import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled } from '@element-plus/icons-vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
 import { getAnnouncements } from '@/api/announcements'
@@ -451,6 +446,11 @@ onUnmounted(() => {
 }
 
 .recommend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
   margin-bottom: var(--space-3);
 }
 
@@ -469,12 +469,16 @@ onUnmounted(() => {
 }
 
 .recommend-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* 行内排布：5 张卡片等比放大，行尾引导只占内容宽度 */
+  display: flex;
+  align-items: stretch;
   gap: var(--space-4);
 }
 
 .recommend-card {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 22%;   /* 推荐不足 5 条时不让单卡被撑爆，5 条时不受影响 */
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
@@ -496,6 +500,9 @@ onUnmounted(() => {
 }
 
 .recommend-card .img-placeholder {
+  /* 覆盖 theme.css 全局 .img-placeholder 的 height:100%（否则占位图会吞掉整个卡片高度，
+     把下方白色文字区挤出卡片并被 overflow:hidden 裁掉） */
+  height: auto;
   aspect-ratio: 4 / 3;
   display: flex;
   flex-direction: column;
@@ -507,28 +514,32 @@ onUnmounted(() => {
   background: var(--neutral-100);
 }
 
-/* 推荐行末尾：大厅引导入口 */
-.recommend-more {
-  border: 1px dashed var(--border-light);
-  border-radius: var(--radius-lg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  min-height: 100%;
+/* 标题行右侧：更多入口（字号略小于标题 --text-xl/18px） */
+.recommend-guide {
+  font-size: var(--text-md);
+  color: var(--text-tertiary);
+  white-space: nowrap;
 }
-.recommend-more-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-sm);
-  font-weight: 500;
+
+.recommend-guide-link {
   color: var(--el-color-primary);
+  font-weight: 600;
   text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition-slow);
 }
-.recommend-more-link:hover { text-decoration: underline; }
+.recommend-guide-link:hover { border-bottom-color: currentColor; }
+
+.recommend-guide-sep {
+  margin: 0 3px;
+  color: var(--border-default);
+}
+
+/* 窄屏：卡片换行，引导随标题换到下一行 */
+@media (max-width: 900px) {
+  .recommend-grid { flex-wrap: wrap; }
+  .recommend-card { flex: 1 1 150px; max-width: none; }
+}
 
 /* 文字区：白色底部、左对齐（与有图卡片一致） */
 .recommend-body {

@@ -40,7 +40,7 @@
 |------|------|
 | **多模态智能匹配** | 基于 **Chinese-CLIP ViT-H-14**（默认，中文跨模态）模型，支持「以图搜图」「以文搜图」「图文混合」三种匹配模式；`open_clip ViT-B-32` 为可回滚后端，config 一键切换 |
 | **自动推送通知** | 审核通过后自动匹配异类物品（失物↔拾物），相似度达标时双向推送站内通知 + 邮件 |
-| **认领闭环** | 失物→"我要归还"、拾物→"我要认领"；申请含特征描述 + 证明图；发布者审批（同意时**互斥自动拒绝**同物品其他申请，物品转"认领中"）；联系方式**脱敏**仅对申请人可见；确认完成联动"总计找回"计数器（v3.6.0 取代旧"通知式认领"） |
+| **认领闭环** | 失物→"我要归还"、拾物→"我要认领"；申请含特征描述 + 证明图；发布者审批（同意时**互斥自动拒绝**同物品其他申请，物品转"认领中"）；联系方式仅对**通过申请**的申请人可见（完整号码，公开侧脱敏）；确认完成联动"总计找回"计数器（v3.6.0 取代旧"通知式认领"） |
 | **管理员审核** | 审核通过/驳回+邮件通知；一键批量通过；用户管理（角色/禁用/逻辑删除）；**设为首页推荐** |
 | **社区互动** | 举报（5 类 + 处理留痕 + 进度查询）、留言（楼中楼 / 本人可删 / 管理员隐藏） |
 | **多图上传** | 1-3 张图片、拖拽排序、首图封面；**仅封面参与向量检索**（打分口径零改动），多图匹配在查询侧聚合（L2 归一化→均值→再归一化） |
@@ -236,7 +236,7 @@ lost-found-v3/
 | FR-CLAIM-02 | 防冒领与防重复（物品须 active+approved、非本人、同人同物无进行中申请） | ✅ claims.py 校验 | — | ✅ |
 | FR-CLAIM-03 | 发布者审批（同意时**同事务互斥**自动拒绝其他待审申请，物品转 `claiming`） | ✅ POST /api/claims/{id}/approve | ✅ ClaimsView（含互斥提示） | ✅ |
 | FR-CLAIM-04 | 拒绝必填理由 / 申请人可撤销 / 确认完成（物品转 `claimed` + 计数器 +1） | ✅ reject / cancel / complete | ✅ ClaimsView 三操作 | ✅ |
-| FR-CLAIM-05 | 隐私：联系方式脱敏（138\*\*\*\*1234），仅申请通过后对申请人可见 | ✅ GET /api/claims/{id} | ✅ 详情页脱敏展示 | ✅ |
+| FR-CLAIM-05 | 隐私：联系方式分级可见——公开侧脱敏（138\*\*\*\*1234），申请通过后向申请人返回完整号码 | ✅ GET /api/claims/{id} | ✅ 详情页按状态展示 | ✅ |
 | FR-CLAIM-06 | `mark-claimed` 快捷标记联动已完成申请（计数器不重复计数） | ✅ items.py | — | ✅ |
 
 ### 3.7 社区互动模块 (FR-COMMUNITY) — v3.6.0
@@ -583,7 +583,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 | POST | `/api/claims` | ✅ | 提交认领申请（feature_description 必填；校验物品 active+approved、非本人、无进行中申请） |
 | GET | `/api/claims/mine` / `/api/claims/received` | ✅ | 我的申请 / 收到的申请（分页） |
 | GET | `/api/claims/status/{item_id}` | ✅ | 详情页按钮态（无申请/待审/通过/拒绝/完成/撤销） |
-| GET | `/api/claims/{id}` | ✅ | 申请详情（三方可见；status∈(1,3) 时向申请人返回**脱敏**联系方式） |
+| GET | `/api/claims/{id}` | ✅ | 申请详情（三方可见；status∈(1,3) 时向申请人返回**完整**联系方式） |
 | POST | `/api/claims/{id}/approve` | ✅ | 发布者同意（同事务互斥拒绝其他待审 + 物品转 claiming；通知申请人） |
 | POST | `/api/claims/{id}/reject` | ✅ | 发布者拒绝（`review_remark` 必填；物品保持 active） |
 | POST | `/api/claims/{id}/complete` | ✅ | 确认完成（物品转 claimed + 计数器 +1） |
@@ -639,7 +639,7 @@ HTTP 状态码：`400` 参数错误 / `401` 认证失败 / `403` 权限不足 / 
 | `/login` | LoginView | 独立（毛玻璃） | 未登录 | 校园航拍背景 + 半透明卡片；已登录自动跳转 |
 | `/register` | RegisterView | 独立（毛玻璃） | 未登录 | 同登录页风格 |
 | `/items` | HomeView | DefaultLayout | 登录 | 轮播图 + 公告栏 + 统计卡片 + 筛选栏 + 卡片网格 + 「为你推荐」+ 骨架屏 |
-| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区 + 相似推荐 + 认领闭环操作区（申请/审批入口/脱敏联系方式）+ 举报入口 |
+| `/items/:id` | ItemDetailView | DefaultLayout | 登录 | 多图画廊 + 留言区 + 相似推荐 + 认领闭环操作区（申请/审批入口/联系方式分级可见）+ 举报入口 |
 | `/publish` | PublishView | DefaultLayout | 登录 | 表单卡片 + 多图上传(1-3 张, 拖拽排序, 首图封面) |
 | `/match` | MatchView | DefaultLayout | 登录 | 匹配面板 + 多图上传 + 证据徽章/依据文案 + 结果进度条 |
 | `/claims` | ClaimsView | DefaultLayout | 登录 | 双 tab（我的申请/收到的申请）+ 同意(互斥提示)/拒绝(必填理由)/确认完成/撤销 |
@@ -963,7 +963,7 @@ with get_db_connection() as conn:
 
 | 文件 | 覆盖重点 | 用例数 |
 |------|----------|:------:|
-| `tests/test_claims.py` | 认领闭环全状态流：申请校验 / 互斥审批 / 拒绝必填 / 完成联动计数器 / 撤销 / 脱敏 | 18 |
+| `tests/test_claims.py` | 认领闭环全状态流：申请校验 / 互斥审批 / 拒绝必填 / 完成联动计数器 / 撤销 / 联系方式可见性 | 18 |
 | `tests/test_reports.py` | 举报：五类校验 / pending 去重 / 管理端筛选与处理留痕 | 9 |
 | `tests/test_comments.py` | 留言：可见性 / 楼中楼 / 级联删除 / 管理员隐藏 | 9 |
 | `tests/test_multi_image.py` | 多图：1-3 张 / 仅封面参与检索 / `keep` 语义 / 封面变更重算 | 9 |

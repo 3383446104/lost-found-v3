@@ -11,6 +11,7 @@ from ..config import settings
 from ..database import get_db_connection, vector_to_json, json_to_vector, CATEGORIES
 from ..dependencies.auth import get_current_user, resolve_optional_viewer
 from ..utils.file import allowed_file
+from ..utils.privacy import mask_phone
 from ..utils.time_utils import format_beijing_time, days_since_utc
 from ..clip_service import clip_service
 from ..validators import validate_item_title, validate_contact
@@ -271,6 +272,7 @@ async def get_items(
     # 无/非法 token 或 status!='active'（disabled/deleted）一律降级为匿名。
     viewer = resolve_optional_viewer(request)
     viewer_id = viewer["user_id"] if viewer else None
+    is_admin = bool(viewer and viewer.get("role") == "admin")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -325,6 +327,9 @@ async def get_items(
     for item in items:
         item['created_at'] = format_beijing_time(item.get('created_at'))
         item['review_time'] = format_beijing_time(item.get('review_time'))
+        # 隐私：联系方式仅发布者本人/管理员可见完整号码，其余一律脱敏
+        if not (is_admin or item.get('user_id') == viewer_id):
+            item['contact'] = mask_phone(item.get('contact'))
 
     return {"items": items, "total": total}
 
@@ -419,6 +424,10 @@ async def get_item(item_id: int, request: Request):
     result.pop('text_vector', None)
     if not (is_admin or result['user_id'] == viewer_id):
         result.pop('user_id', None)
+        # 隐私：联系方式对非发布者/非管理员脱敏（138****1234），并标记，便于前端提示
+        has_contact = bool(result.get('contact'))
+        result['contact'] = mask_phone(result.get('contact'))
+        result['contact_masked'] = has_contact
     result['created_at'] = format_beijing_time(result.get('created_at'))
     result['review_time'] = format_beijing_time(result.get('review_time'))
     return {"item": result}

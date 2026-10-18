@@ -6,7 +6,7 @@
     </div>
 
     <div v-if="item" class="detail-layout">
-      <!-- 左栏：多图画廊 -->
+      <!-- 左栏：图片 + 缩略图 -->
       <div class="detail-left">
         <div class="img-card">
           <el-image
@@ -23,15 +23,15 @@
             <el-icon :size="48"><PictureFilled /></el-icon>
             <span>暂无图片</span>
           </div>
-          <!-- 类型徽章 -->
+          <!-- 类型徽章（左上） -->
           <span
             class="type-badge"
             :style="{ background: ITEM_TYPE_MAP[item.type]?.bg, color: ITEM_TYPE_MAP[item.type]?.color }"
           >
             {{ ITEM_TYPE_MAP[item.type]?.label }}
           </span>
-          <!-- 图片数量角标 -->
-          <span v-if="images.length > 1" class="img-count-badge">{{ activeImg + 1 }} / {{ images.length }}</span>
+          <!-- 图片数量角标（右上，参照参考稿的「N 条图片」胶囊） -->
+          <span v-if="images.length" class="img-count-badge">{{ images.length }} 条图片</span>
         </div>
         <!-- 缩略图 -->
         <div v-if="images.length > 1" class="thumb-row">
@@ -46,69 +46,7 @@
             <span v-if="i === 0" class="cover-tag">封面</span>
           </div>
         </div>
-      </div>
-
-      <!-- 右栏：信息 -->
-      <div class="detail-right">
-        <!-- 标题 + 状态标签 -->
-        <div class="title-row">
-          <h1 class="item-title">{{ item.title }}</h1>
-          <div class="status-tags">
-            <span class="status-tag" :style="{ background: ITEM_STATUS_MAP[item.status]?.bg, color: ITEM_STATUS_MAP[item.status]?.color }">
-              {{ ITEM_STATUS_MAP[item.status]?.label }}
-            </span>
-            <span v-if="item.review_status" class="status-tag" :style="{ background: REVIEW_STATUS_MAP[item.review_status]?.bg, color: REVIEW_STATUS_MAP[item.review_status]?.color }">
-              审核: {{ REVIEW_STATUS_MAP[item.review_status]?.label }}
-            </span>
-          </div>
-        </div>
-
-        <!-- 驳回理由 -->
-        <div v-if="item.review_status === 'rejected' && item.reject_reason" class="reject-box">
-          <el-icon :size="18"><WarningFilled /></el-icon>
-          <span><strong>驳回理由：</strong>{{ item.reject_reason }}</span>
-        </div>
-
-        <!-- 基本信息卡片 -->
-        <div class="info-card">
-          <div class="info-rows">
-            <div class="info-row" v-if="item.category">
-              <span class="info-label">分类</span>
-              <span class="info-value">{{ item.category }}</span>
-            </div>
-            <div class="info-row" v-if="item.location">
-              <span class="info-label">位置</span>
-              <span class="info-value">{{ item.location }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">发布时间</span>
-              <span class="info-value">{{ item.created_at }}</span>
-            </div>
-            <div class="info-row" v-if="item.review_time">
-              <span class="info-label">审核时间</span>
-              <span class="info-value">{{ item.review_time }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 详细描述 -->
-        <div class="info-card" v-if="item.description">
-          <h3 class="card-section-title">详细描述</h3>
-          <p class="desc-text">{{ item.description }}</p>
-        </div>
-
-        <!-- 联系方式 -->
-        <div class="info-card contact-card" v-if="item.contact">
-          <h3 class="card-section-title">联系方式</h3>
-          <p class="contact-text">{{ item.contact }}</p>
-        </div>
-
-        <!-- v3.6.0: 认领通过后展示发布者脱敏联系方式 -->
-        <div class="info-card" v-if="ownerContactMasked">
-          <h3 class="card-section-title">发布者联系方式（已通过申请）</h3>
-          <p class="contact-text">{{ ownerContactMasked }}</p>
-        </div>
-
+        <!-- 认领/归还入口（图片下方） -->
         <!-- 认领状态提示（已有申请时） -->
         <div class="claim-section" v-if="canClaim && myClaim && [0, 1, 2, 3, 4].includes(myClaim.status)">
           <div class="claim-card claim-card--status">
@@ -120,7 +58,7 @@
                 拒绝理由：{{ myClaim.review_remark }}
               </span>
               <span class="claim-hint" v-else-if="myClaim.status === 0">请耐心等待发布者处理</span>
-              <span class="claim-hint" v-else-if="myClaim.status === 1">请查看上方联系方式，尽快与发布者完成交接</span>
+              <span class="claim-hint" v-else-if="myClaim.status === 1">请查看右侧联系方式，尽快与发布者完成交接</span>
             </div>
             <el-button
               v-if="myClaim.status === 0"
@@ -175,6 +113,75 @@
               </el-button>
             </div>
           </div>
+        </div>
+
+      </div>
+
+      <!-- 右栏：标题 / 信息 -->
+      <div class="detail-right">
+        <!-- 标题 -->
+        <div class="title-row">
+          <h1 class="item-title">{{ item.title }}</h1>
+        </div>
+
+        <!-- 驳回理由 -->
+        <div v-if="item.review_status === 'rejected' && item.reject_reason" class="reject-box">
+          <el-icon :size="18"><WarningFilled /></el-icon>
+          <span><strong>驳回理由：</strong>{{ item.reject_reason }}</span>
+        </div>
+
+        <!-- 信息区：状态标签 / 基本信息 / 详细描述 / 联系方式 —— 同一张卡片，用分隔线分区 -->
+        <div class="info-card">
+          <!-- 状态标签（卡片顶部） -->
+          <div class="status-tags">
+            <span class="status-tag" :style="{ background: ITEM_STATUS_MAP[item.status]?.bg, color: ITEM_STATUS_MAP[item.status]?.color }">
+              {{ ITEM_STATUS_MAP[item.status]?.label }}
+            </span>
+            <span v-if="item.review_status" class="status-tag" :style="{ background: REVIEW_STATUS_MAP[item.review_status]?.bg, color: REVIEW_STATUS_MAP[item.review_status]?.color }">
+              审核: {{ REVIEW_STATUS_MAP[item.review_status]?.label }}
+            </span>
+          </div>
+          <div class="info-rows">
+            <div class="info-row" v-if="item.category">
+              <span class="info-label">分类</span>
+              <span class="info-value">{{ item.category }}</span>
+            </div>
+            <div class="info-row" v-if="item.location">
+              <span class="info-label">位置</span>
+              <span class="info-value">{{ item.location }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">发布时间</span>
+              <span class="info-value">{{ item.created_at }}</span>
+            </div>
+            <div class="info-row" v-if="item.review_time">
+              <span class="info-label">审核时间</span>
+              <span class="info-value">{{ item.review_time }}</span>
+            </div>
+          </div>
+
+          <!-- 详细描述 -->
+          <section class="info-block" v-if="item.description">
+            <h3 class="card-section-title">详细描述</h3>
+            <p class="desc-text">{{ item.description }}</p>
+          </section>
+
+          <!-- 联系方式（未通过申请时脱敏展示） -->
+          <section class="info-block" v-if="item.contact && !ownerContact">
+            <h3 class="card-section-title">联系方式</h3>
+            <div class="contact-box">
+              <p class="contact-text">{{ item.contact }}</p>
+              <span v-if="item.contact_masked" class="contact-hint">为保护隐私已脱敏，认领申请通过后可见完整号码</span>
+            </div>
+          </section>
+
+          <!-- v3.6.0: 认领通过后展示发布者完整联系方式 -->
+          <section class="info-block" v-if="ownerContact">
+            <h3 class="card-section-title">发布者联系方式（已通过申请）</h3>
+            <div class="contact-box">
+              <p class="contact-text">{{ ownerContact }}</p>
+            </div>
+          </section>
         </div>
 
         <!-- 编辑/删除按钮 -->
@@ -396,7 +403,7 @@ const canClaim = computed(() => {
 
 // ---- 认领闭环状态 ----
 const myClaim = ref(null)
-const ownerContactMasked = ref('')
+const ownerContact = ref('')
 const claimVisible = ref(false)
 const claimSubmitting = ref(false)
 const cancelling = ref(false)
@@ -410,7 +417,7 @@ const loadClaimState = async () => {
     myClaim.value = res.claim || null
     if (myClaim.value && [1, 3].includes(myClaim.value.status)) {
       const detail = await getClaim(myClaim.value.id)
-      ownerContactMasked.value = detail.claim?.owner_contact_masked || ''
+      ownerContact.value = detail.claim?.owner_contact || ''
     }
   } catch {
     // 静默失败：不影响详情浏览
@@ -707,26 +714,29 @@ onMounted(loadItem)
    ======================================== */
 .detail-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-8);
+  /* 左图 + 右侧信息合并成一张白色面板；图片有宽度上限，不再随屏幕无限放大 */
+  grid-template-columns: minmax(280px, 460px) minmax(0, 1fr);
+  gap: var(--space-6);
   align-items: start;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
 }
 
 /* ========================================
-   左栏：图片卡片
+   左栏：图片 + 缩略图（在面板内，不再自成卡片）
    ======================================== */
 .detail-left {
-  position: sticky;
-  top: 80px;
+  /* 认领入口在右栏，左栏不会变得很高，这里不需要 sticky */
+  align-self: start;
 }
 
 .img-card {
   position: relative;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: var(--shadow-lg);
   background: var(--neutral-100);
-  border: 1px solid var(--border-light);
 }
 
 .hero-img {
@@ -747,29 +757,37 @@ onMounted(loadItem)
   font-size: var(--text-sm);
 }
 
+/* 类型徽章：尺寸与大厅卡片保持一致（theme.css 里的 .type-badge：3px 12px / 12px / 600）
+   必须显式 right:auto，否则会继承全局规则的 right:12px，left+right 同时生效会把徽章拉满整条 */
 .type-badge {
   position: absolute;
   top: var(--space-3);
-  right: var(--space-3);
-  padding: 4px 14px;
+  left: var(--space-3);
+  right: auto;
+  padding: 3px 12px;
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: 600;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: var(--shadow-sm);
   letter-spacing: 0.02em;
 }
 
+/* 右上角「N 条图片」胶囊（参照参考稿写法） */
 .img-count-badge {
   position: absolute;
-  bottom: var(--space-3);
+  top: var(--space-3);
   right: var(--space-3);
-  padding: 2px 10px;
+  padding: 3px 12px;
   border-radius: var(--radius-full);
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
   font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* 缩略图行 */
@@ -777,6 +795,7 @@ onMounted(loadItem)
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .thumb {
@@ -852,12 +871,19 @@ onMounted(loadItem)
   font-weight: 600;
 }
 
-/* ---- 信息卡片 ---- */
+/* 状态标签并入信息卡顶部，用分隔线与下方信息行区分 */
+.info-card > .status-tags {
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* ---- 信息区（在面板内，不再套一层卡片） ---- */
 .info-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .info-rows {
@@ -908,9 +934,19 @@ onMounted(loadItem)
   margin: 0;
 }
 
-/* 联系方式卡片 */
-.contact-card {
+/* ---- 卡片内分区（基本信息 / 详细描述 / 联系方式 合并在同一张卡片里） ---- */
+.info-block {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-light);
+}
+
+/* 联系方式：卡片内的高亮小色块，替代原来独立的卡片 */
+.contact-box {
+  padding: var(--space-3) var(--space-4);
+  background: var(--el-color-primary-light-9);
   border-left: 3px solid var(--el-color-primary);
+  border-radius: var(--radius-md);
 }
 
 .contact-text {
@@ -918,6 +954,13 @@ onMounted(loadItem)
   color: var(--el-color-primary);
   font-weight: 600;
   margin: 0;
+}
+
+.contact-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
 /* ---- 驳回提示 ---- */
@@ -933,9 +976,29 @@ onMounted(loadItem)
   font-size: var(--text-sm);
 }
 
-/* ---- 认领卡片 ---- */
+/* ---- 认领卡片（图片下方） ---- */
 .claim-section {
   /* wrapper for spacing */
+}
+
+/* 左栏：认领区与图片/缩略图之间留白 */
+.detail-left .claim-section {
+  margin-top: var(--space-4);
+}
+
+/* 左栏只有 460px 宽：按钮换到单独一行占满宽度，避免文案被挤成多行 */
+.detail-left .claim-card {
+  padding: var(--space-4);
+}
+
+.detail-left .claim-btn,
+.detail-left .claim-actions {
+  flex: 1 1 100%;
+  margin-top: var(--space-2);
+}
+
+.detail-left .claim-btn {
+  width: 100%;
 }
 
 .claim-card {
@@ -1203,6 +1266,7 @@ onMounted(loadItem)
   .detail-layout {
     grid-template-columns: 1fr;
     gap: var(--space-5);
+    padding: var(--space-4);
   }
 
   .detail-left {

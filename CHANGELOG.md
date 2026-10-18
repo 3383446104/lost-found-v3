@@ -4,6 +4,22 @@
 
 ---
 
+## V3.6.1 — 联系方式可见性调整 (2026-10-18)
+
+### 1. 认领通过后可见完整号码 ✅
+- `GET /api/claims/{id}`：status∈(1,3) 时返回 `owner_contact`（**完整**号码，用于线下交接）；未通过仍为 null，发布者/管理员侧为 null
+- 字段由 `owner_contact_masked` 改为 `owner_contact`，前端 `ItemDetailView` 同步：通过申请后展示完整号码，并隐藏公开侧脱敏行
+
+### 2. 补齐公开接口脱敏（此前遗漏） ✅
+- `GET /api/items/`、`GET /api/items/{id}`：非发布者且非管理员，`contact` 一律返回 `138****1234`（此前直接下发明文）
+- 详情接口新增 `contact_masked` 标记，前端显示「为保护隐私已脱敏」提示
+- `mask_phone()` 抽到 `backend/app/utils/privacy.py`，claims / items 共用同一口径
+
+### 3. 测试与文档
+- `tests/test_items.py` 新增 2 例（详情三方视角 / 列表脱敏）；`tests/test_claims.py` 1 例改为断言完整号码
+- `pytest tests/test_items.py tests/test_claims.py` → **34 passed**
+- SRS / PROJECT / README 中「脱敏」相关表述同步为「分级可见」
+
 ## V3.6.0 — 融合参考项目八大设计：社区化与运营闭环 (2026-10-14)
 
 ### 迭代目标

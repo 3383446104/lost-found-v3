@@ -225,7 +225,7 @@ def test_cancel_by_non_claimer_403(client, make_user, create_item, approve_item)
 # --------------------------------------------------------------------------- #
 # 隐私与查询
 # --------------------------------------------------------------------------- #
-def test_contact_masked_for_claimer_after_approve(client, make_user, create_item, approve_item):
+def test_contact_full_for_claimer_after_approve(client, make_user, create_item, approve_item):
     owner = make_user(username="pm_owner")
     claimer = make_user(username="pm_claimer")
     item_id = create_item(owner["headers"], contact="13812345678")
@@ -235,12 +235,12 @@ def test_contact_masked_for_claimer_after_approve(client, make_user, create_item
     # 待审核：看不到联系方式
     resp = client.get(f"/api/claims/{cid}", headers=claimer["headers"])
     assert resp.status_code == 200
-    assert resp.json()["claim"]["owner_contact_masked"] is None
+    assert resp.json()["claim"]["owner_contact"] is None
 
-    # 通过后：脱敏可见
+    # 通过后：可见发布者完整联系方式（线下交接用）
     client.post(f"/api/claims/{cid}/approve", headers=owner["headers"])
     resp = client.get(f"/api/claims/{cid}", headers=claimer["headers"])
-    assert resp.json()["claim"]["owner_contact_masked"] == "138****5678"
+    assert resp.json()["claim"]["owner_contact"] == "13812345678"
 
     # 发布者视角：可见申请人完整电话快照
     resp = client.get(f"/api/claims/{cid}", headers=owner["headers"])
