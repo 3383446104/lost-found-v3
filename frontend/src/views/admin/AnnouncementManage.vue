@@ -32,7 +32,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="content" label="内容" min-width="200">
-          <template #default="{ row }">{{ row.content?.substring(0, 60) }}{{ row.content?.length > 60 ? '...' : '' }}</template>
+          <template #default="{ row }">{{ plainText(row.content).substring(0, 60) }}{{ plainText(row.content).length > 60 ? '...' : '' }}</template>
         </el-table-column>
         <el-table-column prop="created_at" label="发布时间" width="160" />
         <el-table-column label="操作" width="220" align="center">
@@ -46,14 +46,28 @@
       </el-table>
     </div>
 
-    <!-- 公告编辑对话框 -->
-    <el-dialog v-model="annDialogVisible" :title="editingAnn?.id ? '编辑公告' : '新建公告'" width="500px" :close-on-click-modal="false">
+    <!-- 公告编辑对话框（富文本图文排版） -->
+    <el-dialog v-model="annDialogVisible" :title="editingAnn?.id ? '编辑公告' : '新建公告'" width="720px" :close-on-click-modal="false">
       <el-form label-position="top">
         <el-form-item label="标题" required>
           <el-input v-model="annForm.title" placeholder="公告标题" maxlength="100" />
         </el-form-item>
         <el-form-item label="内容" required>
-          <el-input v-model="annForm.content" type="textarea" :rows="5" placeholder="公告内容" maxlength="1000" show-word-limit />
+          <div class="editor-wrap">
+            <Toolbar
+              class="editor-toolbar"
+              :editor="editorRef"
+              :defaultConfig="toolbarConfig"
+              mode="default"
+            />
+            <Editor
+              v-model="annForm.content"
+              class="editor-body"
+              :defaultConfig="editorConfig"
+              mode="default"
+              @onCreated="handleEditorCreated"
+            />
+          </div>
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="annForm.is_pinned">置顶公告</el-checkbox>
@@ -76,10 +90,40 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, unpublishAnnouncement } from '@/api/announcements'
+import { ref, shallowRef, onMounted, onBeforeUnmount } from 'vue'
+import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement, unpublishAnnouncement, uploadAnnouncementImage } from '@/api/announcements'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import '@wangeditor/editor/dist/css/style.css'
+import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+
+// 富文本编辑器：图文排版（标题/加粗/列表/引用/图片上传等）
+const editorRef = shallowRef()
+const toolbarConfig = {
+  excludeKeys: ['group-video', 'fullScreen', 'insertTable', 'codeBlock'],
+}
+const editorConfig = {
+  placeholder: '请输入公告内容（支持图文排版）…',
+  MENU_CONF: {
+    uploadImage: {
+      async customUpload(file, insertFn) {
+        try {
+          const res = await uploadAnnouncementImage(file)
+          const url = `/api/items/uploads/${res.path}`
+          insertFn(url, res.path, url)
+        } catch {
+          ElMessage.error('图片上传失败')
+        }
+      },
+    },
+  },
+}
+const handleEditorCreated = (editor) => {
+  editorRef.value = editor
+}
+onBeforeUnmount(() => {
+  editorRef.value?.destroy()
+})
 
 const announcements = ref([])
 const annLoading = ref(false)
@@ -87,6 +131,9 @@ const annDialogVisible = ref(false)
 const annSaving = ref(false)
 const editingAnn = ref(null)
 const annForm = ref({ title: '', content: '', is_pinned: false, target_role: 'all' })
+
+// 表格预览：富文本剥离标签
+const plainText = (html) => (html || '').replace(/<[^>]+>/g, '')
 
 const loadAnnouncements = async () => {
   annLoading.value = true
@@ -166,5 +213,20 @@ onMounted(loadAnnouncements)
 
 .page-header .page-title {
   margin-bottom: var(--space-1);
+}
+
+/* ---- 富文本编辑器 ---- */
+.editor-wrap {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  width: 100%;
+}
+.editor-toolbar {
+  border-bottom: 1px solid var(--border-light);
+}
+.editor-body {
+  height: 280px;
+  overflow-y: auto;
 }
 </style>

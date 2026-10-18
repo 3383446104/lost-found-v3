@@ -116,14 +116,16 @@ def stub_clip(monkeypatch):
 def stub_email(monkeypatch):
     """阻断真实 SMTP 发送，避免测试触碰网络。
 
-    match_service 在模块级 import 了 send_match_notification（持自有引用），
-    只桩 email_utils 对 match_service 无效，必须直接桩 match_service 的引用。
+    match_service / announcements 在模块级 import 了 send_*（持自有引用），
+    只桩 email_utils 对它们无效，必须直接桩各模块的引用。
     """
     import app.utils.email_utils as email_utils
     import app.services.match_service as match_service
+    import app.api.announcements as announcements
 
     monkeypatch.setattr(email_utils, "send_email", lambda *a, **k: True)
     monkeypatch.setattr(match_service, "send_match_notification", lambda *a, **k: True)
+    monkeypatch.setattr(announcements, "send_email", lambda *a, **k: True)
 
 
 @pytest.fixture(autouse=True)

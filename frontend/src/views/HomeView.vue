@@ -26,62 +26,55 @@
       </el-carousel>
     </div>
 
-    <!-- 数据看板（统计卡片 + 饼图合一；首页专属） -->
-    <div class="dashboard" v-if="!hallType && stats">
-      <div class="dashboard-left">
-        <div class="stat-grid">
-          <div class="stat-item">
-            <span class="stat-num">{{ stats.active_count || 0 }}</span>
-            <span class="stat-label">展示中</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-num" style="color:#E57373">{{ stats.today_lost || 0 }}</span>
-            <span class="stat-label">今日失物</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-num" style="color:#66BB6A">{{ stats.today_found || 0 }}</span>
-            <span class="stat-label">今日拾物</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-num" style="color:var(--el-color-primary)">{{ stats.total_claimed || 0 }}</span>
-            <span class="stat-label">总计找回</span>
+    <!-- 统计卡片 + 校园公告：同一高度各占一半（首页专属） -->
+    <div class="home-mid" v-if="!hallType && (stats || announcements.length)">
+      <!-- 统计卡片（左半） -->
+      <div class="dashboard" v-if="stats">
+        <div class="dashboard-left">
+          <div class="stat-grid">
+            <div class="stat-item">
+              <span class="stat-num">{{ stats.active_count || 0 }}</span>
+              <span class="stat-label">展示中</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" style="color:#E57373">{{ stats.today_lost || 0 }}</span>
+              <span class="stat-label">今日失物</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" style="color:#66BB6A">{{ stats.today_found || 0 }}</span>
+              <span class="stat-label">今日拾物</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" style="color:var(--el-color-primary)">{{ stats.total_claimed || 0 }}</span>
+              <span class="stat-label">总计找回</span>
+            </div>
           </div>
         </div>
+        <div class="dashboard-right" v-if="stats.categories?.length >= 3">
+          <div class="pie-mini" ref="pieChartRef"></div>
+        </div>
       </div>
-      <div class="dashboard-right" v-if="stats.categories?.length >= 3">
-        <div class="pie-mini" ref="pieChartRef"></div>
-      </div>
-    </div>
 
-    <!-- 公告入口卡片（首页专属） -->
-    <div class="announce-card" v-if="!hallType && announcements.length" @click="annDrawerVisible = true">
-      <div class="announce-card-icon">
-        <el-icon :size="20"><Bell /></el-icon>
-      </div>
-      <div class="announce-card-body">
-        <span class="announce-card-title" v-if="pinnedAnn">{{ pinnedAnn.title }}</span>
-        <span class="announce-card-title" v-else>系统公告</span>
-        <span class="announce-card-hint" v-if="announcements.length > 1">共 {{ announcements.length }} 条，点击查看全部</span>
-      </div>
-      <el-icon class="entry-arrow"><ArrowRight /></el-icon>
-    </div>
-
-    <!-- 公告抽屉 -->
-    <el-drawer v-if="!hallType" v-model="annDrawerVisible" title="系统公告" size="420px" direction="rtl">
-      <div class="ann-drawer-list">
-        <div v-for="a in announcements" :key="a.id" class="ann-drawer-item" :class="{ pinned: a.is_pinned }">
-          <div class="ann-drawer-head" @click="a._open = !a._open">
+      <!-- 校园公告（右半）：置顶优先 + 最新，最多 5 条 -->
+      <div class="announce-panel" v-if="announcements.length">
+        <div class="announce-panel-head">
+          <h2 class="announce-panel-title">校园公告</h2>
+          <router-link to="/announcements" class="announce-more">查看更多 →</router-link>
+        </div>
+        <div class="announce-panel-list">
+          <div
+            v-for="a in announcements.slice(0, 5)"
+            :key="a.id"
+            class="announce-panel-item"
+            @click="$router.push(`/announcements/${a.id}`)"
+          >
             <el-tag v-if="a.is_pinned" type="warning" size="small" effect="dark">置顶</el-tag>
-            <span class="ann-drawer-title">{{ a.title }}</span>
-            <span class="ann-drawer-time">{{ a.created_at }}</span>
-            <el-icon class="ann-drawer-arrow" :class="{ open: a._open }"><ArrowDown /></el-icon>
-          </div>
-          <div class="ann-drawer-content" v-show="a._open">
-            <p>{{ a.content }}</p>
+            <span class="announce-panel-title-text">{{ a.title }}</span>
+            <span class="announce-panel-time">{{ a.created_at }}</span>
           </div>
         </div>
       </div>
-    </el-drawer>
+    </div>
 
     <!-- v3.6.0：为你推荐（管理员审核时勾选的推荐位；首页专属） -->
     <div v-if="!hallType && recommends.length" class="recommend-section">
@@ -224,7 +217,6 @@ import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFi
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
 import { getAnnouncements } from '@/api/announcements'
-import { Bell, ArrowRight } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 
 const route = useRoute()
@@ -241,12 +233,10 @@ const categories = ref([])
 const showMine = ref(false)
 const stats = ref(null)
 const announcements = ref([])
-const annDrawerVisible = ref(false)
 // v3.6.0：轮播图 + 为你推荐
 const banners = ref([])
 const recommends = ref([])
 
-const pinnedAnn = computed(() => announcements.value.find(a => a.is_pinned))
 const pieChartRef = ref(null)
 let pieChart = null
 
@@ -324,7 +314,11 @@ const loadStats = async () => {
 }
 
 const loadAnnouncements = async () => {
-  try { const res = await getAnnouncements(); announcements.value = res.announcements || [] } catch { }
+  // 首页公告面板最多 5 条（后端已按 置顶优先 + 最新 排序）
+  try {
+    const res = await getAnnouncements(false, { size: 5 })
+    announcements.value = res.announcements || []
+  } catch { }
 }
 
 // v3.6.0：轮播图与推荐位
@@ -567,55 +561,70 @@ onUnmounted(() => {
 
 .pie-mini { width: 150px; height: 150px; }
 
-/* ---- 公告入口卡片 ---- */
-.announce-card {
+/* ---- 统计 + 校园公告：等宽等高两块 ---- */
+.home-mid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+  align-items: stretch;
+}
+.home-mid .dashboard { margin-bottom: 0; }
+
+.announce-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+}
+.announce-panel-head {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4);
-  background: var(--el-color-primary-light-9);
-  border: 1px solid var(--el-color-primary-light-6);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  margin-bottom: var(--space-5);
-  transition: all var(--transition-fast);
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
 }
-.announce-card:hover { border-color: var(--el-color-primary); box-shadow: var(--shadow-sm); }
-.announce-card-icon {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: var(--el-color-primary);
-  color: white;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+.announce-panel-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
 }
-.announce-card-body { flex: 1; min-width: 0; }
-.announce-card-title { font-weight: 600; color: var(--el-color-primary); font-size: var(--text-base); }
-.announce-card-hint { display: block; font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px; }
-.entry-arrow { color: var(--el-color-primary); flex-shrink: 0; }
+.announce-more {
+  font-size: var(--text-sm);
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+.announce-more:hover { text-decoration: underline; }
 
-/* ---- 公告抽屉 ---- */
-.ann-drawer-list { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-4); }
-.ann-drawer-item { border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; }
-.ann-drawer-item.pinned { border-color: #FFE082; background: #FFFDF5; }
-.ann-drawer-head {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-3) var(--space-4); cursor: pointer;
+.announce-panel-list { flex: 1; display: flex; flex-direction: column; }
+.announce-panel-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
   transition: background var(--transition-fast);
 }
-.ann-drawer-head:hover { background: var(--neutral-50); }
-.ann-drawer-title { font-weight: 500; color: var(--text-primary); flex: 1; }
-.ann-drawer-time { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
-.ann-drawer-arrow { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
-.ann-drawer-arrow.open { transform: rotate(180deg); }
-.ann-drawer-content {
-  padding: 0 var(--space-4) var(--space-4);
-  font-size: var(--text-base); line-height: 1.8; color: var(--text-secondary);
-  border-top: 1px solid var(--border-light);
-  margin: 0 var(--space-4);
+.announce-panel-item:last-child { border-bottom: none; }
+.announce-panel-item:hover { background: var(--neutral-50); }
+.announce-panel-title-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.ann-drawer-content p { margin: var(--space-3) 0 0; }
+.announce-panel-time { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
 
 @media (max-width: 640px) {
+  .home-mid { grid-template-columns: 1fr; }
   .dashboard { flex-direction: column; }
   .dashboard-right { width: 100%; }
   .pie-mini { width: 120px; height: 120px; }

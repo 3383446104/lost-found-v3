@@ -73,6 +73,18 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/announcements',
+    name: 'Announcements',
+    component: () => import('@/views/AnnouncementListView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/announcements/:id',
+    name: 'AnnouncementDetail',
+    component: () => import('@/views/AnnouncementDetailView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/ProfileView.vue'),

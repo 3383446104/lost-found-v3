@@ -345,6 +345,13 @@ def init_db():
             cursor.execute("ALTER TABLE announcements ADD COLUMN status TEXT DEFAULT 'published'")
             logger.info("迁移成功：announcements 表已添加 status 列（草稿/发布分离）")
 
+        # 迁移：公告浏览计数（校园公告详情页）
+        cursor.execute("PRAGMA table_info(announcements)")
+        ann_cols_view = [r['name'] for r in cursor.fetchall()]
+        if 'view_count' not in ann_cols_view:
+            cursor.execute("ALTER TABLE announcements ADD COLUMN view_count INTEGER DEFAULT 0")
+            logger.info("迁移成功：announcements 表已添加 view_count 列")
+
         # ---- 目录准备 ----
         os.makedirs(settings.UPLOAD_FOLDER, exist_ok=True)
 
