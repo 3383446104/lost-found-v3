@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">物品管理</h1>
-        <p class="page-desc">审核新发布物品，管理在库物品状态与首页推荐位</p>
+        <p class="page-desc">审核新发布物品，管理在库物品状态</p>
       </div>
     </div>
 
@@ -95,12 +95,6 @@
             <el-tag v-else-if="row.status==='pending'" type="warning" size="small" effect="plain">待审核</el-tag>
             <el-tag v-else-if="row.status==='claimed'" type="info" size="small">{{ row.type === 'lost' ? '已找回' : '已归还' }}</el-tag>
             <el-tag v-else size="small">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="推荐" width="70" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_recommend" size="small" effect="dark" color="#F9A825">推荐</el-tag>
-            <span v-else style="color:var(--text-muted);font-size:var(--text-xs)">—</span>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="时间" width="160" />
