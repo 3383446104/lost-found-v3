@@ -37,7 +37,7 @@
           <div class="recovery-ring" ref="recoveryRef"></div>
           <div class="recovery-meta">
             <div class="hero-num">{{ (recovery.recovery_rate * 100).toFixed(1) }}%</div>
-            <p class="hero-caption">已完成 {{ recovery.claimed_total }} / 可找回盘子 {{ recovery.processed_total }}</p>
+            <p class="hero-caption">已完成 {{ recovery.claimed_total }} / 已处理物品 {{ recovery.processed_total }}</p>
             <p class="hero-caption">
               失物 {{ recovery.by_type?.lost ?? 0 }} · 招领 {{ recovery.by_type?.found ?? 0 }} · 完成认领单 {{ recovery.completed_claims ?? 0 }}
             </p>
