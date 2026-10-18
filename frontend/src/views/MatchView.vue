@@ -5,7 +5,7 @@
 
     <div class="match-form">
       <!-- 目标类型 -->
-      <div class="panel-section">
+      <div class="panel-section panel-section--target">
         <label class="panel-label">匹配目标</label>
         <el-radio-group v-model="targetType" size="large">
           <el-radio-button value="found">
@@ -19,7 +19,7 @@
       </div>
 
       <!-- 图片上传（v3.6.0：1-3 张多图综合评分） -->
-      <div class="panel-section">
+      <div class="panel-section panel-section--upload">
         <label class="panel-label">上传图片 <span class="label-badge">图像匹配</span></label>
         <div class="upload-area" @click="triggerUpload">
           <input ref="fileInput" type="file" accept=".jpg,.jpeg,.png,.gif,.webp" @change="handleFileSelected" style="display:none" />
@@ -49,7 +49,7 @@
       </div>
 
       <!-- 文字描述 -->
-      <div class="panel-section">
+      <div class="panel-section panel-section--text">
         <label class="panel-label">文字描述 <span class="label-badge">文本匹配</span></label>
         <el-input v-model="text" type="textarea" :rows="3" placeholder="用一句话描述物品，例如：黑色皮质长款钱包，正面有金属拉链和圆形徽章，里面夹着校园卡..." maxlength="300" show-word-limit />
         <p class="panel-hint">建议用完整自然语言描述；把最关键的特征（颜色 / 品牌 / 特殊标记）写在前 {{ TEXT_TOWER_WINDOW }} 字内，识别更准。</p>
@@ -60,7 +60,7 @@
       </div>
 
       <!-- 类别与位置（可选，提升匹配精度） -->
-      <div class="panel-section">
+      <div class="panel-section panel-section--catloc">
         <label class="panel-label">类别与位置 <span class="label-badge">可选</span></label>
         <div class="form-row">
           <el-select v-model="category" placeholder="选择类别" clearable style="flex:1" size="large">
@@ -73,10 +73,12 @@
       </div>
 
       <!-- 匹配按钮 -->
-      <el-button type="primary" size="large" :loading="matching" @click="doMatch" :disabled="!imagePath && !text.trim()" class="match-btn">
-        <el-icon><Connection /></el-icon>
-        {{ matching ? 'AI 匹配中...' : '开始智能匹配' }}
-      </el-button>
+      <div class="match-btn-wrap">
+        <el-button type="primary" size="large" :loading="matching" @click="doMatch" :disabled="!imagePath && !text.trim()" class="match-btn">
+          <el-icon><Connection /></el-icon>
+          {{ matching ? 'AI 匹配中...' : '开始智能匹配' }}
+        </el-button>
+      </div>
     </div>
 
     <!-- 匹配结果 -->
@@ -268,19 +270,37 @@ const doMatch = async () => {
 </script>
 
 <style scoped>
-/* 网页式平铺表单：无卡片容器，区块以分隔线区隔 */
+/* 网页式平铺表单：左栏（目标/描述/类别位置）+ 右栏（图片/按钮）两列布局 */
 .match-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: var(--space-8);
+  align-items: start;
   margin-bottom: var(--space-10);
 }
 
 .match-form .panel-section {
-  padding-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
   border-bottom: 1px solid var(--border-light);
+  min-width: 0;
 }
-.match-form .panel-section:last-of-type { border-bottom: none; }
+
+/* 右栏：上传区占满右侧三行高度，按钮右下对齐 */
+.panel-section--upload {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  border-bottom: none;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+.panel-section--upload .upload-area { flex: 1; }
+.match-btn-wrap {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+}
 
 .panel-section { display: flex; flex-direction: column; gap: var(--space-3); }
 
@@ -396,6 +416,7 @@ const doMatch = async () => {
 }
 
 .match-btn {
+  width: 240px;
   height: 48px; font-size: var(--text-lg); font-weight: 600;
   letter-spacing: 0.02em; border-radius: var(--radius-md);
 }
@@ -489,8 +510,10 @@ const doMatch = async () => {
   display: flex; gap: var(--space-3); align-items: center;
 }
 
-@media (max-width: 640px) {
-  .match-panel { padding: var(--space-5); border-radius: var(--radius-lg); }
+@media (max-width: 768px) {
+  .match-form { grid-template-columns: 1fr; }
+  .panel-section--upload { grid-column: 1; grid-row: auto; }
+  .match-btn-wrap { grid-column: 1; }
   .upload-area { padding: var(--space-5); min-height: 100px; }
   .form-row { flex-direction: column; }
 }

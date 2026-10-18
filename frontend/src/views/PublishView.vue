@@ -16,6 +16,9 @@
         hide-required-asterisk
         class="publish-form"
       >
+        <!-- 基本信息 -->
+        <p class="form-section">基本信息</p>
+
         <!-- 类型选择 -->
         <el-form-item label="物品类型" prop="type">
           <el-radio-group v-model="form.type" size="large">
@@ -55,6 +58,9 @@
           </p>
         </el-form-item>
 
+        <!-- 联系与位置 -->
+        <p class="form-section">联系与位置</p>
+
         <div class="form-row">
           <el-form-item label="位置" prop="location" class="form-grow">
             <el-input v-model="form.location" placeholder="丢失或发现地点" size="large" />
@@ -65,7 +71,8 @@
         </div>
 
         <!-- 图片上传（v3.6.0：1-3 张，拖拽排序，首图为封面） -->
-        <el-form-item label="物品图片">
+        <p class="form-section">物品图片</p>
+        <el-form-item>
           <input
             ref="fileInput"
             type="file"
@@ -101,7 +108,7 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" native-type="submit" :loading="submitting" size="large" style="width:100%" class="submit-btn">
+          <el-button type="primary" native-type="submit" :loading="submitting" size="large" class="submit-btn">
             {{ isEdit ? '保存修改' : '发布物品' }}
           </el-button>
         </el-form-item>
@@ -308,6 +315,16 @@ onMounted(async () => {
   flex: 1;
 }
 
+.form-section {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-6) 0 var(--space-4);
+  padding: 0 0 var(--space-2) var(--space-2);
+  border-left: 3px solid var(--el-color-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+
 .field-hint {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
@@ -330,12 +347,18 @@ onMounted(async () => {
 }
 
 .submit-btn {
+  width: 240px;
+  margin-left: auto;
   height: 46px;
   font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: 0.03em;
   border-radius: var(--radius-md);
   margin-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .submit-btn { width: 100%; }
 }
 
 .upload-area {
