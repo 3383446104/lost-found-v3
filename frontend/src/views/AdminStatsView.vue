@@ -29,46 +29,55 @@
       </div>
     </div>
 
+    <!-- 图表区：找回率(1/3) + 发布趋势(2/3) 并排；分类占比全宽 -->
     <div class="charts-grid">
       <!-- 找回率 -->
       <div class="chart-card">
         <h2 class="chart-title">找回率</h2>
-        <div class="recovery-box">
-          <div class="recovery-ring" ref="recoveryRef"></div>
-          <div class="recovery-meta">
-            <div class="hero-num">{{ (recovery.recovery_rate * 100).toFixed(1) }}%</div>
-            <p class="hero-caption">已完成 {{ recovery.claimed_total }} / 已处理物品 {{ recovery.processed_total }}</p>
-            <p class="hero-caption">
-              失物 {{ recovery.by_type?.lost ?? 0 }} · 招领 {{ recovery.by_type?.found ?? 0 }} · 完成认领单 {{ recovery.completed_claims ?? 0 }}
-            </p>
+        <div class="recovery-ring" ref="recoveryRef"></div>
+        <p class="recovery-caption">已完成 {{ recovery.claimed_total }} / 已处理物品 {{ recovery.processed_total }}</p>
+        <div class="recovery-stats">
+          <div class="r-stat">
+            <span class="r-stat-num">{{ recovery.by_type?.lost ?? 0 }}</span>
+            <span class="r-stat-label">失物找回</span>
+          </div>
+          <div class="r-stat">
+            <span class="r-stat-num">{{ recovery.by_type?.found ?? 0 }}</span>
+            <span class="r-stat-label">招领找回</span>
+          </div>
+          <div class="r-stat">
+            <span class="r-stat-num">{{ recovery.completed_claims ?? 0 }}</span>
+            <span class="r-stat-label">完成认领单</span>
           </div>
         </div>
       </div>
 
       <!-- 发布趋势 -->
-      <div class="chart-card chart-card--wide">
+      <div class="chart-card">
         <h2 class="chart-title">近 {{ trendDays }} 天发布趋势</h2>
         <div class="chart-box" ref="trendRef"></div>
-        <el-table :data="trend" size="small" class="trend-table" max-height="200">
+        <el-table :data="trend" size="small" class="trend-table" max-height="160">
           <el-table-column prop="date" label="日期" width="100" />
           <el-table-column prop="lost" label="失物" width="100" />
           <el-table-column prop="found" label="招领" width="100" />
         </el-table>
       </div>
 
-      <!-- 分类占比 -->
-      <div class="chart-card">
+      <!-- 分类占比：饼图与表格左右并排 -->
+      <div class="chart-card chart-card--wide pie-card">
         <h2 class="chart-title">分类占比（展示中物品）</h2>
-        <div class="chart-box" ref="pieRef"></div>
-        <el-table :data="categories" size="small" class="pie-table" max-height="200">
-          <el-table-column prop="name" label="分类" />
-          <el-table-column prop="count" label="数量" width="80" />
-          <el-table-column label="占比" width="90">
-            <template #default="{ row }">
-              {{ percentOf(row.count) }}
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="pie-card-body">
+          <div class="chart-box chart-box--pie" ref="pieRef"></div>
+          <el-table :data="categories" size="small" class="pie-table" max-height="300">
+            <el-table-column prop="name" label="分类" />
+            <el-table-column prop="count" label="数量" width="80" align="right" />
+            <el-table-column label="占比" width="90" align="right">
+              <template #default="{ row }">
+                {{ percentOf(row.count) }}
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
     </div>
   </div>
@@ -114,21 +123,23 @@ const renderRecovery = () => {
       endAngle: -30,
       min: 0,
       max: 1,
-      progress: { show: true, width: 10, itemStyle: { color: '#2a78d6' } },
-      axisLine: { lineStyle: { width: 10, color: [[1, '#e1e0d9']] } },
+      radius: '100%',
+      center: ['50%', '58%'],
+      progress: { show: true, width: 12, roundCap: true, itemStyle: { color: '#1baf7a' } },
+      axisLine: { lineStyle: { width: 12, color: [[1, '#e1e0d9']] } },
       axisTick: { show: false },
       splitLine: { show: false },
       axisLabel: { show: false },
       pointer: { show: false },
       anchor: { show: false },
-      title: { show: true, offsetCenter: [0, '38%'], fontSize: 13, color: MUTED_INK },
+      title: { show: false },
       detail: {
         valueAnimation: true,
-        fontSize: 26,
+        fontSize: 30,
         fontWeight: 700,
         color: primaryInk(),
         formatter: (v) => (v * 100).toFixed(1) + '%',
-        offsetCenter: [0, '8%']
+        offsetCenter: [0, '42%']
       },
       data: [{ value: rate, name: '找回率' }]
     }]
@@ -188,11 +199,18 @@ const renderPie = () => {
   if (!pieChart) pieChart = echarts.init(pieRef.value)
   pieChart.setOption({
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { top: 0, textStyle: { color: primaryInk() } },
+    legend: {
+      orient: 'vertical',
+      right: 0,
+      top: 'middle',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: primaryInk(), fontSize: 12 }
+    },
     series: [{
       type: 'pie',
       radius: ['42%', '72%'],
-      center: ['50%', '58%'],
+      center: ['38%', '50%'],
       itemStyle: { borderColor: 'transparent', borderWidth: 2, borderRadius: 4 },
       label: { show: false },
       emphasis: { label: { show: true, color: primaryInk(), fontWeight: 700 } },
@@ -276,11 +294,12 @@ onUnmounted(() => {
 
 .tile-label { font-size: var(--text-xs); color: var(--text-tertiary); }
 
-/* 图表区 */
+/* 图表区：找回率(1fr) + 趋势(2fr) 并排；分类占比全宽 */
 .charts-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 2fr;
   gap: var(--space-5);
+  align-items: stretch;
 }
 
 .chart-card {
@@ -289,6 +308,8 @@ onUnmounted(() => {
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
 }
 
 .chart-card--wide { grid-column: 1 / -1; }
@@ -300,27 +321,57 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-.chart-box { width: 100%; height: 280px; }
+.chart-box { width: 100%; height: 300px; }
 
-.recovery-box { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
-.recovery-ring { width: 220px; height: 160px; }
-.recovery-meta { flex: 1; min-width: 160px; }
-
-.hero-num {
-  font-size: 40px;
+/* 找回率卡 */
+.recovery-ring { width: 100%; height: 210px; }
+.recovery-caption {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  margin: var(--space-3) 0 0;
+}
+.recovery-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-light);
+}
+.r-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.r-stat-num {
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
 }
+.r-stat-label { font-size: var(--text-xs); color: var(--text-tertiary); }
 
-.hero-caption { color: var(--text-tertiary); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
+.trend-table { margin-top: var(--space-3); }
 
-.trend-table, .pie-table { margin-top: var(--space-3); }
+/* 分类占比：饼图 + 表格左右并排 */
+.pie-card-body {
+  display: flex;
+  gap: var(--space-6);
+  align-items: stretch;
+  flex: 1;
+  min-height: 300px;
+}
+.chart-box--pie { flex: 1; min-width: 0; height: auto; min-height: 300px; }
+.pie-table { width: 46%; flex-shrink: 0; }
 
 @media (max-width: 768px) {
   .charts-grid { grid-template-columns: 1fr; }
   .chart-card--wide { grid-column: auto; }
   .chart-box { height: 220px; }
+  .pie-card-body { flex-direction: column; }
+  .chart-box--pie { min-height: 240px; }
+  .pie-table { width: 100%; }
 }
 </style>
