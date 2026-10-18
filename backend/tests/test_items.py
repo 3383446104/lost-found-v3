@@ -41,9 +41,34 @@ def test_list_items_only_approved_active_for_others(client, make_user, create_it
     assert pending_id not in other_ids
     assert approved_id in other_ids
 
-    # 属主：可以看到自己的未审核物品
+    # 属主：公共列表同样看不到自己的未审核物品（待审/驳回不进公共大厅）
     owner_ids = {it["id"] for it in client.get("/api/items/", headers=owner["headers"]).json()["items"]}
-    assert pending_id in owner_ids
+    assert pending_id not in owner_ids
+
+    # 「我的发布」上下文（user_id=自己）：可以看到自己的未审核物品
+    mine = client.get(f"/api/items/?user_id={owner['id']}", headers=owner["headers"])
+    mine_ids = {it["id"] for it in mine.json()["items"]}
+    assert pending_id in mine_ids
+
+
+def test_rejected_items_not_in_public_hall(client, make_admin, create_item):
+    """驳回物品不出现在公共大厅（管理员也只能在管理后台看到自己的驳回物品）。"""
+    admin = make_admin(username="rej_admin")
+    item_id = create_item(admin["headers"], title="被驳回的物品")
+    resp = client.put(
+        f"/api/admin/reviews/{item_id}",
+        json={"action": "rejected", "reason": "信息不全"},
+        headers=admin["headers"],
+    )
+    assert resp.status_code == 200
+
+    # 大厅（按类型浏览）：看不到驳回物品
+    hall_ids = {it["id"] for it in client.get("/api/items/?type=lost", headers=admin["headers"]).json()["items"]}
+    assert item_id not in hall_ids, "驳回物品不应出现在公共大厅"
+
+    # 管理端待驳回列表：可见
+    admin_items = client.get("/api/admin/items?review=rejected", headers=admin["headers"]).json()
+    assert item_id in {it["id"] for it in admin_items["items"]}, "驳回物品应出现在管理后台"
 
 
 # --------------------------------------------------------------------------- #

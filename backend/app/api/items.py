@@ -281,12 +281,15 @@ async def get_items(
         params = []
         count_params = []
 
-        # 统一规则：已审核+活跃的物品 OR 自己的物品(排除已找回/已关闭)
-        viewer_param = viewer_id if viewer_id else -1
-        base_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
-        count_query += " AND ( (review_status = 'approved' AND status = 'active') OR (user_id = ? AND status NOT IN ('claimed', 'closed')) )"
-        params.append(viewer_param)
-        count_params.append(viewer_param)
+        # 可见性规则分两种上下文：
+        # - 「我的发布」上下文（user_id = 自己）：展示自己的全部物品（含待审/驳回，排除已找回/已关闭）
+        # - 公共浏览（首页/大厅）：仅 已审核 + 活跃（驳回/待审物品只出现在管理后台与个人中心，不进公共大厅）
+        if user_id and user_id == viewer_id:
+            base_query += " AND status NOT IN ('claimed', 'closed')"
+            count_query += " AND status NOT IN ('claimed', 'closed')"
+        else:
+            base_query += " AND review_status = 'approved' AND status = 'active'"
+            count_query += " AND review_status = 'approved' AND status = 'active'"
 
         if user_id:
             base_query += " AND user_id = ?"
