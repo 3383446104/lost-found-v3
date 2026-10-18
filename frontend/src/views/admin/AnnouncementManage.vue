@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">公告管理</h1>
-        <p class="page-desc">草稿/发布分离，置顶与可见范围控制；编辑在独立页面进行</p>
+        <p class="page-desc">草稿/发布分离，置顶控制；编辑在独立页面进行</p>
       </div>
     </div>
 
@@ -20,9 +20,6 @@
             <span>{{ row.title }}</span>
             <el-tag v-if="row.is_pinned" type="warning" size="small" style="margin-left:6px">置顶</el-tag>
           </template>
-        </el-table-column>
-        <el-table-column prop="target_role" label="范围" width="90">
-          <template #default="{ row }">{{ row.target_role==='all'?'全体':row.target_role==='user'?'用户':'管理' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">

@@ -7,7 +7,8 @@
       </div>
     </div>
 
-    <div class="card edit-card" v-loading="loading">
+    <!-- 完全平铺：无卡片容器，编辑区随内容增高，页面直接滚动 -->
+    <div v-loading="loading">
       <el-form label-position="top">
         <el-form-item label="标题" required>
           <el-input v-model="form.title" placeholder="公告标题" maxlength="100" size="large" />
@@ -31,13 +32,6 @@
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="form.is_pinned">置顶公告</el-checkbox>
-        </el-form-item>
-        <el-form-item label="可见范围">
-          <el-radio-group v-model="form.target_role">
-            <el-radio value="all">全体用户</el-radio>
-            <el-radio value="user">仅普通用户</el-radio>
-            <el-radio value="admin">仅管理员</el-radio>
-          </el-radio-group>
         </el-form-item>
         <div class="form-actions">
           <el-button @click="$router.push('/admin/announcements')">取消</el-button>
@@ -73,6 +67,8 @@ const toolbarConfig = {
 }
 const editorConfig = {
   placeholder: '请输入公告内容（支持图文排版）…',
+  // 关闭编辑器内部滚动：内容区随内容增高，由页面滚轮滚动，不会被遮挡
+  scroll: false,
   MENU_CONF: {
     uploadImage: {
       async customUpload(file, insertFn) {
@@ -151,22 +147,21 @@ onMounted(() => {
 .page-header > div:first-child { flex: 1; min-width: 0; }
 .page-header .page-title { margin-bottom: var(--space-1); }
 
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xs);
-}
-.edit-card { padding: var(--space-6); max-width: 960px; }
-
 .editor-wrap {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   overflow: hidden;
   width: 100%;
+  background: var(--bg-card);
 }
 .editor-toolbar { border-bottom: 1px solid var(--border-light); }
-.editor-body { height: 480px; overflow-y: auto; }
+/* 编辑器随内容增高（scroll:false），由页面滚轮滚动 */
+.editor-body { min-height: 480px; }
+.editor-body :deep(.w-e-text-container) {
+  height: auto !important;
+  min-height: 480px;
+  overflow-y: visible !important;
+}
 
 .form-actions {
   display: flex;
