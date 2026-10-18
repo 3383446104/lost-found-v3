@@ -7,7 +7,6 @@
       <span>该物品上次审核未通过，修改后将重新提交审核</span>
     </div>
 
-    <div class="publish-card">
       <el-form
         ref="formRef"
         :model="form"
@@ -15,6 +14,7 @@
         @submit.prevent="submit"
         label-position="top"
         hide-required-asterisk
+        class="publish-form"
       >
         <!-- 类型选择 -->
         <el-form-item label="物品类型" prop="type">
@@ -106,7 +106,6 @@
           </el-button>
         </el-form-item>
       </el-form>
-    </div>
   </div>
 </template>
 
@@ -294,14 +293,10 @@ onMounted(async () => {
   margin-right: auto;
 }
 
-.publish-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  padding: var(--space-8);
-  max-width: 640px;
-  margin: 0 auto;
-  box-shadow: var(--shadow-sm);
+/* 网页式平铺表单：无卡片容器，分区以左侧竖条标题区隔 */
+.publish-form {
+  display: flex;
+  flex-direction: column;
 }
 
 .form-row {
@@ -466,10 +461,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
-  .publish-card {
-    padding: var(--space-5);
-    border-radius: var(--radius-lg);
-  }
   .form-row {
     flex-direction: column;
     gap: var(--space-4);

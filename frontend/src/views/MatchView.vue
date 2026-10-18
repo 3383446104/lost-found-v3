@@ -3,7 +3,7 @@
     <h1 class="page-title">智能匹配</h1>
     <p class="page-desc">上传图片或输入文字描述，系统将综合图像、分类、位置、时效多维匹配</p>
 
-    <div class="match-panel">
+    <div class="match-form">
       <!-- 目标类型 -->
       <div class="panel-section">
         <label class="panel-label">匹配目标</label>
@@ -268,18 +268,19 @@ const doMatch = async () => {
 </script>
 
 <style scoped>
-.match-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  padding: var(--space-8);
+/* 网页式平铺表单：无卡片容器，区块以分隔线区隔 */
+.match-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  max-width: 640px;
-  margin: 0 auto var(--space-10);
-  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-10);
 }
+
+.match-form .panel-section {
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border-light);
+}
+.match-form .panel-section:last-of-type { border-bottom: none; }
 
 .panel-section { display: flex; flex-direction: column; gap: var(--space-3); }
 
