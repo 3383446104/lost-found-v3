@@ -35,13 +35,13 @@
     <!-- 批量操作工具栏 -->
     <div v-if="items.length && !loading" class="batch-toolbar">
       <el-button type="success" size="small" :disabled="selectedIds.length===0" @click="handleBatch('approve')" :loading="batchLoading">
-        批量通过 ({{ selectedIds.length }})
+        通过 ({{ selectedIds.length }})
       </el-button>
       <el-button type="warning" size="small" :disabled="selectedIds.length===0" @click="handleBatch('close')" :loading="batchLoading">
-        批量关闭
+        关闭
       </el-button>
       <el-button type="danger" size="small" :disabled="selectedIds.length===0" @click="handleBatch('delete')" :loading="batchLoading" plain>
-        批量删除
+        删除
       </el-button>
     </div>
 
