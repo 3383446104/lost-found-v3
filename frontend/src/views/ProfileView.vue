@@ -132,7 +132,8 @@
               </div>
               <span :class="['status-tag', statusClass(item.status)]">{{ statusLabel(item.status) }}</span>
               <div class="item-actions">
-                <el-button size="small" text type="primary" @click="editItem(item.id)">编辑</el-button>
+                <!-- v3.6.1：已审核通过的物品不可再编辑，只能删除 -->
+                <el-button v-if="item.review_status !== 'approved'" size="small" text type="primary" @click="editItem(item.id)">编辑</el-button>
                 <el-button
                   v-if="item.status === 'active'"
                   size="small" text type="success"

@@ -121,11 +121,13 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createItem, updateItem, getItem, getCategories } from '@/api/items'
 import { getImageUrl, parseItemImages } from '@/utils/helpers'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled, CircleCheckFilled, UploadFilled, WarningFilled, Plus, Close } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const isEdit = computed(() => !!route.query.edit)
 const categories = ref([])
 const submitting = ref(false)
@@ -256,6 +258,12 @@ onMounted(async () => {
     try {
       const data = await getItem(route.query.edit)
       if (data.item) {
+        // v3.6.1：已审核通过的物品不允许发布者再编辑（管理员除外），直接退回详情页
+        if (data.item.review_status === 'approved' && !authStore.isAdmin) {
+          ElMessage.warning('该物品已审核通过，无法修改；如需更正请删除后重新发布')
+          router.replace(`/items/${route.query.edit}`)
+          return
+        }
         form.value = {
           type: data.item.type || 'lost',
           title: data.item.title || '',

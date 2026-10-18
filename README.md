@@ -140,7 +140,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | POST | `/api/items/` | 发布物品（FormData，支持 1-3 张图） |
 | GET | `/api/items/` | 物品列表 |
 | GET | `/api/items/{id}` | 物品详情 |
-| PUT | `/api/items/{id}` | 编辑物品（多图 `keep` 保留顺序 + 新增） |
+| PUT | `/api/items/{id}` | 编辑物品（多图 `keep` 保留顺序 + 新增；审核通过后发布者只能删除） |
 | DELETE | `/api/items/{id}` | 删除物品 |
 | POST | `/api/items/match` | 智能匹配（需登录，支持多图 `image_paths`） |
 | GET | `/api/items/recommend` | 首页推荐位（管理员设为推荐） |

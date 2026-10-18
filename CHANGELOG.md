@@ -15,9 +15,14 @@
 - 详情接口新增 `contact_masked` 标记，前端显示「为保护隐私已脱敏」提示
 - `mask_phone()` 抽到 `backend/app/utils/privacy.py`，claims / items 共用同一口径
 
-### 3. 测试与文档
+### 3. 审核通过后不可编辑（只能删除） ✅
+- `PUT /api/items/{id}`：发布者对 `review_status='approved'` 的物品编辑返回 **403**（「该物品已审核通过，无法修改；如需更正请删除后重新发布」），管理员不受限
+- 前端：详情页隐藏「编辑物品」并给出说明；个人中心「我的发布」对已通过物品隐藏编辑按钮；`/publish?edit=` 直达时拦截并跳回详情
+- 删除能力保持不变
+
+### 4. 测试与文档
 - `tests/test_items.py` 新增 2 例（详情三方视角 / 列表脱敏）；`tests/test_claims.py` 1 例改为断言完整号码
-- `pytest tests/test_items.py tests/test_claims.py` → **34 passed**
+- `pytest tests/test_items.py tests/test_claims.py tests/test_multi_image.py tests/test_admin.py` → **49 passed**
 - SRS / PROJECT / README 中「脱敏」相关表述同步为「分级可见」
 
 ## V3.6.0 — 融合参考项目八大设计：社区化与运营闭环 (2026-10-14)

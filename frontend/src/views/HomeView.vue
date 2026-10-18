@@ -84,7 +84,7 @@
         </h2>
         <!-- 标题行右侧：更多入口，链接落在「失物」「招领」两字上 -->
         <span class="recommend-guide">
-          更多前往<router-link to="/hall/lost" class="recommend-guide-link">失物</router-link><span class="recommend-guide-sep">/</span><router-link to="/hall/found" class="recommend-guide-link">招领</router-link>大厅
+          更多信息请点击前往<router-link to="/hall/lost" class="recommend-guide-link">失物</router-link><span class="recommend-guide-sep">/</span><router-link to="/hall/found" class="recommend-guide-link">招领</router-link>大厅
         </span>
       </div>
       <div class="recommend-grid">

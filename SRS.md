@@ -127,7 +127,7 @@ router.afterEach:
 | FR-ITEM-04 | 类别筛选 | 7 类别：电子产品/证件卡片/包袋箱包/书籍文具/服装配饰/钥匙门禁/其他 |
 | FR-ITEM-05 | 关键词搜索 | title 或 description LIKE 模糊匹配 |
 | FR-ITEM-06 | 物品详情 | `GET /api/items/{id}` — 公开访问，未审核物品仅限发布者/管理员可见。返回全部字段（不含向量） |
-| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）。非管理员编辑后 review_status 重置为 pending |
+| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）。非管理员编辑后 review_status 重置为 pending。**审核通过后发布者不可再编辑（返回 403），只能删除；管理员不受限** |
 | FR-ITEM-08 | 删除物品 | `DELETE /api/items/{id}` — 仅本人/管理员。同时删除图片文件 |
 | FR-ITEM-09 | 图片访问 | `GET /api/items/uploads/{filename}` — 公开，路径遍历防护 |
 | FR-ITEM-10 | 多图上传（v3.6.0） | 1-3 张，首图封面（`images` 有序 JSON）；**仅封面参与向量检索**；编辑用 `keep`（保留文件新顺序）+ 新图，封面变更才重算向量、移除的文件同步删除 |
@@ -326,7 +326,7 @@ router.afterEach:
 | GET | `/api/items/{id}/similar` | ❌ 公开 | 详情页相似物品（反类型 + 复用匹配口径） |
 | POST | `/api/items/match` | ✅ | 智能匹配（需登录；支持 `image_paths` 多图 ≤3） |
 | POST | `/api/items/temp-upload` | ✅ | 临时上传匹配图片 |
-| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；多图 `keep` + 新图） |
+| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；多图 `keep` + 新图；**已审核通过 → 发布者 403**） |
 | DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员；清理全部图片） |
 | PUT | `/api/items/{id}/mark-claimed` | ✅ | 发布者标记物品已找回/已认领（允许 active/claiming，联动已完成申请） |
 

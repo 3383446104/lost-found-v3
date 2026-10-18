@@ -147,6 +147,39 @@ def test_list_masks_contact_for_others(client, make_user, create_item, approve_i
     assert target["contact"] == "139****9000"
 
 
+def test_owner_cannot_update_approved_item(client, make_user, create_item, approve_item):
+    """v3.6.1：审核通过后发布者只能删除，不能修改。"""
+    owner = make_user(username="lock_owner")
+    item_id = create_item(owner["headers"], title="待审核可编辑")
+
+    payload = {
+        "title": "改名后的物品",
+        "description": "黑色钱包",
+        "category": "其他",
+        "contact": "",
+        "location": "图书馆",
+    }
+
+    # 待审核：可编辑
+    ok = client.put(f"/api/items/{item_id}", data=payload, headers=owner["headers"])
+    assert ok.status_code == 200
+
+    approve_item(item_id)
+
+    # 审核通过：禁止编辑
+    locked = client.put(
+        f"/api/items/{item_id}",
+        data={**payload, "title": "通过后再改名"},
+        headers=owner["headers"],
+    )
+    assert locked.status_code == 403
+    assert "无法修改" in locked.json()["detail"]
+
+    # 删除仍然可用
+    deleted = client.delete(f"/api/items/{item_id}", headers=owner["headers"])
+    assert deleted.status_code == 200
+
+
 def test_get_item_owner_includes_user_id(client, make_user, create_item, approve_item):
     owner = make_user(username="appr_owner2")
     item_id = create_item(owner["headers"])

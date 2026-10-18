@@ -184,7 +184,7 @@ lost-found-v3/
 | FR-ITEM-04 | 类别筛选 | ✅ category 参数 | ✅ el-select categories | ✅ |
 | FR-ITEM-05 | 关键词搜索 | ✅ keyword LIKE 查询 | ✅ el-input search | ✅ |
 | FR-ITEM-06 | 物品详情 | ✅ GET /api/items/{id} | ✅ ItemDetailView | ✅ |
-| FR-ITEM-07 | 编辑物品（本人/管理员） | ✅ PUT /api/items/{id} | ✅ PublishView?edit= | ✅ |
+| FR-ITEM-07 | 编辑物品（本人/管理员；**审核通过后仅管理员**） | ✅ PUT /api/items/{id}（通过后发布者 403） | ✅ PublishView?edit=（通过后跳回详情） | ✅ |
 | FR-ITEM-08 | 删除物品（含图片文件） | ✅ DELETE /api/items/{id} | ✅ ItemDetailView | ✅ |
 | FR-ITEM-09 | CLIP 特征提取（图像+文本向量，维度随后端：cn_clip 1024 / open_clip 512） | ✅ create_item/update_item | — | ✅ |
 | FR-ITEM-10 | 多图上传（1-3 张，首图封面，拖拽排序；**仅封面参与向量检索**） | ✅ create_item/update_item（images / keep） | ✅ PublishView 网格 + 原生拖拽 | ✅ |
@@ -473,7 +473,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 | POST | `/api/items/` | ✅ | 发布物品（FormData；`images` 1-3 张，首图封面，仅封面算向量） |
 | GET | `/api/items/` | ❌ | 物品列表（分页+筛选） |
 | GET | `/api/items/{id}` | ❌ | 物品详情（公开；内部解析 token，未审核物品仅发布者/管理员可见） |
-| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；`keep` 保留文件新顺序 + 新图，封面变更才重算向量） |
+| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；`keep` 保留文件新顺序 + 新图，封面变更才重算向量；**审核通过后发布者 403**） |
 | DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员；清理 images 全部文件） |
 | POST | `/api/items/match` | ✅ | 智能匹配（JSON body，需登录；支持 `image_paths` 多图） |
 | GET | `/api/items/recommend` | ❌ | 首页推荐位（`is_recommend=1` + active + approved） |

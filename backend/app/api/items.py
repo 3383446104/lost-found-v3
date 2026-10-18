@@ -596,6 +596,9 @@ async def update_item(
         user = cursor.fetchone()
         if item['user_id'] != user_id and user['role'] != 'admin':
             raise HTTPException(403, "无权修改此物品")
+        # v3.6.1：已审核通过的物品，发布者不可再修改（仅可删除；管理员不受限）
+        if item['review_status'] == 'approved' and user['role'] != 'admin':
+            raise HTTPException(403, "该物品已审核通过，无法修改；如需更正请删除后重新发布")
 
     form = await request.form()
     title = form.get('title')

@@ -184,11 +184,12 @@
           </section>
         </div>
 
-        <!-- 编辑/删除按钮 -->
+        <!-- 编辑/删除（v3.6.1：已审核通过的物品对发布者只读，只能删除） -->
         <div class="action-bar" v-if="canEdit">
-          <el-button type="primary" @click="editItem" size="large">
+          <el-button v-if="canModify" type="primary" @click="editItem" size="large">
             <el-icon><Edit /></el-icon>编辑物品
           </el-button>
+          <span v-else class="edit-locked-hint">该物品已审核通过，无法修改；如需更正请删除后重新发布</span>
           <el-button type="danger" @click="handleDelete" size="large" plain>
             <el-icon><Delete /></el-icon>删除
           </el-button>
@@ -390,6 +391,12 @@ const previewList = computed(() => images.value.map((f) => getImageUrl(f)))
 const canEdit = computed(() => {
   if (!item.value) return false
   return authStore.isAdmin || item.value.user_id === authStore.user?.id
+})
+
+// v3.6.1：审核通过后发布者不可再编辑（管理员不受限），只保留删除
+const canModify = computed(() => {
+  if (!canEdit.value) return false
+  return authStore.isAdmin || item.value?.review_status !== 'approved'
 })
 
 const actionWord = computed(() => (item.value?.type === 'lost' ? '归还' : '认领'))
@@ -1076,6 +1083,16 @@ onMounted(loadItem)
   display: flex;
   gap: var(--space-3);
   padding-top: var(--space-2);
+}
+
+.edit-locked-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.6;
 }
 
 /* ========================================
