@@ -65,10 +65,11 @@ def _set_text_vector_null(item_id):
 # --------------------------------------------------------------------------- #
 # 鉴权契约（冻结）
 # --------------------------------------------------------------------------- #
-def test_v350_match_without_token_403_not_authenticated(client):
+def test_v350_match_without_token_401_not_authenticated(client):
     resp = client.post("/api/items/match", json={"text": "黑色钱包", "target_type": "found"})
-    assert resp.status_code == 403, f"期望 403，实得 {resp.status_code}"
-    assert resp.json().get("detail") == "Not authenticated"
+    # v3.6.2：未携带凭证由 HTTPBearer(auto_error=False) → 401「未提供认证凭证」
+    assert resp.status_code == 401, f"期望 401，实得 {resp.status_code}"
+    assert resp.json().get("detail") == "未提供认证凭证"
 
 
 def test_v350_match_with_invalid_token_401(client):

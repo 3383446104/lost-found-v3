@@ -4,6 +4,312 @@
 
 ---
 
+## V3.7.0 — 打分口径 v2：单分数 + 标题向量 + 字面门控 (2026-11-09)
+
+> 目标：提高检索准确率。不是换模型，而是**修三个让正确结果拿不到分、错误结果拿到虚高分**的结构性缺陷。
+
+### 1. 单一分数：消灭「展示分 ≠ 判定分」 ✅
+- 旧口径同时返回 `score`（含时间衰减与跨模态惩罚）/ `content_score`（内容尺度）/ `reference_score`（最强通道），
+  房卡（id=67）实测三者分别为 **0.5677 / 0.5677 / 0.7569** —— 界面显示 0.7569，判定用 0.5677，用户与开发者都被误导。
+- v2 起 `score == content_score == reference_score`，`ranking_score = score × 时间衰减` **只用于排序**。
+- 时间衰减不进判定分：阈值是在「不含时间」的内容尺度上标定的，乘进去会让 81 天前的强命中（0.905 → 0.565）被系统性过滤。
+
+### 2. 跨模态通道：去掉硬截断（恒零缺陷）✅
+- 旧逻辑把跨模态余弦线性映射到 `[0,1]` 并 **clip**；真实数据上跨模态余弦恒为 **0.107~0.191**，全部低于 `MATCH_CROSS_REF_LO=0.194` → 映射后**一律为 0**。
+- 纯文字查询下退化为 `content_score = 0.75×tt`，等效门槛被抬到 `tt ≥ 0.8333`：正解房卡（tt 0.7569）被挡，错解眼镜（0.8599）漏过。
+- v2 改为**仿射缩放但不截断** `(x−LO)/(HI−LO)`：正负差距放大 9.6 倍，且低于 LO 的取值保留序关系（0.1908 → −0.031）。
+- 消融实测（关键教训）：直接喂原始余弦 → Precision **0.75 → 0.46**；仿射缩放但保留截断 → 两字查询全部归 0；**仿射不截断** → P 回到 0.825。
+
+### 3. 标题独立向量 `title_vector` ✅
+- 全文向量是 `encode(title + description)`，描述会把标题稀释成嵌合体（房卡：标题 1.0000 / 全文 0.7569）。
+- `items` 新增 `title_vector` 列（`init_db` 内 PRAGMA 检测 + `ALTER TABLE` 幂等迁移），发布/编辑时写入，历史数据用 `scripts/backfill_title_vectors.py` 回填（本库 13 条）。
+- 文本通道取 **max(标题, 全文)** 而非加权平均 —— 取 max 才能让「描述写歪了」不拖累正解。
+
+### 4. 字面命中：短文本各向异性下的唯一确定性证据 ✅
+- Chinese-CLIP 短文本余弦存在严重各向异性：查询「笔记本」对「学生证」竟有 **0.8436**，高于真解「一本蓝色的笔记本」的 0.7877。
+- 新增确定性特征 `_literal_hit` → {1.0 完全相同 / 0.8 标题包含 / 0.4 仅描述命中 / 0 无重合}，乘 `V2_LITERAL_BONUS=0.15` 加分。
+
+### 5. 标题通道信任门槛 `V2_TITLE_GATE`（本轮新发现并修复）✅
+- 标题通道常开会引入新的误报：查询「房卡」对「一个手机」的**标题余弦 0.7783**（其全文仅 0.4571），直接越过手动阈值 → 搜「房卡」带出「一个手机」。
+- 根因同第 4 条：两字标题的余弦普遍落在 0.75~0.85。此时唯一可信的是字面。
+- 修复：仅当字面命中（≥0.8）时才允许标题通道取代全文，否则退回全文向量（`"always"` 可回滚）。
+- 真实库混淆度量（`scripts/eval_literal_pairs.py`，7 条 approved 条目 / 42 对非字面配对）：
+  | 门控 | 均值 | 最高 | 越阈值率 @0.6763 |
+  |---|:--:|:--:|:--:|
+  | `always` | 0.7299 | 0.8500 | **26/42 = 61.9%** |
+  | `literal` | 0.6482 | 0.8500 | **8/42 = 19.0%** |
+
+### 6. 阈值按口径分派 ✅
+- 新增 `match_threshold(kind)`：`manual / auto / email` 三类业务门槛按 `MATCH_SCORING_MODE` 取对应字段，杜绝「改了公式忘了改阈值」。
+- `/match`、`/items/{id}/matches`、自动匹配服务、`resolve_legend` 全部改走该函数。
+- v2（含门控）标定结果：`V2_THRESHOLD_MANUAL=0.6763`（R≥0.90 处 P=0.8049）、`V2_THRESHOLD_AUTO=0.7685`（P≥0.90 处 R=0.5833）、`V2_THRESHOLD_EMAIL=0.8500`。
+
+### 7. A/B 消融（`scripts/calibrate_v2.py`，`eval/eval_set_v3.5.0.json`，有效 n=78）
+| 口径 | Recall@1 | Recall@3 | P@手动阈值 | R@自动阈值 |
+|---|:--:|:--:|:--:|:--:|
+| legacy（v3.6.x） | 0.7778 | 1.0000 | 0.7500 | 0.6111 |
+| v2（标题常开） | 0.7500 | 1.0000 | 0.8250 | 0.5833 |
+| v2+（字面门控） | 0.7222 | 1.0000 | 0.8049 | 0.5833 |
+
+> 该评测集的正样本查询**被约束为不得含目标 title 原词**，因此字面特征基本为 0，且无法体现门控收益 ——
+> 报告详见 `docs/review/scoring-v2-ablation.md`，真实查询形态的收益以第 5 节混淆度量为准。
+
+### 8. 接口与可解释性
+- `/match` 返回新增 `literal_hit`；`similarity`（判定分）/ `content_score` / `match_score`（排序分）三者语义显式区分。
+- 新增 `scripts/inspect_scores.py`：按与线上完全相同的代码路径打印每个候选的通道拆解，答辩演示与调参排错用。
+
+### 9. 测试
+- 新增 `tests/test_scoring_v2.py`（19 例）：单分数同源、空通道、标题优于全文、无全文向量时标题通道关闭、字面分级、加分封顶、时间只进排序、阈值分派、未知 kind、legacy 回滚、**标题门控 4 例**。
+- 全量：**328 passed / 2 skipped**（跳过项为需真实权重的 smoke）。
+
+### 10. 版本
+- `APP_VERSION` → `3.7.0`；`MATCH_SCORING_MODE` 置 `legacy` 可整口径回滚。
+
+### 11. 评测集 v3.7.0：素材图重建（自包含 · 七分类 · 字面子集）✅
+- **问题**：旧集锚定 `backend/uploads/` + `lost_found.db`，两者均被 `.gitignore` 排除 → 新克隆上 6 个图片引用**全缺失**；且只有 4 个类别，`包袋箱包 / 服装配饰 / 其他` 零正样本。
+- **做法**：素材图（桌面 `校园失物招领-素材图`，7 类 76 张）经人工认物后写入清单，复制到 `eval/images/<ascii-slug>/`（**不受 gitignore 影响**），由 `scripts/build_eval_set_v3.7.0.py` 生成 **69 件 / 293 对**：
+  改写正样本 69 + 字面正样本 69 + 跨类负 69 + **同类硬负 68** + 图片查询负 18。
+- **隐私**：一张含姓名与签名的「学生请假条」刻意不收；身份证照片对**姓名行打码**（`REDACT`，只改副本）。
+- **标定脚本配套**：字面查询（`literal_query=true`）**排除在阈值标定之外**、单列「手动阈值通过率」；新增**负样本切片**（跨类/同类/图片查询的均分与越阈值率）与 `P@硬负`；`auto < manual` 时显式告警（负样本偏易的信号）。
+- **结果**（真实 ViT-H-14，224 对改写样本 / 69 件候选）：
+
+  | 口径 | R@1 | R@3 | P@手动 | 同类 FP | P@硬负 | 字面通过率 |
+  |---|:--:|:--:|:--:|:--:|:--:|:--:|
+  | legacy | 0.8261 | 0.9275 | 0.8182 | 12/68 (17.6%) | 0.8400 | **71.0%**（最低 0.2982） |
+  | v2 | 0.8986 | 1.0000 | 0.9130 | 6/68 (8.8%) | 0.9130 | 100%（最低 0.8695） |
+  | **v2+（现行）** | **0.9275** | 0.9855 | **0.9265** | **5/68 (7.4%)** | **0.9265** | 100% |
+
+  → v2+ 在每一项上领先；**legacy 有 29% 的字面查询过不了阈值**（最低 0.2982），正是旧口径「等效门槛被抬到 tt≥0.8333」的直接后果。
+- **用途边界**：该集用于**口径相对比较 / 覆盖补盲 / 可复现回归**；因查询与标签同源、负样本仍以跨类为主，**不作为生产阈值重标依据**（生产仍用 v3.5.0 集）。报告见 `docs/review/scoring-v2-ablation-v3.7.0.md`。
+
+### 12. 同义词/别名词典（`app/utils/synonyms.py`）✅
+- **问题**：`V2_TITLE_GATE="literal"` 要求字面命中 ≥ 0.8 才放行标题向量，而字面是**子串匹配** →
+  「校园卡 × 一卡通」「课本 × 高等数学教材」判 0，标题通道被误关，系统退化为只剩全文向量。
+  用户明明知道东西叫什么，系统却不认。
+- **做法**：13 组同义词（校园卡≡一卡通≡饭卡 / 门禁卡≡门卡≡出入卡 / 充电宝≡移动电源 /
+  数据线≡充电线 / 耳机盒≡充电盒≡耳机仓 / 教材≡课本≡教科书 / 双肩包≡书包≡背包 /
+  钱包≡钱夹≡皮夹 / 雨伞≡折叠伞≡遮阳伞≡太阳伞 / 伞套≡伞袋 / U盘≡优盘≡闪存盘 /
+  保温杯≡水杯≡茶杯 / 笔记本≡记事本）。
+- **四条硬约束**（导入时断言，违反即抛错）：只收「同一实物不同叫法」不收上下位；
+  **不改写文本**只做同组交叉判断（否则「校园卡套」会变成「一卡通套」）；每词 ≥ 2 字；
+  组内任意两词互不相含（否则子串逻辑先命中，词典形同虚设）。
+- **关键发现（差点踩坑）**：词典只知道「同一类」，不知道「同一件」。v3.7.0 集上 7 对受影响，
+  其中 **5 条正样本 +0.12，2 条同类负样本也 +0.12**（课本×办公软件教材、折叠伞×格纹雨伞）
+  → 判别力不增，但「同类负样本最高分」从 0.7774 抬到 **0.8554，越过邮件阈值 0.85**。
+  修复：同义命中强度仍记 0.8（放行门控），但加分打 3 折（`ALIAS_BONUS_SCALE=0.3`）——
+  只放行通道，不放大加分。修复后同类最高分回到 **0.7774**，误报数不变。
+- **效果**（v3.7.0 集，v2+ 口径）：`R@自动阈值 0.9710 → 0.9855`；R@1 / R@3 / P@手动 /
+  同类 FP（5/68）/ 字面通过率（100%）全部不变。v3.5.0 集（生产锚定）指标**完全不变**，
+  故生产阈值不受影响。
+- **开关**：`V2_SYNONYM_ENABLED=false` 可整口径关闭（消融对比用）。
+- **测试**：`tests/test_synonyms.py` 25 例（结构约束 4 + 语义 13 + 接口 4 + 门控联动 4）。
+  全量 **353 passed / 2 skipped**。
+
+### 13. 加权融合算法独立成 `app/services/fusion.py`（论文式 4-1 ~ 4-4）✅
+- **动机**：答辩要能指着一段代码说"这是算法"。原实现散在 `clip_service.compute_score_v2` 与
+  `config` 的十几个 `V2_*` 字段里，公式只存在于注释，论文难以引用。
+- **做法**：拆成两个**纯函数**，与模型/数据库/配置完全解耦：
+  - `channels_from_sims()` —— 一级：通道级加权（式 4-1 标题门控、式 4-2 仿射映射）
+  - `fuse()` —— 二级：证据级加权（式 4-3 缺通道归一化、式 4-4 先验 + 字面加分）
+  - `FusionWeights`（frozen dataclass）+ `with_overrides()`，参数不可变、便于消融
+  - `compute_score_v2` 退化为**参数装配层**，委托 fusion 计算；数值逐位不变（353 测试全绿）
+- **权重敏感性实验**（`scripts/fit_fusion_weights.py`，5×5×5 网格、目标 J=½(R@1+R@3)）：
+  设计取值与搜索最优 **同分**（0.9565）；125 个组合中 **32 个（26%）落在最优值 0.5pp 内**，
+  $w_{mod}$ 覆盖 0.60~1.00、$w_{cross}$ 覆盖 0.15~0.30。
+  → 结论：**权重在本数据规模上不可辨识，只有比值 $w_{cross}/w_{text}$ 有意义**，
+  设计取值落在平台区内。论文表述为"对参数不敏感"，而非"调到最优"。
+- **论文底稿**：`docs/algorithm/weighted-fusion.md`（问题形式化 / 符号表 / 式 4-1~4-4 /
+  参数来源表 / 权重平台区 / 决策规则 / 伪代码与复杂度 / 消融 / 局限）。
+- **测试**：`tests/test_fusion.py` 24 例（仿射三点定标 + 不截断、门控回退、缺通道归一化、
+  先验与封顶、与 `compute_score_v2` 数值一致性）。
+
+### 14. 发布者撤销认领：补上「认领中」的回退回路 ✅
+- **问题**：同意认领后物品 `active → claiming`，公共大厅立即不可见（列表硬过滤 `status='active'`）、
+  详情页对非属主 404。若申请人爽约，**只有管理员**能通过后台把状态改回 `active`，
+  发布者没有自救入口 → 物品"静默下架"，且没人知道原因。
+- **新增** `POST /api/claims/{id}/revoke`（`claims.py`）：
+  - 权限：物品发布者或管理员；拒绝非属主（403）；
+  - 前置：申请为 `1（已通过）` 且物品为 `claiming`（若已 `claimed` 说明交接完成 → 400）；
+  - 动作：申请 `→ 4（已撤销，review_remark="发布者撤销认领"）`，物品 `claiming → active`，
+    事务内带状态条件更新（`WHERE status=1` / `WHERE status='claiming'`），并发下第二个请求 409/400；
+  - 通知：站内 + 邮件通知**申请人**（与申请人主动撤销的通知方向相反）。
+- **前端**：`ClaimsPanel.vue`「收到的申请」页，`status===1 && item_status==='claiming'` 时显示
+  「撤销认领」按钮（二次确认，文案说明适用于未按时交接）。
+- **测试**：`tests/test_claims.py` +4 例（正常撤销后物品回到公共列表、非属主 403、
+  交接完成后 400、重复撤销 400）。全量 **383 passed / 2 skipped**；`vite build` 通过。
+
+### 15. 修复「同意认领后，认领中心点不进详情页」✅
+- **现象**：物品进入 `claiming` 后，申请人从「个人中心 → 认领中心」点物品 → 详情页显示
+  「物品不存在」；发布者能跳转，但页面弹窗同样提示「物品不存在」。
+- **三个独立成因**（都在“非 active 即不可见”这条过度简化的规则上）：
+  1. `GET /api/items/{id}` 对非属主要求 `status='active'` → 申请人 404。
+     **但 `claims.py` 的分级可见设计恰恰要求“同意后申请人能看到发布者完整号码”，
+     这条链路在页面上根本走不到**；
+  2. `GET /api/items/{id}/similar` 与 `GET /api/comments/item/{id}` 同样只认 `active` → 返回 404，
+     被前端全局拦截器 `ElMessage.error` 弹成「物品不存在」。发布者虽能看详情，也躲不过这两个子请求；
+  3. 前端 `loadClaimState()` 以 `canClaim`（要求 `status==='active'`）作门控 → 物品变 `claiming`
+     后**根本不去拉** `claimStatus` / `ownerContact`，即使后端已返回完整号码也不会展示。
+- **修复**：
+  - `items.py::get_item`：可见性改为「已审核 + （active **或** 该用户是 `status∈{1,3}` 的申请人）」。
+    新增 `_is_claim_party()`，只认已通过/已完成，**待审核不享受例外**（否则“提交申请即可围观”）。
+  - `items.py::similar_items`：只要求 `review_status='approved'`（相似推荐只读、不涉隐私）。
+  - `comments.py::_item_visible`：同步去掉 `status='active'` 限制（留言对已认领物品保留展示有意义）。
+  - `ItemDetailView.vue::loadClaimState`：门控从 `canClaim` 改为「是否登录」，未登录才跳过。
+- **测试**：`tests/test_claims.py` +4 例（申请人可开详情并拿到 `owner_contact` 完整号码、
+  无关用户仍 404、属主的详情+相似+留言全 200、完成后双方仍可回看）。
+  全量 **387 passed / 2 skipped**；`vite build` 通过。
+
+### 16. 收紧相似推荐门槛 + 等级与分数同源 ✅
+- **现象**：详情页「相似推荐」把 **69.7%** 的「笔记本 × 学生证」推出来，并标注**高度疑似**。
+- **两个独立原因**：
+  1. `similar_items` 的展示门槛取 `match_threshold("manual")`（0.6763）—— 相似推荐是
+     **系统主动呈现**（用户没在搜），误报成本高于手动检索结果，不该与手动列表同档；
+  2. `level` 由 `build_evidence()` 按**单通道阈值**（文-文 ≥ 0.606）判定，与 v2 的单一判定分
+     脱节。短标题的两字词余弦普遍 0.75~0.85 → 一条 0.697 的弱相关因为「标题余弦 0.84」
+     被判成 high_suspect，界面上出现「69.7% + 高度疑似」自相矛盾。
+- **修复**：
+  - `similar_items` 门槛改为 `match_threshold("auto")`（0.7685）；0.70 的弱相关不再上详情页。
+  - 新增 `clip_service._level_from_score()`：v2 下等级由**判定分**决定，与三档阈值一一对应
+    （≥0.85 confirmed / ≥0.7685 high_suspect / ≥0.6763 related / 其余 reference），
+    `basis` 仍由通道给出（保留可解释性）。
+- **测试**：`test_similar_recommend.py` +1（0.70 不进、0.90 进，且门槛取 auto）；
+  `test_scoring_v2.py` +2（等级随分数分档、0.68 的弱匹配不得标高度疑似）。
+  全量 **390 passed / 2 skipped**。
+
+### 17. 取消管理员对已发布物品的编辑豁免 ✅
+- **理由**（用户提出，属实）：管理员能改数据本身就是风险 —— 一次「顺手改标题/换图」
+  会让「已审核」退化成**一次性动作**，且改动**不留审核痕迹**（`reviewer_id` / `review_time`
+  仍是原审核人，事后无法判断线上内容是否等于被审内容）。
+- **改动**：
+  - `items.py::update_item`：`if item['review_status'] == 'approved'` → 403，**不再区分角色**
+    （原为「仅拒绝非管理员」）。提示语改为「请联系管理员下架后重新发布」。
+  - `ItemDetailView.vue::canModify`：去掉 `authStore.isAdmin ||`，已通过物品对**所有人**隐藏「编辑物品」，
+    仅保留「删除」与状态操作。
+- **管理员的替代手段**（均有留痕）：`PUT /api/admin/items/{id}/status` 下架/关闭、
+  `DELETE` 删除、审核队列处置。**待审核/已驳回**的物品仍可编辑（纠正错误→重新送审）。
+- **测试**：`test_items.py` +2（管理员改已通过物品 → 403 且内容未变；管理员改待审核物品仍 200）。
+  全量 **392 passed / 2 skipped**。
+
+### 18. 修复「发布者点认领通知无反应」✅
+- **现象**：认领流程启动后，**申请人**能从消息页跳到物品详情，**发布者**点了没反应。
+- **原因**（不是缺设计，是链接写错）：`claims.py` 给发布者的两条通知用了
+  `link="/claims/received"`，而前端路由只有 `/claims` + `?tab=received`，
+  **没有 `/claims/received` 这个路径** → `router.push` 匹配不到路由，静默失败。
+  申请人的通知一直写的是 `/items/{item_id}`，所以正常。
+- **修复**：
+  - `create_claim`（收到申请）与 `cancel_claim`（申请被撤销）两处链接改为 `/items/{item_id}`：
+    发布者点开即到物品详情，页面已内置「有用户申请处理该物品 + 处理申请」入口，再跳认领中心；
+  - 前端 `NotificationsView.vue` 增加 `LEGACY_LINK_MAP`：**库中已存在的旧通知**
+    （`/claims/received`）点击时映射到 `/claims?tab=received`，避免存量数据继续点不动；
+  - 全仓核对其余通知链接：`/items/{id}`、`/reports/mine`、`/announcements/{id}` 均为有效路由。
+- **测试**：`test_claims.py` +1（收到申请/撤销申请两条通知的 link 均为 `/items/{id}`，
+  且不再出现 `/claims/received`）。全量 **393 passed / 2 skipped**；`vite build` 通过。
+
+### 19. 邮件统一 HTML 版式（此前通知邮件全是纯文本）✅
+- **现象**：所有邮件都没有格式（用户反馈）。
+- **根因**：`notification_service.send_notification()` 调用的是
+  `send_email(email, title, content, html=False)` —— **认领申请 / 审核通过 / 驳回 / 撤销 /
+  举报处理 / 交接完成**全部走这条路径，正文被当作 `text/plain` 原样发送。
+  只有「匹配通知」和「公告」两处手写了 HTML，所以只有它们有版式。
+- **修复**：
+  - `email_utils.render_email_html()`：统一模板（560px 卡片 + 品牌绿 `#0F6E56` + 标题 +
+    正文 + 可选按钮 + 页脚），正文默认 **HTML 转义 + 换行转 `<br>`**，防用户输入（物品标题等）注入；
+    公告富文本用 `escape=False`。
+  - `send_email()` 增加 `text` 参数：`html=True` 时构造 **`multipart/alternative`**
+    （`text/plain` 降级 + `text/html`），不支持 HTML 的客户端至少能读到纯文本；
+    未传 `text` 时用 `html_to_text()` 自动抽取。
+  - `send_notification()` 改走模板；`announcements` 公告邮件去掉手写 HTML 复用模板；
+    `send_match_notification()` 也统一到同一版式（顺带把「参考相似度」文案改为「判定分」，
+    与界面口径一致）。
+  - `notification_service` 改为 `email_utils.send_email(...)` 模块属性调用 ——
+    原来的 `from ... import send_email` 是独立绑定，测试里的 monkeypatch 打不中。
+- **测试**：新增 `tests/test_email_format.py` 10 例（模板结构/转义/绝对链接/无链接无按钮/
+  换行、`multipart/alternative` 双段、纯文本单段、通知必须走 HTML 且保留纯文本副本）。
+  全量 **403 passed / 2 skipped**。
+
+### 20. 冗余文件与死代码清理 ✅
+- **删除**：
+  - `scripts/_send_test_mail.py`（与 `send_test_mail.py` 重复的临时脚本）；
+  - `clip_service._map_cross_unclipped()` —— 算法已迁到 `fusion.affine_cross`，
+    该方法只剩一处 docstring 引用（已改为指向 fusion），属**死代码**；
+  - 10 个文件中的无用导入：`logger.py`(os)、`validators.py`(re)、`api/auth.py`(FileResponse)、
+    `api/notifications.py`(mark_notification_read)、`utils/file.py`(os)、`inspect_scores.py`(Dict)、
+    `build_eval_set_v3.7.0.py`(sys)、`test_ablation_study.py`/`test_clip_load_singleflight.py`(pytest)、
+    `test_match_scale_consistency.py`(os, sys)。
+- **核查后判定「不是冗余」而保留**：`verify_real_clip.py`（真机权重校验，文档引用）、
+  `eval_literal_pairs.py`/`fit_fusion_weights.py`/`inspect_scores.py`/`calibrate_v2.py`（论文实验链）、
+  `eval_set_v3.5.0.json`（生产阈值标定集，v3.7.0 集不替代它）、全部 views/components 与 `api/*.js`
+  （均有路由或组件引用）。
+- **有意保留的两处「并存」**：`_map_cross`（legacy 的 clip 映射）与 `fusion.affine_cross`
+  （v2 的不截断仿射）分别服务两套口径，**不是重复实现**，删任一都会破坏对应口径。
+- **未清理（附理由）**：`__pycache__`（395 目录 / 3089 文件）与 `.pytest_cache` 均在 `.gitignore`，
+  清除对仓库无影响且会触发沙箱批量删除确认；`frontend/dist`（3.9M）为可重建产物；
+  `lost_found.db.bak-*` ×3（真实数据备份）与 `logs/`（排查依据）建议保留。
+- **验证**：全量 **403 passed / 2 skipped**；`app/`、`scripts/`、`tests/` 全文件 AST 语法检查通过。
+
+---
+
+## V3.6.3 — 消除「启动后首个请求 10 秒超时」(2026-11-08)
+
+### 现象
+冷启动后第一次发布物品 / 智能匹配，前端必弹 `timeout of 10000ms exceeded`；刷新页面后物品已发布成功、匹配结果也在——即后端其实算完了，只是响应晚于前端放弃。
+
+### 根因 ✅（日志实测）
+- 前端 `request.js` 全局 `timeout: 10000`；后端 `clip_backend._ensure_loaded` 为**懒加载**，`main.py` 的 `lifespan` 只做 `init_db()`，**没有预热**。
+- 首个触发 CLIP 的请求承担全部冷启动成本：日志「正在加载 → 加载完成」实测 **7.9 / 8.6 / 11.5 / 13.6 / 15.1 / 17.6 / 18.6 s**（典型 11~15s），**必然越过 10s**。
+- 成本构成（本机实测）：权重 3653.3 MiB（本地已缓存，**不联网**）、`import torch` 2.9~4.2s、`import cn_clip` 1.8s、`torch.load` 1.9s；主体是模型构造——957.6M 参数（783 张量 / fp32 3.57GB），`cn_clip` 走「随机初始化 → `convert_weights` 转 fp16 → `load_state_dict` → CPU 分支 `model.float()` 转回 fp32」，同一份权重在内存里搬运约 19GB。
+- 波动到 18.6s 的原因：加载峰值内存 ≈ 7GB（state_dict 3.57 + 模型 3.57），而机器空闲仅 6.7GB → 触发换页。
+
+### 修复
+1. **启动预热**（`main.py`）：`lifespan` 起后台守护线程 `clip-warmup` 调一次 `get_text_feature`，把 8~18s 挪出用户请求。**不阻塞端口监听**——同步 await 会让端口在该窗口内不可用，前端先启动时直接连接失败。
+   - 新增开关 `CLIP_WARMUP_ENABLED`（默认 `true`，置 `false` 回滚为纯懒加载）。
+   - 预热失败只记 `warning`，不阻断启动；首个业务请求会重新尝试并抛明确错误。
+2. **加载单飞锁**（`clip_backend.py`）：`_ensure_loaded` 改为「快路径判断 + `threading.Lock` 内双检」，真正加载下沉到 `_load_model()`。
+   - 修复已发生的真实缺陷：日志 2026-10-18 09:06/09:07 出现**两次「正在加载」+ 两次「加载完成」**（14.46s / 24.65s），即两个并发请求**各加载一份 3.6GB 模型**，内存翻倍。
+   - `OpenClipBackend` 同步加锁；`clip_service._initialize` 也加锁双检（预热线程与首个请求可能并发进入）。
+3. **版本**：`APP_VERSION` → `3.6.3`。
+
+### 测试
+- 新增 `tests/test_clip_load_singleflight.py`（5 例）：并发 5 线程只加载 1 次、已加载走快路径、预热失败不抛、预热确实调用文本塔、开关默认开启。
+
+### 已知边界
+- 预热期间（启动后约 10~20s 内）进来的请求会在加载锁上排队，仍可能等满整个加载时间；若演示时「启动即点发布」，可等日志出现 `CLIP 预热完成` 再操作。
+- 前端未改动：仍为全局 10s。若后续换机器/换模型导致加载超出窗口，建议对发布与匹配接口单独放宽 timeout。
+
+## V3.6.2 — 会话机制重构：30 分钟滑动会话 + 重启失效 (2026-11-08)
+
+### 1. 会话有效期：7 天单 token → 30 分钟滑动会话 ✅
+- `config.py`：`JWT_EXPIRATION`（天）替换为 `ACCESS_TOKEN_MINUTES=30`；`ACCESS_TOKEN_RENEW_MINUTES` 默认 None → 派生「有效期 - 1」，即每次鉴权请求续满期
+- `dependencies/auth.py`：`renew_token_if_needed()` —— 剩余有效期不足阈值时，通过响应头 `X-Renewed-Token` 下发新令牌
+- `main.py`：CORS 增加 `expose_headers=["X-Renewed-Token"]`，否则浏览器 JS 读不到该头
+- 前端 `request.js`：响应拦截器静默替换本地令牌（请求拦截器每次从存储读取，无需改 store）
+- 效果：页面开着（未读数 30s 轮询）持续续期；**离开页面超过 30 分钟 → 令牌过期 → 必须重新登录**
+
+### 2. 服务重启即失效（boot id） ✅
+- `auth.py` 增加进程级 `BOOT_ID`（uuid4），签发时写入 `boot` 声明，校验时与当前值比对
+- 后端重启后，重启前签发的所有 token 立即失效，强制重新登录（与 `uvicorn` 单进程部署匹配，启动脚本无 `--reload`）
+
+### 3. 修复 401 后无法跳转登录页 ✅
+- 根因：旧逻辑只 `removeToken()`（清浏览器存储），Pinia `authStore.token` 仍为旧值 →
+  `/login` 命中 `requiresGuest` 被重定向回 `/items`；同时 30s 轮询继续发请求，无令牌 → FastAPI `HTTPBearer` 返回 **403**
+- 修复：401 改为 `useAuthStore().logout()` 全量清理 + `handling401` 单飞（并发 401 只弹一条提示、只跳一次）
+- `router.beforeEach` 增加一致性兜底：store 有 token 但存储已空 → 强制 logout
+- 后端 `HTTPBearer(auto_error=False)`：未携带凭证统一返回 **401**（此前为 403，与「账号被禁用」语义混淆）
+
+### 4. 未读数请求去重 ✅
+- `DefaultLayout`：移除 `onMounted` / `watch(route.path)` 中的 `refreshUnread`，首次拉取统一由 `router.afterEach` 负责（单次加载 2~3 次 → 1 次）
+
+### 5. 启动时会话校验：消除「先闪一下首页再提示过期」 ✅
+- 根因：`beforeEach` 是同步守卫，只能判断 token **存在**，无法判断**有效**；`/items` 等页均已 `requiresAuth`，但守卫先放行了，直到首个 API 401 才回退 → 必然先渲染再跳转
+- `stores/auth.js` 新增 `verifySession()`：调用 `GET /api/me` 确认令牌；401/403 → `logout()`，网络异常（后端未启动）保留凭证不误伤
+- `router/index.js`：守卫改 `async`，首次携带 token 的导航先 `await verifySession()` 再放行；导航完成前目标组件不渲染
+- `api/auth.js`：`getMe(config)` 支持透传配置；`request.js` 支持 `silentAuth` —— 校验失败**不弹「登录已过期」**，由守卫直接落到登录页
+- `main.js`：改为 `router.isReady().then(mount)`，避免 App 先用 `START_LOCATION` 的默认 meta 渲染出布局
+- `index.html`：`#app` 内置「正在加载…」占位，校验期间不白屏
+
+### 6. 文档
+- `PROJECT.md` 环境变量说明同步为新会话参数
+
 ## V3.6.1 — 联系方式可见性调整 (2026-10-18)
 
 ### 1. 认领通过后可见完整号码 ✅

@@ -31,7 +31,7 @@
         :key="n.id"
         class="notif-card"
         :class="{ 'has-link': n.link }"
-        @click="n.link && $router.push(n.link)"
+        @click="openNotification(n)"
       >
         <div class="notif-icon">
           <el-icon :size="20"><Bell /></el-icon>
@@ -61,10 +61,30 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getUnreadList, markRead, markAllRead } from '@/api/notifications'
 import { useNotificationStore } from '@/stores/notification'
 import { ElMessage } from 'element-plus'
 import { Bell, ArrowRight, Select } from '@element-plus/icons-vue'
+
+const router = useRouter()
+
+/**
+ * 历史通知的坏链接映射。
+ *
+ * 「收到认领申请」类通知曾写入 `/claims/received` —— 这个路由**不存在**
+ * （前端是 `/claims` + `?tab=received`），`router.push` 会静默失败，
+ * 表现为「点通知毫无反应」。后端已改为 `/items/{id}`，但**库里已有的旧通知**
+ * 仍是旧链接，故在前端兜一层，避免存量数据继续点不动。
+ */
+const LEGACY_LINK_MAP = {
+  '/claims/received': { path: '/claims', query: { tab: 'received' } }
+}
+
+const openNotification = (n) => {
+  if (!n?.link) return
+  router.push(LEGACY_LINK_MAP[n.link] || n.link)
+}
 
 const list = ref([])
 const readingId = ref(null)

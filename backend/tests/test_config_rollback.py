@@ -58,6 +58,9 @@ def test_cn_clip_is_lazy_imported(monkeypatch):
 def test_legend_derived_from_thresholds(monkeypatch):
     from app.api.items import resolve_legend
 
+    # v3.7.0：阈值按打分口径分派，本用例锁定 **legacy** 口径的派生关系；
+    # v2 口径的派生见 tests/test_scoring_v2.py。
+    monkeypatch.setattr(settings, "MATCH_SCORING_MODE", "legacy")
     monkeypatch.setattr(settings, "MATCH_LEGEND_HIGH", None)
     monkeypatch.setattr(settings, "MATCH_LEGEND_MID", None)
     monkeypatch.setattr(settings, "MATCH_THRESHOLD_AUTO", 0.55)

@@ -318,6 +318,10 @@ def run(
             sql += " LIMIT ?"
             params.append(int(limit))
         rows = conn.execute(sql, params).fetchall()
+        # v3.7.0：title_vector 为新增列，旧库/测试夹具可能没有 → 先探测再决定是否写，
+        # 避免 `no such column` 让整个迁移失败（schema 兼容优先于列齐全）。
+        item_columns = {r["name"] for r in conn.execute("PRAGMA table_info(items)")}
+        has_title_vec = "title_vector" in item_columns
         stats.total = len(rows)
         pending = [r for r in rows if int(r["id"]) > last_id]
         stats.skipped = stats.total - len(pending)
@@ -352,6 +356,17 @@ def run(
                     logger.warning(f"物品 {item_id} 文本编码失败: {e}")
             else:
                 stats.no_text += 1
+
+            # 标题向量（v3.7.0）：与全文同模型重算，保证「切模型后标题向量不残留旧空间」
+            title_src = (row["title"] or "").strip()
+            if has_title_vec and title_src:
+                try:
+                    updates["title_vector"] = vector_to_json(
+                        _to_ndarray(encoder.encode_text(title_src))
+                    )
+                except Exception as e:
+                    stats.failed_encode += 1
+                    logger.warning(f"物品 {item_id} 标题编码失败: {e}")
 
             # 写库（dry-run 时跳过）
             if updates:

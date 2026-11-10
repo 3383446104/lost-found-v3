@@ -34,10 +34,16 @@ class CommentStatusUpdate(BaseModel):
 
 # ---------- 辅助函数 ----------
 def _item_visible(item, viewer_id: Optional[int], is_admin: bool) -> bool:
-    """与 items.py get_item 的可见性规则一致：未审核物品仅发布者/管理员可见。"""
+    """与 items.py get_item 的可见性规则一致：未审核物品仅发布者/管理员可见。
+
+    v3.7.0：**不再要求 status='active'**。物品进入 claiming / claimed 后，
+    详情页仍会请求留言（属主与申请人都能打开该页），旧规则会让这个子请求
+    404，被前端全局拦截器弹成「物品不存在」——看起来像整页坏了。
+    留言是只读的公开内容，对已认领的物品保留展示也有意义（"已找到，谢谢"）。
+    """
     if is_admin or item["user_id"] == viewer_id:
         return True
-    return item["review_status"] == "approved" and item["status"] == "active"
+    return item["review_status"] == "approved"
 
 
 def _fmt(row: dict) -> dict:

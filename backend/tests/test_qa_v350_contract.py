@@ -136,10 +136,11 @@ def _set_image_vector(item_id: str, vec: np.ndarray) -> None:
 # --------------------------------------------------------------------------- #
 # 鉴权契约（冻结）
 # --------------------------------------------------------------------------- #
-def test_C_match_without_token_is_403(client):
+def test_C_match_without_token_is_401(client):
     resp = client.post("/api/items/match", json={"text": "x", "target_type": "found"})
-    assert resp.status_code == 403
-    assert resp.json().get("detail") == "Not authenticated"
+    # v3.6.2：无凭证统一 401（原 HTTPBearer 默认 403 与账号禁用撞语义）
+    assert resp.status_code == 401
+    assert resp.json().get("detail") == "未提供认证凭证"
 
 
 def test_C_match_with_bad_token_is_401(client):
@@ -156,6 +157,8 @@ def test_C_match_with_bad_token_is_401(client):
 # legend 派生
 # --------------------------------------------------------------------------- #
 def test_C_legend_derived_from_thresholds_via_http(client, make_user, monkeypatch):
+    # v3.7.0：阈值按打分口径分派；本用例锁定 legacy 口径（v2 见 test_scoring_v2.py）
+    monkeypatch.setattr(settings, "MATCH_SCORING_MODE", "legacy")
     monkeypatch.setattr(settings, "MATCH_LEGEND_HIGH", None)
     monkeypatch.setattr(settings, "MATCH_LEGEND_MID", None)
     monkeypatch.setattr(settings, "MATCH_THRESHOLD_AUTO", 0.77)

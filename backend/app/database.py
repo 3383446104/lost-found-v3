@@ -64,6 +64,7 @@ def init_db():
                 image_path TEXT,
                 image_vector TEXT,
                 text_vector TEXT,
+                title_vector TEXT,                 -- v3.7.0：标题独立向量（打分 v2 用）
                 contact TEXT,
                 location TEXT,
                 status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claiming', 'claimed', 'done', 'rejected', 'closed')),
@@ -302,6 +303,18 @@ def init_db():
             cursor.execute("ALTER TABLE items ADD COLUMN is_recommend INTEGER DEFAULT 0")
         if not {'cover_image', 'images', 'is_recommend'} <= set(item_cols_v360):
             logger.info("迁移成功：items 表已添加 cover_image / images / is_recommend 列")
+
+        # ---------- 迁移：items 新增标题独立向量（v3.7.0 打分口径 v2）----------
+        # 动机：text_vector 存的是 encode(title + ' ' + description)，描述会把标题
+        # 稀释成「嵌合体」（实测：房卡标题向量对查询 1.0000、全文向量只有 0.7569）。
+        # 标题单独成列后，v2 打分可取两者更优者，避免描述噪声拉低正解。
+        # 旧库该列为 NULL，由 scripts/backfill_title_vectors.py 回填（不回填也能跑，
+        # v2 会自动回退到全文向量）。
+        cursor.execute("PRAGMA table_info(items)")
+        item_cols_v370 = [row['name'] for row in cursor.fetchall()]
+        if 'title_vector' not in item_cols_v370:
+            cursor.execute("ALTER TABLE items ADD COLUMN title_vector TEXT")
+            logger.info("迁移成功：items 表已添加 title_vector 列（v3.7.0）")
 
         # ---- 统计计数表（持久化计数器，不受物品删除影响） ----
         cursor.execute('''

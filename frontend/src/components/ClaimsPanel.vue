@@ -78,6 +78,13 @@
           </div>
           <div class="claim-card-foot" v-else-if="c.status === 1">
             <el-button size="small" type="primary" @click="handleComplete(c)">确认{{ c.type === 'lost' ? '已找回' : '已归还' }}</el-button>
+            <el-button
+              v-if="c.item_status === 'claiming'"
+              size="small"
+              type="warning"
+              plain
+              @click="handleRevoke(c)"
+            >撤销认领</el-button>
           </div>
         </div>
       </div>
@@ -97,7 +104,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { myClaims, receivedClaims, approveClaim, rejectClaim, completeClaim, cancelClaim } from '@/api/claims'
+import { myClaims, receivedClaims, approveClaim, rejectClaim, completeClaim, revokeClaim, cancelClaim } from '@/api/claims'
 import { getImageUrl, ITEM_TYPE_MAP, CLAIM_STATUS_MAP } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { PictureFilled } from '@element-plus/icons-vue'
@@ -204,6 +211,25 @@ const handleComplete = async (c) => {
     ElMessage.success(`物品已标记为${label}`)
     loadReceived()
   } catch (e) { console.error('确认失败:', e) }
+}
+
+/**
+ * 撤销已同意的认领：物品从「认领中」回到「展示中」。
+ * 用于申请人迟迟不来交接的情况 —— 否则物品会一直对所有人不可见。
+ */
+const handleRevoke = async (c) => {
+  try {
+    await ElMessageBox.confirm(
+      '撤销后该申请作废，物品重新在大厅展示。适用于申请人未按时交接的情况。',
+      '撤销认领',
+      { confirmButtonText: '撤销并重新上架', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+  try {
+    await revokeClaim(c.id)
+    ElMessage.success('已撤销，物品重新上架')
+    loadReceived()
+  } catch (e) { console.error('撤销认领失败:', e) }
 }
 
 onMounted(() => {

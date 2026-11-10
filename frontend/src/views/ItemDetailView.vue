@@ -393,10 +393,11 @@ const canEdit = computed(() => {
   return authStore.isAdmin || item.value.user_id === authStore.user?.id
 })
 
-// v3.6.1：审核通过后发布者不可再编辑（管理员不受限），只保留删除
+// v3.7.1：审核通过后**任何人都不可再编辑内容（含管理员）**——审核结论必须与
+// 线上内容一致；管理员处置违规内容走下架/删除，不就地改内容。
 const canModify = computed(() => {
   if (!canEdit.value) return false
-  return authStore.isAdmin || item.value?.review_status !== 'approved'
+  return item.value?.review_status !== 'approved'
 })
 
 const actionWord = computed(() => (item.value?.type === 'lost' ? '归还' : '认领'))
@@ -418,7 +419,10 @@ const proofFileList = ref([])
 const claimForm = ref({ claim_reason: '', feature_description: '', contact_phone: '', proof_image: '' })
 
 const loadClaimState = async () => {
-  if (!canClaim.value) return
+  // 不能用 canClaim 作门控：它要求物品为 active，而认领通过后物品变 claiming，
+  // 恰恰是这个状态才需要拉取 owner_contact（发布者完整联系方式）。
+  // 只按「是否登录」判断，未登录时 claimStatus 需要鉴权，跳过以免弹 401。
+  if (!authStore.token) return
   try {
     const res = await claimStatus(route.params.id)
     myClaim.value = res.claim || null

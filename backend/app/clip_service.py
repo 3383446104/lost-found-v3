@@ -11,11 +11,30 @@ monkeypatch 这些方法名来阻断真实模型加载，**改名即测试全红
 """
 from typing import Optional
 
+import re
+import threading
+
 import numpy as np
 
 from .clip_backend import ClipBackend, get_backend
-from .config import settings
+from .config import settings, match_threshold
 from .logger import logger
+from .services import fusion
+from .utils import synonyms
+
+
+#: 字面比对前的噪声清理：空白 + 中英文标点。只保留文字与数字，
+#: 使「房卡」「房卡 」「房卡（宿舍）」在字面层面可比。
+_TEXT_NOISE = re.compile(r"[\s\u3000,.!?;:'\"()\[\]{}<>/\\|_\-—–·、，。！？；：（）【】《》“”‘’…]+")
+
+#: 同义命中的加分折扣：词典只能证明「同一类」，不能证明「同一件」，
+#: 全额加分会把同类负样本一起抬过阈值（实测 0.7774 → 0.8554，越过邮件阈值）。
+ALIAS_BONUS_SCALE = 0.3
+
+
+def _normalize_text(text: object) -> str:
+    """归一化文本用于字面比对（小写 + 去空白与标点）。"""
+    return _TEXT_NOISE.sub("", str(text or "")).lower()
 
 
 class CLIPService:
@@ -24,6 +43,9 @@ class CLIPService:
     _instance = None
     _backend: Optional[ClipBackend] = None
     _device = "cpu"
+    # 后端选择锁（v3.6.3）：预热线程与首个请求可能同时进入 _initialize，
+    # 无锁时理论上会各自 get_backend() 一次（虽然后者会被覆盖，但会多一个实例）。
+    _init_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
@@ -37,13 +59,17 @@ class CLIPService:
         """延迟加载：首次调用时按 config 选择并持有后端。
 
         ``conftest`` 会把本方法替换为 no-op，从而阻断真实模型加载；保留方法名不变。
+        v3.6.3 起加锁双检 —— 启动预热线程与首个用户请求可能并发进入此方法。
         """
-        if self._backend is None:
-            self._backend = get_backend(settings)
-            self._device = getattr(self._backend, "_device", "cpu")
-            logger.info("CLIP 后端已选择: %s（模型 %s）",
-                        getattr(self._backend, "name", "?"),
-                        getattr(self._backend, "model_name", "?"))
+        if self._backend is not None:      # 快路径
+            return
+        with self._init_lock:
+            if self._backend is None:      # 双检
+                self._backend = get_backend(settings)
+                self._device = getattr(self._backend, "_device", "cpu")
+                logger.info("CLIP 后端已选择: %s（模型 %s）",
+                            getattr(self._backend, "name", "?"),
+                            getattr(self._backend, "model_name", "?"))
 
     def get_backend(self) -> ClipBackend:
         """返回当前所选后端实例（懒加载）。"""
@@ -239,44 +265,257 @@ class CLIPService:
         loc1: str = "",
         loc2: str = "",
         days_old: int = 0,
+        title_vec2: np.ndarray = None,
+        query_text: str = "",
+        target_title: str = "",
+        target_desc: str = "",
+        scoring_mode: Optional[str] = None,
     ) -> dict:
-        """一次调用返回**完整匹配结果**：排序分 + 各通道值 + 证据链。
+        """一次调用返回**完整匹配结果**：单一分数 + 各通道原始值 + 证据链。
 
-        与 :meth:`compute_weighted_similarity` 的关系：后者只返回标量（保持既有契约不变），
-        本方法在其基础上额外暴露各通道原始值与证据链，供接口层与邮件使用。
+        v3.7.0 起支持两套口径，由 ``scoring_mode``（默认取
+        ``settings.MATCH_SCORING_MODE``）分派：
+
+        ==========  =====================================================
+        legacy      旧五阶段口径：``base`` 加权 → 类别/地点 → 时间衰减
+                    → 跨模态惩罚；三个分数（score / content_score /
+                    reference_score）语义不同
+        v2          单一分数：文本(标题∨全文) + 图像 + 跨模态(原始余弦)
+                    加权 + **字面命中加分**；时间只进 ``ranking_score``
+        ==========  =====================================================
+
+        Args:
+            title_vec2: 目标物品的**标题独立向量**。缺省（旧库未回填）时 v2 自动
+                退化为「仅全文向量」，不会抛错。
+            query_text / target_title / target_desc: 原始字符串，仅供 v2 的字面命中
+                特征使用；不传则字面分为 0（不影响向量通道）。
+            scoring_mode: 显式覆盖口径，用于消融对比与单测。
 
         Returns:
-            ``{score, channels, level, basis, reference_score, cross_mapped}``
-            - ``score``：排序/过滤用（按查询形态自动加权的综合分）
-            - ``channels``：各通道原始余弦（透明可解释，便于调试与答辩展示）
-            - ``level`` / ``basis`` / ``reference_score``：见 :meth:`build_evidence`
+            ``{score, content_score, ranking_score, channels, level, basis,
+            reference_score, scoring_mode}``
+            - ``score``：**唯一判定分**（v2 下与本字典的 content_score 相同）
+            - ``ranking_score``：仅用于排序（v2 = score × 时间衰减）
+            - ``channels``：各通道原始余弦（透明可解释）
         """
+        mode = str(scoring_mode or settings.MATCH_SCORING_MODE or "legacy").strip().lower()
+
         sim_ii = float(np.dot(img1, img2)) if (img1 is not None and img2 is not None) else None
         sim_tt = float(np.dot(text1, text2)) if (text1 is not None and text2 is not None) else None
         sim_t2i = float(np.dot(text1, img2)) if (text1 is not None and img2 is not None) else None
         sim_i2t = float(np.dot(img1, text2)) if (img1 is not None and text2 is not None) else None
+        # 标题向量是**全文向量的细化**，不是独立通道：目标若没有 text_vector
+        # （历史「仅有图片」条目 / 未重嵌入），整条文本通道都应视为不可用。
+        # 否则残留的 title_vector 会以 0 分参与加权，把跨模态命中稀释掉
+        # （实测：text2=NULL 的目标 t2i=1.0 时，被 0.8×0 拖到 0.2）。
+        sim_title = (
+            float(np.dot(text1, title_vec2))
+            if (text1 is not None and title_vec2 is not None and text2 is not None)
+            else None
+        )
         cross_vals = [v for v in (sim_t2i, sim_i2t) if v is not None]
         sim_cross = float(np.mean(cross_vals)) if cross_vals else None
 
-        score = self.compute_weighted_similarity(
-            img1, text1, img2, text2,
-            cat1=cat1, cat2=cat2, loc1=loc1, loc2=loc2, days_old=days_old,
+        channels = {
+            "sim_img_img": sim_ii,
+            "sim_text_text": sim_tt,
+            "sim_text_title": sim_title,
+            "sim_t2i": sim_t2i,
+            "sim_i2t": sim_i2t,
+            "sim_cross": sim_cross,
+            "sim_cross_mapped": self._map_cross(sim_cross),
+        }
+
+        if mode != "v2":
+            score = self.compute_weighted_similarity(
+                img1, text1, img2, text2,
+                cat1=cat1, cat2=cat2, loc1=loc1, loc2=loc2, days_old=days_old,
+            )
+            evidence = self.build_evidence(sim_ii, sim_tt, sim_cross)
+            content = self._content_score(sim_tt, self._map_cross(sim_cross), sim_ii)
+            return {
+                "score": score,
+                "content_score": round(content, 6),
+                "ranking_score": score,
+                "channels": channels,
+                "scoring_mode": "legacy",
+                **evidence,
+            }
+
+        literal, literal_scale = self.literal_features(query_text, target_title, target_desc)
+        score = self.compute_score_v2(
+            sim_tt=sim_tt, sim_title=sim_title, sim_ii=sim_ii,
+            sim_t2i=sim_t2i, sim_i2t=sim_i2t,
+            cat1=cat1, cat2=cat2, loc1=loc1, loc2=loc2,
+            literal=literal, literal_scale=literal_scale,
         )
         evidence = self.build_evidence(sim_ii, sim_tt, sim_cross)
-        content = self._content_score(sim_tt, self._map_cross(sim_cross), sim_ii)
+        # v2 是**单一分数**体系，等级必须由该分数决定，否则会出现
+        # 「69.7% + 高度疑似」这种自相矛盾的组合：build_evidence 的等级来自
+        # 单通道阈值（text ≥ 0.606），而短标题的两字词余弦普遍 0.75~0.85，
+        # 一条 69% 的弱相关会因为「标题余弦 0.84」被判成高度疑似。
+        level = self._level_from_score(score)
         return {
             "score": score,
-            "content_score": round(content, 6),
-            "channels": {
-                "sim_img_img": sim_ii,
-                "sim_text_text": sim_tt,
-                "sim_t2i": sim_t2i,
-                "sim_i2t": sim_i2t,
-                "sim_cross": sim_cross,
-                "sim_cross_mapped": self._map_cross(sim_cross),
-            },
-            **evidence,
+            "content_score": score,
+            "ranking_score": round(score * self._time_decay(days_old), 6),
+            "channels": channels,
+            "literal_hit": literal,
+            "scoring_mode": "v2",
+            "level": level,
+            "basis": evidence["basis"],
+            # v2 只有**一个**分数：展示分不再另取「最强通道」，否则又回到
+            # 「用户看到的分 ≠ 判定用的分」的老问题（房卡：展示 0.7569 / 判定 0.5677）。
+            "reference_score": score,
         }
+
+    # ------------------------------------------------------------------ #
+    # v3.7.0 打分口径 v2
+    # ------------------------------------------------------------------ #
+    def _level_from_score(self, score: float) -> str:
+        """v2：等级由**判定分**决定，与三档业务阈值一一对应。
+
+        WHY（2026-11-10 实测）：``build_evidence`` 的等级来自**单通道阈值**
+        （文-文/图-图 ≥ 0.606），而 Chinese-CLIP 的短标题余弦普遍 0.75~0.85，
+        于是一条判定分仅 0.697 的弱相关（笔记本 × 学生证）会因为「标题余弦 0.84」
+        被评为 high_suspect，界面上出现「69.7% + 高度疑似」的自相矛盾。
+
+        v2 是单一分数体系，等级必须与分数同源：
+            ≥ email  → confirmed     （高度确定）
+            ≥ auto   → high_suspect  （高度疑似）
+            ≥ manual → related       （可能相关）
+            其余     → reference     （仅供参考）
+        """
+        if score >= match_threshold("email"):
+            return "confirmed"
+        if score >= match_threshold("auto"):
+            return "high_suspect"
+        if score >= match_threshold("manual"):
+            return "related"
+        return "reference"
+
+    def _time_decay(self, days_old: int) -> float:
+        """时间衰减因子 ∈ [FLOOR, 1.0]，**只作用于排序分**。
+
+        为什么不进判定分：阈值是在「不含时间」的内容尺度上标定的；若把衰减乘进
+        判定分，81 天前的强命中（0.905 → 0.565）会被阈值系统性过滤掉
+        —— 这正是旧口径 content_score / score 两套尺度的由来。
+        """
+        if not days_old or days_old <= 0:
+            return 1.0
+        days = float(getattr(settings, "V2_TIME_DECAY_DAYS", 240) or 240)
+        floor = float(getattr(settings, "V2_TIME_DECAY_FLOOR", 0.6) or 0.0)
+        if days <= 0:
+            return 1.0
+        return max(floor, 1.0 - days_old / days)
+
+    def literal_features(self, query_text: str, target_title: str, target_desc: str):
+        """一次返回 ``(命中强度, 加分系数)`` —— 门控看强度，加分看系数。
+
+        WHY 要拆成两个数（2026-11-10 实测）
+        -----------------------------------
+        同义命中（校园卡≡一卡通）代表「用户点明了这是**哪一类**东西」，
+        它足以让人信任标题向量（放行门控），但**不能证明是同一件**：
+        词典对「充电宝」和「移动电源」这两个**不同实物**同样命中。
+
+        实测（v3.7.0 评测集，7 对受词典影响）：
+            5 条正样本  +0.12（课本≡教材、折叠伞≡雨伞、水杯≡保温杯 …）
+            2 条同类负样本 **也 +0.12**（课本 × 办公软件教材、折叠伞 × 格纹雨伞）
+        正负同幅上移 → 判别力不增，但「同类负样本最高分」从 0.7774 抬到
+        **0.8554**，越过邮件阈值 0.85 —— 等于用词典换来了几封发错人的邮件。
+
+        故：强度仍记 0.8（`literal >= 0.8` 才会放行标题通道），
+        但加分打折到 ``ALIAS_BONUS_SCALE``；确定性字面（完全相同/包含）不打折。
+        """
+        q = _normalize_text(query_text)
+        if not q:
+            return 0.0, 1.0
+        use_alias = bool(getattr(settings, "V2_SYNONYM_ENABLED", True))
+        t = _normalize_text(target_title)
+        if t:
+            if q == t:
+                return 1.0, 1.0
+            if len(q) >= 2 and (q in t or t in q):
+                return 0.8, 1.0
+            if use_alias and len(q) >= 2 and synonyms.alias_hit(q, t):
+                return 0.8, ALIAS_BONUS_SCALE
+        d = _normalize_text(target_desc)
+        if d and len(q) >= 2:
+            if q in d:
+                return 0.4, 1.0
+            if use_alias and synonyms.alias_hit(q, d):
+                return 0.4, ALIAS_BONUS_SCALE
+        return 0.0, 1.0
+
+    def _literal_hit(self, query_text: str, target_title: str, target_desc: str) -> float:
+        """字面命中强度 ∈ {0, 0.4, 0.8, 1.0}（分级规则见 :meth:`literal_features`）。
+
+        WHY（2026-11-09 实测）：Chinese-CLIP 的短文本余弦存在严重各向异性 ——
+        两字词之间普遍 0.75~0.85（「学生证」对查询「笔记本」竟有 0.8436，
+        高于真解「一本蓝色的笔记本」的 0.7877）。此时**字面是唯一确定性证据**，
+        必须显式进入打分，而不是指望向量把它推上来。
+
+        - 1.0：查询与标题归一化后完全相同
+        - 0.8：标题包含查询（或反之），查询 ≥ 2 字（避免单字误命中）
+        - 0.8：**同义命中** —— 各含同一同义词组的不同组员（校园卡 × 一卡通），
+               见 ``app/utils/synonyms.py``；加分系数另行打折
+        - 0.4：仅描述命中（描述常是「怎么丢的」，噪声大）
+        - 0.0：无字面重合
+        """
+        return self.literal_features(query_text, target_title, target_desc)[0]
+
+    def compute_score_v2(
+        self,
+        *,
+        sim_tt: Optional[float],
+        sim_title: Optional[float],
+        sim_ii: Optional[float],
+        sim_t2i: Optional[float] = None,
+        sim_i2t: Optional[float] = None,
+        cat1: str = "",
+        cat2: str = "",
+        loc1: str = "",
+        loc2: str = "",
+        literal: float = 0.0,
+        literal_scale: float = 1.0,
+        title_gate: Optional[str] = None,
+    ) -> float:
+        """v2 单分数：可用通道加权平均 + 字面加分（封顶 1.0）。
+
+        从 v3.7.0 起**只做参数装配**，算法本体在
+        :func:`app.services.fusion.channels_from_sims` 与
+        :func:`app.services.fusion.fuse`（论文第 4 章的式 4-1 ~ 4-4）。
+
+        与旧口径的三点差异：
+
+        1. **文本通道取「标题 ∨ 全文」的更优者**（不是加权平均）。全文向量是
+           ``encode(title + description)``，描述会把标题稀释成嵌合体
+           （实测：房卡标题 1.0000 / 全文 0.7569）；取 max 才能让「描述写歪了」
+           不拖累正解。
+        2. **跨模态用「仿射缩放但不截断」**（见 :func:`app.services.fusion.affine_cross`）。
+           保留缩放是为了放大正负差距（原始余弦正负只差 0.10，直接加权会被文本
+           通道淹没，实测 Precision 掉到 0.46）；去掉截断是为了不让「短查询的
+           跨模态分一律 < LO」被压成 0 —— 那会让通道对两字查询彻底失效。
+        3. **缺通道动态归一化保留**（分母只累加可用通道），因此三种检索模式
+           仍然零分支自动成形。
+        """
+        weights = fusion.FusionWeights(
+            w_text=float(getattr(settings, "V2_W_TEXT", 0.8)),
+            w_img=float(getattr(settings, "V2_W_IMG", 0.8)),
+            w_cross=float(getattr(settings, "V2_W_CROSS", 0.2)),
+            literal_bonus=float(getattr(settings, "V2_LITERAL_BONUS", 0.0)),
+            title_gate=str(title_gate or getattr(settings, "V2_TITLE_GATE", "always")).strip().lower(),
+        )
+        ch = fusion.channels_from_sims(
+            sim_tt=sim_tt, sim_title=sim_title, sim_ii=sim_ii,
+            sim_t2i=sim_t2i, sim_i2t=sim_i2t,
+            literal=literal, literal_scale=literal_scale,
+            cat1=cat1, cat2=cat2, loc1=loc1, loc2=loc2,
+            lo=float(settings.MATCH_CROSS_REF_LO),
+            hi=float(settings.MATCH_CROSS_REF_HI),
+            weights=weights,
+        )
+        return fusion.fuse(ch, weights)
 
     def build_evidence(
         self,

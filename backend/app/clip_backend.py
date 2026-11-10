@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import threading
 from typing import Optional, Protocol, runtime_checkable
 
 import numpy as np
@@ -131,6 +132,8 @@ class OpenClipBackend:
         self._model = None
         self._preprocess = None
         self._tokenizer = None
+        # 单飞锁：并发请求只允许一个线程加载模型（v3.6.3）
+        self._load_lock = threading.Lock()
 
     def is_available(self) -> bool:
         """``open_clip`` 是否可导入（不触发模型加载）。"""
@@ -142,9 +145,16 @@ class OpenClipBackend:
             return False
 
     def _ensure_loaded(self) -> None:
-        """首次调用时加载模型（约 600MB）。"""
-        if self._model is not None:
+        """首次调用时加载模型（**单飞**：并发请求只加载一份）。"""
+        if self._model is not None:      # 快路径：已加载，不取锁
             return
+        with self._load_lock:
+            if self._model is not None:  # 双检：等锁期间别的线程已加载完
+                return
+            self._load_model()
+
+    def _load_model(self) -> None:
+        """真正执行加载（约 600MB）；由 :meth:`_ensure_loaded` 在锁内调用。"""
         import open_clip  # 延迟导入
 
         logger.info("正在加载 CLIP 模型（open_clip %s，首次加载约 600MB，请耐心等待）...", self.model_name)
@@ -245,6 +255,8 @@ class ChineseClipBackend:
         self._device = _resolve_device(device if device != "auto" else settings.CLIP_DEVICE)
         self._model = None
         self._preprocess = None
+        # 单飞锁：并发请求只允许一个线程加载模型（v3.6.3，3.6GB 权重不可重复加载）
+        self._load_lock = threading.Lock()
 
     def is_available(self) -> bool:
         """``cn_clip`` 是否可导入（不触发模型加载）。"""
@@ -256,10 +268,25 @@ class ChineseClipBackend:
             return False
 
     def _ensure_loaded(self) -> None:
-        """首次调用时加载模型（Lazy import ``cn_clip``）。"""
-        if self._model is not None:
-            return
+        """首次调用时加载模型（**单飞**：并发请求只加载一份）。
 
+        2026-11-08 修复「并发双载」：原实现只有 ``if self._model is not None: return``，
+        两个请求同时进来时会**各加载一份 3.6GB 模型**（日志 2026-10-18 09:06/09:07 实测
+        出现两次「正在加载」+ 两次「加载完成」，耗时 14.46s / 24.65s，内存翻倍）。
+        现改为「快路径判断 + 锁内双检」：后到的线程等锁，加载完直接返回。
+        """
+        if self._model is not None:      # 快路径：已加载，不取锁（不阻塞正常请求）
+            return
+        with self._load_lock:
+            if self._model is not None:  # 双检：等锁期间别的线程已加载完
+                return
+            self._load_model()
+
+    def _load_model(self) -> None:
+        """真正执行加载（3.6GB 权重，8~18s）；由 :meth:`_ensure_loaded` 在锁内调用。
+
+        Lazy import ``cn_clip`` 只发生在这里（模块顶层绝不 import）。
+        """
         # ---- 铁律：唯一允许 import cn_clip 的地方 ----
         try:
             from cn_clip.clip import load_from_name

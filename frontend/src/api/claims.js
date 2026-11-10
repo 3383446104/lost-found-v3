@@ -25,4 +25,7 @@ export const rejectClaim = (id, reviewRemark) => request.post(`/claims/${id}/rej
 
 export const completeClaim = (id) => request.post(`/claims/${id}/complete`)
 
+/** 发布者撤销已同意的认领（物品 claiming → active，重新上架） */
+export const revokeClaim = (id) => request.post(`/claims/${id}/revoke`)
+
 export const cancelClaim = (id) => request.post(`/claims/${id}/cancel`)

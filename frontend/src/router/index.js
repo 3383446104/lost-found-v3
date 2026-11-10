@@ -115,12 +115,29 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from) => {
+// 会话是否已向后端确认过（每次页面加载只校验一次）
+let sessionChecked = false
+
+router.beforeEach(async (to, from) => {
   let authStore
   try { authStore = useAuthStore() } catch { return true }
   if (!authStore || !authStore.token) {
     authStore?.restore()
   }
+  // 兜底一致性校验：store 里还有 token 但本地存储已被清空（如 401 登出后残留），
+  // 必须以本地存储为准清掉，否则 isLoggedIn 误判为 true，/login 会被 requiresGuest 拦回去
+  if (authStore?.token && !localStorage.getItem('access_token')) {
+    authStore.logout()
+  }
+
+  // 关键：首次导航时先向后端确认令牌是否仍然有效，再决定放行。
+  // 此时目标组件尚未渲染（导航被 await 阻塞），因此不会出现
+  // 「先闪一下登录后首页 → 再弹登录过期」的观感。
+  if (!sessionChecked && authStore?.token) {
+    sessionChecked = true
+    await authStore.verifySession()
+  }
+
   const isLoggedIn = !!authStore?.token
   const isDisabled = authStore?.user?.status === 'disabled'
 

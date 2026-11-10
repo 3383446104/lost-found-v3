@@ -27,4 +27,6 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
 
-app.mount('#app')
+// 等首次导航（含会话校验）完成后再挂载：
+// 避免路由守卫还在校验令牌时，App 已经用 START_LOCATION 的默认 meta 渲染出布局
+router.isReady().catch(() => {}).then(() => app.mount('#app'))

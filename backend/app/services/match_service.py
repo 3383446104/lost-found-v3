@@ -6,7 +6,7 @@ from ..clip_service import clip_service
 from ..utils.email_utils import send_match_notification
 from ..utils.time_utils import days_since_utc
 from ..logger import logger
-from ..config import settings
+from ..config import settings, match_threshold
 
 # 证据等级 → 用户可读文案（2026-09-21）
 LEVEL_TEXT = {
@@ -77,7 +77,8 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
 
             # 3. 查询所有已审核且状态为 active 的目标物品
             cursor.execute('''
-                SELECT id, user_id, title, category, location, created_at, image_vector, text_vector, image_path
+                SELECT id, user_id, title, description, category, location, created_at,
+                       image_vector, text_vector, title_vector, image_path
                 FROM items
                 WHERE type = ? AND status = 'active' AND review_status = 'approved'
             ''', (target_type,))
@@ -109,6 +110,8 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
             return
 
         matches = []
+        # v3.7.0：阈值按当前打分口径分派（legacy / v2 两套标定值）
+        auto_threshold = match_threshold("auto")
         for target in target_items:
             target_img_vec = json_to_vector(target['image_vector']) if target['image_vector'] else None
             target_text_vec = json_to_vector(target['text_vector']) if target['text_vector'] else None
@@ -129,20 +132,27 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 loc1=new_item['location'] or '',
                 loc2=target['location'] or '',
                 days_old=days_old,
+                # v3.7.0：自动匹配的「查询」是**新物品自身**，故以新物品标题作字面基准
+                # （两件都叫「房卡」时，字面命中就是最强确定性证据）。
+                title_vec2=json_to_vector(target['title_vector']) if target['title_vector'] else None,
+                query_text=new_item['title'] or '',
+                target_title=target['title'] or '',
+                target_desc=(target['description'] or '') if 'description' in target.keys() else '',
             )
 
-            # ⚠️ 必须用 content_score 与 MATCH_THRESHOLD_AUTO 比较：
+            # ⚠️ 判定必须用**内容/判定分**与「当前口径的自动阈值」比较：
             # 阈值标定于「纯内容分」尺度（标定脚本不传时间/类别位置）。若用含衰减的
-            # score 比较，老物品会被系统性挡住（实测：内容分 0.95 的强命中，81 天衰减后
+            # ranking_score 比较，老物品会被系统性挡住（实测：内容分 0.95 的强命中，81 天衰减后
             # 仅 0.63 ＜ 0.734 → 永远不推送）。
-            if detail["content_score"] >= settings.MATCH_THRESHOLD_AUTO:
+            # v3.7.0：阈值经 match_threshold("auto") 按口径分派，避免「公式换了门槛没换」。
+            if detail["content_score"] >= auto_threshold:
                 matches.append({
                     'lost_item_id': new_item_id if item_type == 'lost' else target['id'],
                     'found_item_id': new_item_id if item_type == 'found' else target['id'],
-                    # similarity：对外展示分（最强证据通道）→ 通知文案与邮件用
+                    # similarity：对外展示分 = 判定分（v2 起同源，不再另取最强通道）
                     'similarity': detail["reference_score"],
                     'content_score': detail["content_score"],
-                    'match_score': detail["score"],
+                    'match_score': detail.get("ranking_score", detail["score"]),
                     'level': detail["level"],
                     'basis': detail["basis"],
                     'target_user_id': target['user_id'],
@@ -151,7 +161,7 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 })
 
         if not matches:
-            logger.info(f"新物品 {new_item_id} 未找到高相似度匹配 (阈值 {settings.MATCH_THRESHOLD_AUTO})")
+            logger.info(f"新物品 {new_item_id} 未找到高相似度匹配 (阈值 {auto_threshold})")
             return
 
         # 按「排序分」（含时间衰减 → 新物品优先）降序，只保留 Top-N
@@ -191,6 +201,8 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
 
         # 7. 发送双向通知
         new_item_owner = users.get(new_item['user_id'])
+        # v3.7.0：邮件阈值按打分口径分派（legacy / v2 各一套标定值）
+        email_threshold = match_threshold("email")
         for match in matches:
             # --- 通知目标物品的拥有者（已有物品被匹配） ---
             try:
@@ -203,9 +215,9 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                 add_notification(match['target_user_id'], target_title, target_content, target_link)
 
                 target_user = users.get(match['target_user_id'])
-                # 邮件触发同样用「内容分」比阈值（与标定同尺度）
+                # 邮件触发同样用「判定分」比阈值（与当前口径同尺度）
                 if target_user and target_user.get('email') and \
-                        match['content_score'] >= settings.MATCH_THRESHOLD_EMAIL:
+                        match['content_score'] >= email_threshold:
                     send_match_notification(
                         email=target_user['email'],
                         username=target_user['username'],
@@ -232,9 +244,9 @@ def auto_match_and_notify(new_item_id: int, item_type: str) -> None:
                     new_link = f"/items/{match['lost_item_id']}"
                 add_notification(new_item['user_id'], new_title, new_content, new_link)
 
-                # 邮件触发同样用「内容分」比阈值（与标定同尺度）
+                # 邮件触发同样用「判定分」比阈值（与当前口径同尺度）
                 if new_item_owner and new_item_owner.get('email') and \
-                        match['content_score'] >= settings.MATCH_THRESHOLD_EMAIL:
+                        match['content_score'] >= email_threshold:
                     send_match_notification(
                         email=new_item_owner['email'],
                         username=new_item_owner['username'],

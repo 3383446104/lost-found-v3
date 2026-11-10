@@ -3,7 +3,6 @@ import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from fastapi.responses import FileResponse
 from ..models.user import UserRegister, UserLogin, ProfileUpdate
 from ..database import get_db_connection
 from ..dependencies.auth import create_access_token, get_current_user

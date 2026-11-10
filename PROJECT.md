@@ -1,6 +1,6 @@
 # 校园失物检索平台 — 项目文档
 
-> 版本：v3.6.0 | 日期：2026-10-14 | 技术栈：FastAPI + Vue 3 + CLIP（Chinese-CLIP / open_clip 双后端）
+> 版本：v3.6.2 | 日期：2026-11-08 | 技术栈：FastAPI + Vue 3 + CLIP（Chinese-CLIP / open_clip 双后端）
 >
 > **v3.3 核心变更**：去除访客 | 自标记认领 | 个人中心重构 | 批量审核 | 总计找回 | 历史记录
 > **v3.3.1 修复**：统计过滤 | 批量审核路由 | 认领文案 | 列表过滤 | mark-claimed 路由 | 自动匹配通知
@@ -104,7 +104,7 @@ lost-found-v3/
 │   ├── requirements-dev.txt← 测试依赖（pytest / httpx）
 │   ├── pytest.ini          ← pytest 配置
 │   ├── scripts/            ← 运维脚本（reembed_all_vectors.py 全量重嵌入 / calibrate_thresholds.py 阈值标定）
-│   ├── eval/               ← 评测集（eval_set_v3.5.0.json，84 对构造样本）
+│   ├── eval/               ← 评测集（v3.7.0 自包含 69 件 / 293 对；v3.5.0 生产锚定 84 对）
 │   ├── tests/              ← 自动化测试套件（296 用例）
 │   │   ├── conftest.py
 │   │   ├── test_auth.py / test_items.py / test_admin.py / test_stats.py
@@ -148,12 +148,14 @@ lost-found-v3/
 ### 技术选型理由
 
 > **v3.5.0 模型后端**：由 `CLIP_BACKEND` 配置项驱动——默认 **`cn_clip`** → **Chinese-CLIP ViT-H-14**（OFA-Sys，权重首次加载约 **3.83GB**，输出 **1024 维**联合投影；文本塔 RoBERTa-wwm-ext-large-chinese，输入分辨率 224）；可切 **`open_clip`** → **ViT-B-32**（`laion2b_s34b_b79k`，约 600MB，输出 **512 维**）**回滚**。两代向量空间**不兼容、不可混用**，切换后必须重嵌入全库向量（`scripts/reembed_all_vectors.py`）。未知 `CLIP_BACKEND` 取值**抛 `RuntimeError`，禁止静默降级**（`app/clip_backend.py::get_backend`）。
+>
+> **v3.6.3 启动预热**：模型加载实测 **8~18s**（957.6M 参数，CPU 上 3.6GB 权重要来回转换），原先落在「启动后首个发布/匹配请求」上，必然撞前端 10s 超时。现由 `lifespan` 起后台线程预热（`CLIP_WARMUP_ENABLED`，默认开启，不阻塞端口）；`_ensure_loaded` 加**单飞锁 + 双检**，避免并发请求各加载一份模型。日志出现 `CLIP 预热完成` 即表示服务可全速响应。
 
 | 技术 | 理由 |
 |------|------|
 | **SQLite** | 毕设阶段零配置；单文件部署；足以支撑校园级并发 |
 | **JSON 向量存储** | 简化架构，避免引入 FAISS/pgvector 等额外依赖 |
-| **JWT HS256** | 无状态认证，7天有效期，前端 localStorage 持久化 |
+| **JWT HS256** | 30 分钟滑动会话（剩余不足 1 分钟即续满期）+ 服务实例 boot id（重启即失效），前端 localStorage 持久化；离开页面超过 30 分钟需重新登录 |
 | **bcrypt** | 密码加盐哈希，防彩虹表攻击 |
 | **Element Plus** | 成熟 Vue 3 组件库，中文友好，a11y 完备 |
 | **Pinia** | Vue 3 官方状态管理，TypeScript 友好 |
@@ -184,7 +186,7 @@ lost-found-v3/
 | FR-ITEM-04 | 类别筛选 | ✅ category 参数 | ✅ el-select categories | ✅ |
 | FR-ITEM-05 | 关键词搜索 | ✅ keyword LIKE 查询 | ✅ el-input search | ✅ |
 | FR-ITEM-06 | 物品详情 | ✅ GET /api/items/{id} | ✅ ItemDetailView | ✅ |
-| FR-ITEM-07 | 编辑物品（本人/管理员；**审核通过后仅管理员**） | ✅ PUT /api/items/{id}（通过后发布者 403） | ✅ PublishView?edit=（通过后跳回详情） | ✅ |
+| FR-ITEM-07 | 编辑物品（本人/管理员，**仅限待审核/已驳回**；通过后任何人 403，含管理员） | ✅ PUT /api/items/{id}（通过后 403） | ✅ PublishView?edit=（通过后跳回详情） | ✅ |
 | FR-ITEM-08 | 删除物品（含图片文件） | ✅ DELETE /api/items/{id} | ✅ ItemDetailView | ✅ |
 | FR-ITEM-09 | CLIP 特征提取（图像+文本向量，维度随后端：cn_clip 1024 / open_clip 512） | ✅ create_item/update_item | — | ✅ |
 | FR-ITEM-10 | 多图上传（1-3 张，首图封面，拖拽排序；**仅封面参与向量检索**） | ✅ create_item/update_item（images / keep） | ✅ PublishView 网格 + 原生拖拽 | ✅ |
@@ -196,10 +198,10 @@ lost-found-v3/
 | FR-MATCH-01 | 以图搜图 | ✅ POST /api/items/match | ✅ MatchView | ✅ |
 | FR-MATCH-02 | 以文搜图（**真跨模态**：查询文字 × 目标图片） | ✅ POST /api/items/match | ✅ MatchView | ✅ |
 | FR-MATCH-03 | 图文混合匹配 | ✅ 三检索模式之一（文字/图片/图文混合，缺通道动态归一化自动成形） | ✅ MatchView | ✅ |
-| FR-MATCH-04 | 加权相似度（**主证据 + 辅助证据**：同模态 0.75 / 跨模态 0.25；**跨模态尺度映射** 0.194→0.298；三分数分离） | ✅ compute_match_detail | — | ✅ |
+| FR-MATCH-04 | 加权相似度（**两级加权融合**：一级通道加权 0.80/0.80/0.20 + 二级证据加权含字面命中；跨模态**仿射不截断**；单一判定分） | ✅ compute_score_v2 | — | ✅ |
 | FR-MATCH-05 | 结果排序（Top 20） | ✅ sorted[:20] | ✅ 卡片列表 | ✅ |
 | FR-MATCH-06 | 匹配范围限定（已审核+活跃） | ✅ WHERE status='active' | — | ✅ |
-| FR-MATCH-07 | 分层阈值（**已标定**：手动 0.624956 / 自动 0.733952 / 邮件 0.832069，内容分尺度） | ✅ MATCH_THRESHOLD_MANUAL / _AUTO / _EMAIL | — | ✅ |
+| FR-MATCH-07 | 分层阈值（**已标定**：手动 0.6763 / 自动 0.7685 / 邮件 0.8500，`match_threshold(kind)` 按口径分派） | ✅ V2_THRESHOLD_MANUAL / _AUTO / _EMAIL | — | ✅ |
 | FR-MATCH-08 | 匹配来源标注 + 证据链（`match_source` / `level` / `basis` / `channels`） | ✅ 随每条结果下发 | ✅ 来源标签 + 等级徽章 + 依据文案 | ✅ |
 | FR-MATCH-09 | 前端图例随阈值派生（响应 `legend: {high, mid}`） | ✅ resolve_legend() | ✅ 结果图例 | ✅ |
 | FR-MATCH-10 | 多图检索（`image_paths` ≤3，L2 归一化→均值→再归一化聚合） | ✅ match_items（仅查询侧聚合） | ✅ MatchView 多图上传 | ✅ |
@@ -271,7 +273,7 @@ lost-found-v3/
 | NFR-PERF-03 | ≥ 50 并发 | ⚠️ | SQLite 写锁限制；生产环境建议迁移 PostgreSQL |
 | NFR-PERF-04 | 图片 ≤ 16MB | ✅ | MAX_CONTENT_LENGTH: 16MB |
 | NFR-SEC-01 | bcrypt 密码 | ✅ | bcrypt.hashpw + gensalt |
-| NFR-SEC-02 | JWT (7天) | ✅ | HS256 + 7 天过期 |
+| NFR-SEC-02 | JWT (30 分钟滑动) | ✅ | HS256 + 滑动续期 + boot id（重启失效） |
 | NFR-SEC-03 | SQL 注入防护 | ✅ | 全参数化查询（? 占位符） |
 | NFR-SEC-04 | 后端权限校验 | ✅ | get_current_user + get_current_admin |
 | NFR-USR-01 | 响应式 | ✅ | 三级断点 480px/640px/768px |
@@ -473,7 +475,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 | POST | `/api/items/` | ✅ | 发布物品（FormData；`images` 1-3 张，首图封面，仅封面算向量） |
 | GET | `/api/items/` | ❌ | 物品列表（分页+筛选） |
 | GET | `/api/items/{id}` | ❌ | 物品详情（公开；内部解析 token，未审核物品仅发布者/管理员可见） |
-| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；`keep` 保留文件新顺序 + 新图，封面变更才重算向量；**审核通过后发布者 403**） |
+| PUT | `/api/items/{id}` | ✅ | 编辑物品（本人/管理员；`keep` 保留文件新顺序 + 新图；**审核通过后任何人 403（含管理员）**——审核结论须与线上内容一致，违规内容走下架/删除） |
 | DELETE | `/api/items/{id}` | ✅ | 删除物品（本人/管理员；清理 images 全部文件） |
 | POST | `/api/items/match` | ✅ | 智能匹配（JSON body，需登录；支持 `image_paths` 多图） |
 | GET | `/api/items/recommend` | ❌ | 首页推荐位（`is_recommend=1` + active + approved） |
@@ -506,22 +508,23 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 }
 ```
 
-> `threshold` 省略时默认取 `MATCH_THRESHOLD_MANUAL`（**0.624956**，2026-09-21 标定）；**判定用内容分 `content_score`**（与标定同尺度），排序用含时间衰减的排序分。
+> `threshold` 省略时默认取 `match_threshold("manual")`：v2 口径 **0.6763**、legacy 口径 **0.624956**（2026-09-21 标定）。v2 下 `similarity` / `content_score` / `reference_score` 三者相同（只有一个判定分），`match_score` 为含时间衰减的**排序分**；legacy 下三者语义不同（见 9.2.1）。
 >
-> **匹配响应（v3.6.0 口径）：**
+> **匹配响应（v3.7.0 口径）：**
 > ```json
 > {
 >   "matches": [
 >     { "id": 80, "title": "黑色中性笔",
->       "similarity": 0.96,       // 展示分 = reference_score（最强证据通道，映射后）
->       "content_score": 0.88,    // 内容分（阈值判定，与标定同尺度）
->       "match_score": 0.79,      // 排序分（含时间衰减）
+>       "similarity": 0.88,       // 判定分（v2 下 = content_score = reference_score）
+>       "content_score": 0.88,    // 同上（保留字段名以兼容旧前端）
+>       "match_score": 0.79,      // 排序分（含时间衰减），仅用于排序
+>       "literal_hit": 0.8,       // v3.7.0 新增：字面命中强度（1.0/0.8/0.4/0）
 >       "level": "high_suspect",  // 证据等级：confirmed/high_suspect/related/reference
 >       "basis": ["文字描述高度吻合"],  // 命中依据
->       "channels": { "sim_text_text": 0.96, "sim_cross": 0.28, "sim_cross_mapped": 0.83, "...": "各通道原始值" },
+>       "channels": { "sim_text_text": 0.96, "sim_text_title": 1.0, "sim_cross": 0.28, "...": "各通道原始值" },
 >       "match_source": "mixed", "...": "其余字段略" }
 >   ],
->   "legend": { "high": 0.733952, "mid": 0.624956 }
+>   "legend": { "high": 0.7685, "mid": 0.6763 }
 > }
 > ```
 > `matches` 最多返回 Top-20，按 `match_score` 降序；`match_source` 按**查询实际可用输入**判定：仅文 → `text`、仅图 → `image`、图文 → `mixed`；**证据链**（`level` / `basis` / `channels`）供前端上色与展示命中依据。
@@ -587,6 +590,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 | POST | `/api/claims/{id}/approve` | ✅ | 发布者同意（同事务互斥拒绝其他待审 + 物品转 claiming；通知申请人） |
 | POST | `/api/claims/{id}/reject` | ✅ | 发布者拒绝（`review_remark` 必填；物品保持 active） |
 | POST | `/api/claims/{id}/complete` | ✅ | 确认完成（物品转 claimed + 计数器 +1） |
+| POST | `/api/claims/{id}/revoke` | ✅ | **发布者撤销已同意的认领**（物品 claiming→active 重新上架，申请→已撤销，通知申请人；交接完成后不可撤销） |
 | POST | `/api/claims/{id}/cancel` | ✅ | 申请人撤销（仅待审核态） |
 
 ### 5.8 举报接口（v3.6.0）
@@ -758,7 +762,8 @@ npm run build      # 生产构建 → dist/
 
 ```
 SECRET_KEY                    JWT 签名密钥（生产环境务必修改为强随机字符串）
-JWT_EXPIRATION               Token 有效期（天），默认 7
+ACCESS_TOKEN_MINUTES          Token 有效期（分钟），默认 30；离开页面超过该时长需重新登录
+ACCESS_TOKEN_RENEW_MINUTES    剩余有效期低于该值（分钟）时静默续发新令牌，默认 20
 DATABASE                     SQLite 数据库文件名
 UPLOAD_FOLDER                图片上传目录
 BASE_URL                     前端基础 URL（用于邮件链接）
@@ -768,18 +773,26 @@ CLIP_CN_MODEL_NAME           Chinese-CLIP 模型名，默认 ViT-H-14
 CLIP_CN_EMBED_DIM            Chinese-CLIP 联合投影维度，默认 1024
 CLIP_CN_USE_MODELSCOPE       权重下载走 ModelScope（默认 True，国内直连）；False 走 HF Hub
 CLIP_CN_CKPT_PATH            非空则直接加载本地 .pt（运行期零网络，优先级最高）
-MATCH_W_TEXT_TEXT            文-文权重（主证据），默认 0.75（2026-09-21 起）
-MATCH_W_IMG_IMG              图-图权重（主证据），默认 0.75
-MATCH_W_CROSS                跨模态权重（辅助证据），默认 0.25
-MATCH_CROSS_REF_LO / _HI     跨模态尺度映射区间，默认 0.194 / 0.298（实测标定；仅外层加权与展示）
+MATCH_SCORING_MODE            打分口径，默认 v2；置 legacy 整口径回滚（含阈值分派）
+V2_W_TEXT / V2_W_IMG / V2_W_CROSS   v2 通道权重，默认 0.80 / 0.80 / 0.20
+V2_LITERAL_BONUS              字面命中加分系数，默认 0.15
+V2_TITLE_GATE                 标题通道信任门槛，默认 literal（仅字面命中时启用）；always 回滚
+V2_THRESHOLD_MANUAL           v2 手动阈值，默认 0.6763（R≥0.90 处 P=0.8049）
+V2_THRESHOLD_AUTO             v2 自动阈值，默认 0.7685（P≥0.90 处 R=0.5833）
+V2_THRESHOLD_EMAIL            v2 邮件阈值，默认 0.8500（保守值，需复标）
+V2_TIME_DECAY_DAYS / _FLOOR   v2 时间衰减天数 / 下限，默认 240 / 0.60（仅排序分）
+MATCH_W_TEXT_TEXT            文-文权重（legacy 主证据），默认 0.75（2026-09-21 起）
+MATCH_W_IMG_IMG              图-图权重（legacy 主证据），默认 0.75
+MATCH_W_CROSS                跨模态权重（legacy 辅助证据），默认 0.25
+MATCH_CROSS_REF_LO / _HI     跨模态尺度映射区间，默认 0.194 / 0.298（实测标定；v2 用仿射不截断）
 MATCH_DECAY_DAYS / _FLOOR    时间衰减天数 / 下限，默认 240 / 0.6（2026-09-21 调温和）
-CROSS_PENALTY_ENABLED        阶段5 跨模态一致性惩罚开关，默认 True
-MATCH_THRESHOLD_MANUAL       手动匹配阈值，默认 0.624956（2026-09-21 标定，内容分尺度）
-MATCH_THRESHOLD_AUTO         自动匹配阈值，默认 0.733952（实测 P=91.7% / R=61.1%）
-MATCH_THRESHOLD_EMAIL        邮件通知阈值，默认 0.832069（实测 P=100% / R=19.4%，样本少建议灰度）
+CROSS_PENALTY_ENABLED        阶段5 跨模态一致性惩罚开关，默认 True（仅 legacy）
+MATCH_THRESHOLD_MANUAL       legacy 手动匹配阈值，默认 0.624956（2026-09-21 标定，内容分尺度）
+MATCH_THRESHOLD_AUTO         legacy 自动匹配阈值，默认 0.733952（实测 P=91.7% / R=61.1%）
+MATCH_THRESHOLD_EMAIL        legacy 邮件通知阈值，默认 0.832069（实测 P=100% / R=19.4%，样本少建议灰度）
 AUTO_MATCH_ENABLED           自动推送总开关，默认 True（当前开启）
-MATCH_LEGEND_HIGH            前端图例上界，默认 None → 派生为 MATCH_THRESHOLD_AUTO
-MATCH_LEGEND_MID             前端图例下界，默认 None → 派生为 MATCH_THRESHOLD_MANUAL
+MATCH_LEGEND_HIGH            前端图例上界，默认 None → 派生为 match_threshold("auto")
+MATCH_LEGEND_MID             前端图例下界，默认 None → 派生为 match_threshold("manual")
 MAX_AUTO_MATCH_NOTIFICATIONS 自动匹配推送上限，默认 3
 MAIL_SERVER                  SMTP 服务器地址
 MAIL_PORT                    SMTP 端口
@@ -824,7 +837,103 @@ with get_db_connection() as conn:
 >
 > **v3.5.0（双后端）**：`CLIPService` 为兼容壳，特征提取委托给 `app/clip_backend.py` 的后端（`open_clip` / `cn_clip`）。Chinese-CLIP ViT-H-14 的 `embed_dim=1024` 是**联合投影维度**（`encode_image`/`encode_text` 的真实输出维度），**不是**视觉塔宽度 `vision_width=1280`，亦**不是** 512 维。每个 `encode_*` 在 L2 归一化后、返回前经 `_assert_embed_dim` 断言维度 == 声明值，不符即抛 `RuntimeError`。
 
-### 9.2 加权相似度融合（三检索模式 + 主辅证据 + 五阶段）
+### 9.2 打分口径 v2（现行，v3.7.0）：两级加权融合 + 单一分数
+
+**一句话**：一级在**向量空间**做通道加权（谁更可信），二级在**证据空间**做线性加权（字面/类别/地点这些小证据如何补偿向量），最终只输出**一个分数**。
+
+```
+一级：通道级加权（可用通道动态归一化，分母只累加存在的通道）
+  s_text  = max(sim_title, sim_text_text)        标题 ∨ 全文取更优者
+            └ 仅当字面命中（literal ≥ 0.8）时，标题向量才允许参与（V2_TITLE_GATE="literal"）
+  s_img   = sim_img_img                          图-图自相似
+  s_cross = mean(affine(sim_t2i), affine(sim_i2t))
+            affine(x) = (x − 0.194) / (0.298 − 0.194)   ← 仿射缩放但**不截断**
+  base    = Σ(wᵢ·sᵢ) / Σ(wᵢ)    W_text=0.80 / W_img=0.80 / W_cross=0.20
+
+二级：证据级加权（logit 线性组合的小幅先验）
+  score = clamp( base
+               + 0.03·[同类] − 0.05·[异类]
+               + 0.02·[同地点] − 0.03·[异地点]
+               + 0.15 · literal_hit , 0, 1 )
+
+literal_hit ∈ {1.0 标题完全相同 / 0.8 标题包含 / 0.8 同义命中 / 0.4 仅描述命中 / 0 无重合}
+  └ 同义命中来自 app/utils/synonyms.py：查询与标题各含同一同义词组的不同组员
+    （校园卡≡一卡通≡饭卡、课本≡教材≡教科书、充电宝≡移动电源 …，共 13 组）
+```
+
+**同义词/别名词典**（`app/utils/synonyms.py`，`V2_SYNONYM_ENABLED` 可关）：
+
+门控要求「字面命中 ≥ 0.8」，而字面是**子串匹配** —— 「校园卡」遇到标题「一卡通」判 0，
+标题通道被误关，系统退化为只剩全文向量。用户明明知道它叫什么，系统却不认。
+
+四条硬约束（导入时断言，任一违反直接抛错）：
+
+1. **只收同一实物的不同叫法**，不收上下位。「耳机 / 蓝牙耳机」是包含关系，子串已覆盖；
+   「学生证 / 学生卡」多数学校是两张卡，坚决不收。
+2. **不改写文本，只做同组交叉判断**（`alias_hit`）。若把「校园卡」全局替换成「一卡通」，
+   「校园卡套」会变成「一卡通套」—— 卡套不是卡。
+3. **每个词 ≥ 2 字**，单字（"伞"、"卡"）会把无关项卷进来。
+4. **组内任意两词互不相含**，否则子串逻辑先命中，词典规则形同虚设。
+
+同义命中记 **0.8**（与「标题包含」同级）：它同样代表「用户点明了这是什么」，
+因此应当放行标题向量；仅命中描述时记 **0.4**（描述多写"怎么丢的"，噪声大）。
+
+**单一分数**：`score == content_score == reference_score`；`ranking_score = score × max(0.6, 1 − 天数/240)` **只用于排序**。
+时间不进判定分 —— 阈值在「不含时间」的内容尺度上标定，乘进去会让 81 天前的强命中（0.905 → 0.565）被系统性过滤。
+
+**三个业务门槛**（`match_threshold(kind)` 按 `MATCH_SCORING_MODE` 分派，杜绝「改了公式忘改阈值」）：
+
+| kind | 值（v2） | 用途 | 标定点 |
+|---|:--:|---|---|
+| manual | **0.6763** | 手动匹配列表（`/match`） | Recall ≥ 0.90 处 P=0.8049 |
+| auto | **0.7685** | 发布后自动匹配推送 / **详情页相似推荐** | Precision ≥ 0.90 处 R=0.5833 |
+| email | **0.8500** | 邮件通知（更严） | 样本内无 P≥0.98 解，取 auto+0.05 |
+
+**为什么要 v2**（三个结构缺陷，均为 2026-11-09 实测）：
+
+1. **跨模态通道恒零**：真实跨模态余弦 0.107~0.191 全部低于 LO=0.194，`clip` 后一律为 0 → 纯文字查询下 `content_score = 0.75×tt`，等效门槛被抬到 `tt ≥ 0.8333`，正解房卡（0.7569）被挡。
+2. **全文向量稀释标题**：`t_text = encode(title + description)`，「房卡 + 丢失一个宿舍钥匙」被编码成嵌合体（标题 1.0000 / 全文 0.7569）→ 新增 `items.title_vector`。
+3. **短文本各向异性**：两字词余弦普遍 0.75~0.85（「学生证」对「笔记本」0.8436 > 真解 0.7877）→ 引入确定性特征 `literal_hit`，并用它做标题通道的**信任门槛**。
+
+> **标题门控的实证**（`scripts/eval_literal_pairs.py`，真实库 7 条 approved 条目 / 42 对非字面配对）：
+> 常开时越阈值率 **61.9%**（眼镜→一个手机 0.8500、房卡→学生证 0.8059），门控后 **19.0%**。
+> 同一门控在评测集（正样本查询**被约束为不含 title 原词**）上代价仅 P@手动 0.8250→0.8049（1 个样本）——
+> 该评测集结构上测不到门控收益，故不以它为准。
+
+**A/B 消融**（`scripts/calibrate_v2.py` → `docs/review/scoring-v2-ablation.md`，v3.5.0 集有效 n=78）：
+
+| 口径 | Recall@1 | Recall@3 | P@手动阈值 | R@自动阈值 |
+|---|:--:|:--:|:--:|:--:|
+| legacy（v3.6.x 五阶段） | 0.7778 | 1.0000 | 0.7500 | 0.6111 |
+| v2（标题常开） | 0.7500 | 1.0000 | 0.8250 | 0.5833 |
+| v2+（字面门控，**现行**） | 0.7222 | 1.0000 | 0.8049 | 0.5833 |
+
+**v3.7.0 自包含评测集复验**（`eval/eval_set_v3.7.0.json`，69 件 / 293 对 / 7 类，图片随仓库分发；
+报告 `docs/review/scoring-v2-ablation-v3.7.0.md`，224 对改写样本）：
+
+| 口径 | R@1 | R@3 | P@手动 | 同类负 FP | P@硬负 | 字面查询通过率 |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| legacy | 0.8261 | 0.9275 | 0.8182 | 12/68 (17.6%) | 0.8400 | 71.0% |
+| v2 | 0.8986 | 1.0000 | 0.9130 | 6/68 (8.8%) | 0.9130 | 100% |
+| **v2+（现行）** | **0.9275** | 0.9855 | **0.9265** | **5/68 (7.4%)** | **0.9265** | 100% |
+
+> 该集用于**相对比较与覆盖补盲**（查询与标签同源、负样本仍以跨类为主），
+> **不用于重标生产阈值**；生产阈值仍以 v3.5.0 集（真实业务分布）为准。
+
+**权重敏感性**（`scripts/fit_fusion_weights.py`，5×5×5 网格，目标 `J=½(R@1+R@3)`）：
+
+| 方案 | R@1 | R@3 | J |
+|---|:--:|:--:|:--:|
+| 设计取值 0.80/0.20/0.15 | 0.9275 | 0.9855 | 0.9565 |
+| 搜索最优 0.60/0.15/0.00 | 0.9275 | 0.9855 | 0.9565 |
+
+125 个组合中 **32 个（26%）落在最优值 0.5pp 内**（$w_{mod}$ 0.60~1.00、$w_{cross}$ 0.15~0.30）
+→ **权重不可辨识，只有比值 $w_{cross}/w_{text}$ 有意义**，设计取值在平台区内。
+论文表述用「对参数不敏感」，不用「调到最优」。详见 `docs/algorithm/weighted-fusion.md`。
+
+**代码落点**：`app/services/fusion.py`（**算法唯一实现**：式 4-1~4-4 的两个纯函数）+ `app/clip_service.py::compute_score_v2`（参数装配）+ `compute_match_detail`（口径分派）+ `app/utils/synonyms.py`（同义词典）+ `config.py` 的 `V2_*` 参数表 + `scripts/calibrate_v2.py`（阈值标定）+ `scripts/fit_fusion_weights.py`（权重敏感性）+ `scripts/build_eval_set_v3.7.0.py`（评测集生成）+ `scripts/inspect_scores.py`（逐通道拆解）。
+
+#### 9.2.1 legacy 口径（v3.6.x，置 `MATCH_SCORING_MODE=legacy` 可整口径回滚）
 
 **按查询形态分三种检索模式**（2026-09-21 重构），三种模式由「缺通道动态归一化」**自动成形**（零分支代码）：
 
@@ -879,12 +988,12 @@ with get_db_connection() as conn:
   → BackgroundTasks 异步启动 auto_match_and_notify()
   → 查询所有异类活跃物品 (type=相反, status=active, review_status=approved)
   → 维度预检：库中向量维度 ≠ 当前模型维度 → 记 ERROR 并跳过（提示先重嵌入）
-  → 逐对调用 compute_match_detail（三检索模式 + 五阶段）
-  → 判定用 content_score ≥ 0.733952（MATCH_THRESHOLD_AUTO，**与标定同尺度**）
+  → 逐对调用 compute_match_detail（两级加权融合，口径由 MATCH_SCORING_MODE 决定）
+  → 判定用 content_score ≥ 0.7685（match_threshold("auto")，**与标定同尺度**）
   → 按 match_score 降序，仅保留 Top-3（MAX_AUTO_MATCH_NOTIFICATIONS）
   → 批量插入 matches 表（落库 score 为 match_score）
   → 双向发送站内通知（含匹配等级 + 命中依据）
-  → content_score ≥ 0.832069（MATCH_THRESHOLD_EMAIL）且有邮箱时，发送 HTML 邮件（含等级与依据）
+  → content_score ≥ 0.8500（match_threshold("email")）且有邮箱时，发送 HTML 邮件（含等级与依据）
 ```
 
 > ⚠️ 2026-09-21 修复「判定用含衰减的排序分比阈值」的**尺度缺陷**：判定改用 `content_score`。实测「蓝牙耳机↔蓝牙耳机」内容分 0.9377、81 天衰减后排序分仅 0.6278 ＜ AUTO 阈值 —— 旧逻辑**永不推送**（遍历 25 组跨类型物品对通过 0 组），修复后正确进入推送（跨类别全部仍被正确挡掉）。自动推送开关当前已开启。
@@ -1004,7 +1113,7 @@ venv\Scripts\python.exe -m pytest tests/ -v
 | ~~分层阈值 AUTO/EMAIL 不可用~~ ✅ **2026-09-21 首次标定成功** | 打分口径重构（三检索模式 + 尺度映射）后正负样本分布重叠从 0.397 收窄至单通道级；`AUTO`=0.733952（P=91.7% / R=61.1%）、`EMAIL`=0.832069（P=100% / R=19.4%） | ⚠️ 样本量仍小（36 正样本，`EMAIL` 处仅 7 个正样本）；**`EMAIL` 召回低，建议灰度观察后逐步放开**；随真实数据增长持续复标 |
 | **权重的「最优值」证据不足** | 2026-09-21 起权重含明确语义（**主证据 0.75 / 辅助证据 0.25**），三模式由缺通道归一化自动成形，不再是自由参数 | `--grid` 保留三维网格供探索；见 `docs/review/threshold-calibration-v3.5.0.md` §5 |
 | ~~两代向量空间不兼容~~ ✅ 本库已完成重嵌入（2026-09-14） | 切模型后若未重嵌入，新旧向量比对无物理意义（已加维度防线 → HTTP 500，不再静默空集） | 已执行 `scripts/reembed_all_vectors.py` 全量重嵌入（冷备 `lost_found.db.bak-20260914121815` + `_exit_code` 守卫，6 条全部 1024 维 + L2 归一）；`/match` 端到端实测恢复 HTTP 200 |
-| **评测集规模小** | `eval_set_v3.5.0.json` **84 对**（去除 6 对同图自比退化对后**有效 36 正 / 42 负**，n=78），置信区间仍宽 | 随真实物品增长持续扩充复标；不得表述为「已可靠标定」 |
+| **评测集规模小** | v3.5.0 集 **84 对**（剔除 6 对同图自比后**有效 36 正 / 42 负**，n=78），置信区间宽；v3.7.0 集虽扩到 **69 件 / 293 对**，但查询与标签同源、负样本偏易 | 生产阈值仍以 v3.5.0 集为准；v3.7.0 集只做相对比较与回归；不得表述为「已可靠标定」 |
 | ~~重嵌入脚本「假绿迁移」缺陷~~ ✅ 已修 | 真实 `--dry-run` 暴露 12 次 `AttributeError`、`ok=0`，但 `main()` 恒返回 0 → 真跑会「成功退出」但库中分毫未动（运维误以为已迁移） | `_ServiceEncoderAdapter` 对齐冻结服务接口 + `_exit_code` 守卫（`failed_encode>0` → 2、`ok==0 且 total>0` → 3、`--dry-run` 仍 0）；守卫 `tests/test_reembed_encoder_wiring.py` 8 例 |
 
 ### 11.2 版本演进

@@ -169,13 +169,12 @@ const refreshUnread = () => {
 
 watch(() => route.path, () => {
   showMobileMenu.value = false
-  refreshUnread()
 })
 
 let pollTimer = null
 
 onMounted(() => {
-  refreshUnread()
+  // 首次加载的未读数由 router.afterEach 统一拉取，这里不再重复请求
   // 每30秒轮询一次未读消息数量
   pollTimer = setInterval(refreshUnread, 30000)
 })

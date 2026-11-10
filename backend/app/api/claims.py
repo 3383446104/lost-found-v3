@@ -157,9 +157,12 @@ async def create_claim(
     content = "".join(content_lines)
 
     # 站内 + 邮件双发（send_notification 内部已捕获邮件异常）
+    # 链接指向**物品详情**：发布者点开后，页面会显示「有用户申请处理该物品 + 处理申请」，
+    # 由那里再跳到认领中心。旧链接 `/claims/received` 是**不存在的路由**
+    # （前端 `/claims` + `?tab=received`），router.push 直接失败 → 点通知毫无反应。
     send_notification(
         item["user_id"], title, content,
-        link=f"/claims/received",
+        link=f"/items/{payload.item_id}",
         email=owner["email"] if owner else None,
     )
 
@@ -507,6 +510,81 @@ async def complete_claim(
     return {"success": True, "message": f"物品已标记为{action_label}", "new_status": "claimed"}
 
 
+@router.post("/{claim_id:int}/revoke")
+async def revoke_claim(
+    claim_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """发布者撤销**已同意**的认领：物品 ``claiming`` → ``active``，重新上架。
+
+    WHY（2026-11-10 补的回路）
+    -------------------------
+    同意认领的瞬间物品变为 ``claiming``，公共大厅与详情页对他人**立即不可见**
+    （列表硬过滤 ``status='active'``，详情页非属主访问 404）。若申请人爽约，
+    原流程只有管理员能通过 ``PUT /api/admin/items/{id}/status`` 改回 ``active``，
+    发布者没有自救入口 —— 物品会"静默下架"，且没人知道为什么。
+
+    约束：
+    - 仅物品发布者或管理员可调用；
+    - 仅 ``status == 1（已通过）`` 的申请可撤销；
+    - 仅当物品仍为 ``claiming``（若已 ``claimed``，说明交接已完成，不可撤销）。
+
+    撤销后申请置为 ``4（已撤销）``，与申请人主动撤销共用同一终态，
+    区别在于通知对象相反：本接口通知**申请人**。
+    """
+    user_id = current_user["user_id"]
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT c.id, c.item_id, c.claimer_id, c.status,
+                      i.user_id AS owner_id, i.status AS item_status,
+                      i.title, i.type
+               FROM claims c JOIN items i ON c.item_id = i.id
+               WHERE c.id = ?""",
+            (claim_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "申请不存在")
+
+        cur.execute("SELECT role FROM users WHERE id=?", (user_id,))
+        u = cur.fetchone()
+        if row["owner_id"] != user_id and not (u and u["role"] == "admin"):
+            raise HTTPException(403, "仅物品发布者可撤销")
+        if row["status"] != CLAIM_APPROVED:
+            raise HTTPException(400, "仅已通过的申请可撤销")
+        if row["item_status"] != "claiming":
+            raise HTTPException(400, "该物品当前不在认领中（可能已完成交接）")
+
+        cur.execute(
+            "UPDATE claims SET status=4, review_remark=?, updated_at=CURRENT_TIMESTAMP"
+            " WHERE id=? AND status=1",
+            ("发布者撤销认领", claim_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(409, "申请状态已被修改，请刷新后重试")
+
+        cur.execute(
+            "UPDATE items SET status='active' WHERE id=? AND status='claiming'",
+            (row["item_id"],),
+        )
+        cur.execute("SELECT email FROM users WHERE id=?", (row["claimer_id"],))
+        claimer = cur.fetchone()
+
+    send_notification(
+        row["claimer_id"],
+        "[认领已撤销]",
+        f"发布者撤销了对物品 '{row['title']}' 的认领，物品已重新上架。"
+        f"如有疑问请通过详情页联系发布者。",
+        link=f"/items/{row['item_id']}",
+        email=claimer["email"] if claimer else None,
+    )
+
+    logger.info(f"用户 {user_id} 撤销了已通过的认领 {claim_id}，物品 {row['item_id']} 重新上架")
+    return {"success": True, "message": "已撤销认领，物品重新上架", "item_status": "active"}
+
+
 @router.post("/{claim_id:int}/cancel")
 async def cancel_claim(
     claim_id: int,
@@ -544,7 +622,7 @@ async def cancel_claim(
         row["owner_id"],
         f"[{action_word}申请已撤销]",
         f"物品 '{row['title']}' 的一条{action_word}申请已被申请人撤销。",
-        link=f"/claims/received",
+        link=f"/items/{row['item_id']}",
     )
 
     logger.info(f"用户 {user_id} 撤销了认领申请 {claim_id}")

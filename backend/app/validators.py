@@ -1,5 +1,4 @@
 # app/validators.py
-import re
 
 
 def validate_item_title(title):

@@ -15,7 +15,6 @@
 import os
 import sys
 
-import pytest
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS_DIR = os.path.join(BACKEND_DIR, "scripts")

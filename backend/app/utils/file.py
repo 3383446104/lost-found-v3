@@ -1,4 +1,3 @@
-import os
 import imghdr  # 或使用 python-magic
 from ..config import settings
 

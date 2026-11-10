@@ -5,9 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>校园失物检索平台</title>
+    <style>
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f5f4f1;
+        color: #8a8780;
+        font: 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+        letter-spacing: .02em;
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <!-- 首屏占位：路由首次导航会先校验会话，校验完成前不渲染任何页面内容 -->
+    <div id="app">
+      <div id="boot-splash">正在加载…</div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

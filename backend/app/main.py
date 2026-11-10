@@ -1,4 +1,7 @@
 # app/main.py
+import threading
+import time
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -6,6 +9,43 @@ from contextlib import asynccontextmanager
 from .config import settings
 from .logger import logger
 from .database import init_db
+from .clip_service import clip_service
+
+# 预热用的固定文本：只走文本塔，不依赖任何用户数据/图片文件
+_CLIP_WARMUP_TEXT = "校园失物招领平台模型预热"
+
+
+def _warmup_clip_model() -> None:
+    """后台预热 CLIP 模型（v3.6.3）。
+
+    背景：``Chinese-CLIP ViT-H/14`` 首次加载需 **8~18 秒**（3.6GB 权重、957.6M 参数，
+    且 ``cn_clip`` 在 CPU 上会把权重 fp32→fp16→fp32 来回转换），而前端 axios 全局超时
+    只有 10 秒。原先这段耗时落在「启动后第一个发布/匹配请求」上，导致用户看到
+    ``timeout of 10000ms exceeded``，但后端其实已经成功入库。
+
+    为什么用后台线程而不是在 lifespan 里同步加载：
+    - 同步 await 会让端口在这 8~18 秒内**不监听**，前端先启动时会直接连接失败；
+    - 后台线程则「端口先可用、模型随后就绪」，预热期间进来的业务请求会在
+      ``_ensure_loaded`` 的加载锁上排队，加载完成后立即返回（不会再重复加载）。
+
+    失败只记警告、不阻断启动：缺依赖/缺权重时其余接口仍可用，
+    真正需要编码时由 ``_ensure_loaded`` 再抛一次明确错误。
+    """
+    started = time.time()
+    logger.info("开始预热 CLIP 模型（后台线程，预计 8~18s，期间勿重复重启后端）...")
+    try:
+        clip_service.get_text_feature(_CLIP_WARMUP_TEXT)
+    except Exception as exc:  # 预热是优化项，失败不应影响服务可用性
+        logger.warning(
+            "CLIP 预热失败（%.1fs）：%s；首个业务请求时将重新尝试加载",
+            time.time() - started, exc,
+        )
+        return
+    logger.info(
+        "CLIP 预热完成，耗时 %.1fs；此后发布/匹配请求不再承担模型加载开销",
+        time.time() - started,
+    )
+
 
 # ---- 生命周期管理 ----
 @asynccontextmanager
@@ -14,6 +54,32 @@ async def lifespan(app: FastAPI):
     logger.info("正在启动应用...")
     init_db()
     logger.info("数据库初始化完成")
+
+    # ---- 启动横幅：把「跑的是哪套打分口径」写进日志（v3.7.0）----
+    # WHY：uvicorn 不带 --reload 时，改完代码不重启就仍执行旧模块。
+    # 没有这行日志，只能靠「阈值是多少」反推口径，排查成本极高
+    # （2026-11-10 真实踩坑：进程仍是 legacy，日志打印 threshold=0.624956，
+    #   而仓库里早已是 v2/0.6763，被误判为算法没生效）。
+    from .config import match_threshold  # 局部导入，避免与 settings 初始化顺序耦合
+    logger.info(
+        "打分口径 MATCH_SCORING_MODE=%s ｜ 阈值 manual=%.4f auto=%.4f email=%.4f"
+        " ｜ V2_TITLE_GATE=%s V2_SYNONYM_ENABLED=%s",
+        settings.MATCH_SCORING_MODE,
+        match_threshold("manual"), match_threshold("auto"), match_threshold("email"),
+        getattr(settings, "V2_TITLE_GATE", "-"),
+        getattr(settings, "V2_SYNONYM_ENABLED", "-"),
+    )
+
+    if settings.CLIP_WARMUP_ENABLED:
+        threading.Thread(
+            target=_warmup_clip_model,
+            name="clip-warmup",
+            daemon=True,        # 主进程退出时不阻塞
+        ).start()
+        logger.info("CLIP 预热线程已启动（后台加载模型，不阻塞端口监听）")
+    else:
+        logger.info("CLIP 预热已禁用（CLIP_WARMUP_ENABLED=false），恢复懒加载")
+
     yield
     logger.info("正在关闭应用...")
 
@@ -32,6 +98,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # 滑动续期：新令牌通过响应头下发，必须显式暴露给浏览器 JS，否则前端读不到
+    expose_headers=["X-Renewed-Token"],
 )
 
 # ---- 注册路由 ----

@@ -197,6 +197,7 @@ def summarize_eval_set(eval_set: Dict[str, Any], base_dir: Optional[str] = None)
     lengths: List[int] = []
     over_window = 0
     title_violations: List[str] = []
+    literal_queries = 0
     image_refs: List[str] = []
     degenerate_self = 0
 
@@ -236,10 +237,14 @@ def summarize_eval_set(eval_set: Dict[str, Any], base_dir: Optional[str] = None)
                 over_window += 1
 
         # 正样本标题原词泄漏（弱标注自检；负样本不适用）
-        if int(p.get("label", 0)) == 1 and q_has_text and t_has_text:
+        # v3.7.0：``literal_query`` 对**故意**让查询等于 title（补「两三个字查询」盲区），
+        # 不计入泄漏 —— 否则每个字面样本都会报违规，把真问题淹没。
+        if int(p.get("label", 0)) == 1 and q_has_text and t_has_text and not p.get("literal_query"):
             title = str(t["text"]).split(" ")[0].strip()
             if title and title in q["text"]:
                 title_violations.append(str(p.get("id")))
+        if p.get("literal_query"):
+            literal_queries += 1
 
     unique_refs = sorted(set(image_refs))
     missing_images = [
@@ -271,6 +276,7 @@ def summarize_eval_set(eval_set: Dict[str, Any], base_dir: Optional[str] = None)
         "query_text_over_window": over_window,
         "window": TEXT_TOWER_WINDOW,
         "title_violations": title_violations,
+        "literal_queries": literal_queries,
         "image_refs": unique_refs,
         "missing_images": missing_images,
     }
@@ -304,6 +310,9 @@ def print_eval_stats(stats: Dict[str, Any]) -> None:
     )
     tv = stats["title_violations"]
     print(f"  正样本标题词泄漏: {len(tv)}" + (f"  → {', '.join(tv)}" if tv else ""))
+    if stats.get("literal_queries"):
+        print(f"  字面查询子集    : {stats['literal_queries']} 对（literal_query=true，"
+              f"不计入标题泄漏；统计时须与改写查询分开报）")
     miss = stats.get("missing_images", [])
     print(
         f"  引用图片存在性  : {len(stats.get('image_refs', []))} 个引用，"

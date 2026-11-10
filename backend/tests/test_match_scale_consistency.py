@@ -21,8 +21,6 @@
 作者：team-lead（齐活林）—— 修复者自留守卫。
 """
 import json
-import os
-import sys
 
 from app import database as db_module
 from app.clip_service import clip_service

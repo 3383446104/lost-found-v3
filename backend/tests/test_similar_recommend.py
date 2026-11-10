@@ -133,3 +133,34 @@ def test_admin_items_list_includes_recommend(client, make_admin, make_user, crea
     row = next(i for i in resp["items"] if i["id"] == item_id)
     assert "is_recommend" in row
     assert "images" in row
+
+
+def test_similar_threshold_is_auto_not_manual(client, make_user, monkeypatch):
+    """相似推荐门槛取 auto 档：0.70 的弱相关不上详情页，0.90 的才上。
+
+    2026-11-10 反馈：详情页把 69.7% 的「笔记本 × 学生证」推出来并标「高度疑似」。
+    根因是门槛用了 manual（0.6763）。相似推荐是**系统主动呈现**，误报成本高于
+    用户主动检索，故应与自动推送同档。
+    """
+    from app.config import settings as st, match_threshold
+    dim = int(st.CLIP_CN_EMBED_DIM)
+    owner = make_user(username="sr_owner3")
+
+    e0 = np.zeros(dim, dtype=np.float32)
+    e0[0] = 1.0
+    e1 = np.zeros(dim, dtype=np.float32)
+    e1[1] = 1.0
+
+    def vec(cos):
+        return json.dumps(((cos * e0) + np.sqrt(1 - cos ** 2) * e1).tolist())
+
+    target = _insert_item_with_vectors(owner["id"], "lost", text_vector=vec(1.0))
+    weak = _insert_item_with_vectors(owner["id"], "found", text_vector=vec(0.70), title="弱相关")
+    strong = _insert_item_with_vectors(owner["id"], "found", text_vector=vec(0.90), title="强相关")
+
+    ids = [it["id"] for it in client.get(f"/api/items/{target}/similar").json()["items"]]
+    assert strong in ids, "0.90 应通过 auto 门槛"
+    assert weak not in ids, "0.70 不应出现在相似推荐（门槛已是 auto）"
+
+    # 门槛确实用的是 auto 档（与配置一致，而非写死）
+    assert match_threshold("auto") > 0.70

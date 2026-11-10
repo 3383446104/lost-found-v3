@@ -7,12 +7,31 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 import numpy as np
-from ..config import settings
+from ..config import settings, match_threshold
 from ..database import get_db_connection, vector_to_json, json_to_vector, CATEGORIES
 from ..dependencies.auth import get_current_user, resolve_optional_viewer
 from ..utils.file import allowed_file
 from ..utils.privacy import mask_phone
 from ..utils.time_utils import format_beijing_time, days_since_utc
+
+
+def _is_claim_party(item_id: int, user_id: Optional[int]) -> bool:
+    """该用户是否为这件物品**已通过/已完成**认领的申请人。
+
+    用于 ``get_item`` 的可见性例外：认领中（claiming）物品不进公共列表，
+    但当事申请人必须能打开详情页 —— 否则「认领通过后查看发布者完整联系方式」
+    这条业务链路（FR-CLAIM-05）在页面上根本走不到。
+
+    只认 status ∈ {1, 3}：待审核（0）不享受例外，避免"提交申请即可围观"。
+    """
+    if not user_id:
+        return False
+    with get_db_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM claims WHERE item_id=? AND claimer_id=? AND status IN (1, 3) LIMIT 1",
+            (item_id, user_id),
+        ).fetchone()
+    return bool(row)
 from ..clip_service import clip_service
 from ..validators import validate_item_title, validate_contact
 from ..logger import logger
@@ -30,15 +49,15 @@ ALLOWED_EXTENSIONS = getattr(settings, "ALLOWED_EXTENSIONS", {"jpg", "jpeg", "pn
 def _match_threshold_default() -> float:
     """手动匹配默认下界（v3.5.0-R-T4）。
 
-    **每次调用时**从 ``settings.MATCH_THRESHOLD_MANUAL`` 读取，与同模块的
-    ``resolve_legend()`` 共享**同一数据源**。
+    **每次调用时**从 ``config.match_threshold()`` 读取（按打分口径分派 v1/v2 阈值），
+    与同模块的 ``resolve_legend()`` 共享**同一数据源**。
 
     历史：旧实现 ``MATCH_THRESHOLD = getattr(settings, ...)`` 是**导入期快照**——
     与 ``resolve_legend()`` 的「每次访问 settings」语义不一致；线上通过环境变量
     调整 ``MATCH_THRESHOLD_MANUAL`` 后，旧快照仍读旧值，配置变更**只在图例**生效、
     实际过滤仍按旧值，行为割裂。
     """
-    return float(settings.MATCH_THRESHOLD_MANUAL)
+    return match_threshold("manual")
 
 
 def resolve_legend() -> dict:
@@ -55,9 +74,9 @@ def resolve_legend() -> dict:
     high = settings.MATCH_LEGEND_HIGH
     mid = settings.MATCH_LEGEND_MID
     if high is None:
-        high = settings.MATCH_THRESHOLD_AUTO
+        high = match_threshold("auto")
     if mid is None:
-        mid = settings.MATCH_THRESHOLD_MANUAL
+        mid = match_threshold("manual")
     return {"high": float(high), "mid": float(mid)}
 
 
@@ -221,10 +240,14 @@ async def create_item(
         raise HTTPException(500, "图片特征提取失败")
 
     text_vector = None
+    title_vector = None
     full_text = f"{title} {description}".strip()
     if full_text:
         try:
             text_vector = await run_in_threadpool(clip_service.get_text_feature, full_text)
+            # v3.7.0：标题单独编码。全文向量会被描述稀释，标题才是「是什么」。
+            if (title or "").strip():
+                title_vector = await run_in_threadpool(clip_service.get_text_feature, title.strip())
         except Exception as e:
             for p in saved_paths:
                 delete_file_if_exists(p)
@@ -239,12 +262,13 @@ async def create_item(
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO items (type, title, description, category, image_path,
-                                   images, cover_image, image_vector, text_vector,
+                                   images, cover_image, image_vector, text_vector, title_vector,
                                    contact, location, status, user_id, review_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (type, title, description, category, image_path,
                   images_json, cover_name,
                   vector_to_json(image_vector), vector_to_json(text_vector),
+                  vector_to_json(title_vector),
                   contact, location, 'pending', current_user['user_id'], 'pending'))
             item_id = cursor.lastrowid
     except Exception as e:
@@ -416,7 +440,13 @@ async def get_item(item_id: int, request: Request):
     is_admin = bool(viewer and viewer["role"] == "admin")
 
     if not (is_admin or item['user_id'] == viewer_id):
-        if item['review_status'] != 'approved' or item['status'] != 'active':
+        if item['review_status'] != 'approved':
+            raise HTTPException(404, "物品不存在")
+        # 认领中的物品对**非属主**默认不可见（公共列表也按 status='active' 过滤）；
+        # 但交接当事方必须例外，否则「同意认领后从认领中心点进来」直接 404：
+        #   - 申请人需要该页面展示发布者完整联系方式（FR-CLAIM-05 的分级可见）；
+        #   - 交接完成（claimed）后双方也应能回看。
+        if item['status'] != 'active' and not _is_claim_party(item_id, viewer_id):
             raise HTTPException(404, "物品不存在")
 
     result = dict(item)
@@ -452,13 +482,16 @@ async def similar_items(
         target = cursor.fetchone()
         if not target:
             raise HTTPException(404, "物品不存在")
-        if target['review_status'] != 'approved' or target['status'] != 'active':
+        # 相似推荐只读、不涉及隐私，故只要求**已审核通过**，不再要求 status='active'。
+        # 否则属主/申请人在详情页（物品处于 claiming/claimed）时，
+        # 这个子请求会 404，被全局拦截器弹成「物品不存在」，看起来像页面坏了。
+        if target['review_status'] != 'approved':
             raise HTTPException(404, "物品不存在")
 
         opposite = 'found' if target['type'] == 'lost' else 'lost'
         cursor.execute(
-            """SELECT id, title, description, image_vector, text_vector, image_path,
-                      cover_image, category, location, created_at
+            """SELECT id, title, description, image_vector, text_vector, title_vector,
+                      image_path, cover_image, category, location, created_at
                FROM items
                WHERE type = ? AND status = 'active' AND review_status = 'approved' AND id != ?""",
             (opposite, item_id),
@@ -470,7 +503,10 @@ async def similar_items(
     if query_img_vec is None and query_text_vec is None:
         return {"items": [], "legend": resolve_legend()}
 
-    threshold = float(settings.MATCH_THRESHOLD_MANUAL)
+    # 相似推荐是**系统主动呈现**（用户没在搜），误报成本高于手动检索结果，
+    # 故门槛取 auto 档而非 manual 档：manual（0.6763）会把 69% 的弱相关物品推到详情页，
+    # 用户看到"69% + 高度疑似"只会觉得系统不靠谱。
+    threshold = match_threshold("auto")
     results = []
     for cand in candidates:
         cand_img = json_to_vector(cand['image_vector'])
@@ -485,6 +521,11 @@ async def similar_items(
                 cat1='', cat2=cand['category'] or '',
                 loc1='', loc2=cand['location'] or '',
                 days_old=days_old,
+                # 查询侧是「物品自身」而非用户输入 → 不启用字面特征（query_text 留空），
+                # 避免同标题物品被自比抬分。
+                title_vec2=json_to_vector(cand['title_vector']),
+                target_title=cand['title'] or '',
+                target_desc=cand['description'] or '',
             )
         except Exception as e:
             logger.warning(f"相似推荐打分失败（物品 {cand['id']}，已跳过）: {e}")
@@ -596,9 +637,13 @@ async def update_item(
         user = cursor.fetchone()
         if item['user_id'] != user_id and user['role'] != 'admin':
             raise HTTPException(403, "无权修改此物品")
-        # v3.6.1：已审核通过的物品，发布者不可再修改（仅可删除；管理员不受限）
-        if item['review_status'] == 'approved' and user['role'] != 'admin':
-            raise HTTPException(403, "该物品已审核通过，无法修改；如需更正请删除后重新发布")
+        # v3.7.1：物品一旦审核通过，**任何人（含管理员）都不可再修改**。
+        # WHY：审核结论必须与线上内容一致。若管理员可事后改标题/图片/描述，
+        # 「已审核」就退化成一次性动作，且改动不留审核痕迹 —— 这是数据风险。
+        # 管理员需要处置违规内容时，走管理后台的**状态接口**（下架/关闭）
+        # 或**删除接口**，两者都留痕且不改变内容本身。
+        if item['review_status'] == 'approved':
+            raise HTTPException(403, "该物品已审核通过，无法修改；如需更正请联系管理员下架后重新发布")
 
     form = await request.form()
     title = form.get('title')
@@ -692,10 +737,14 @@ async def update_item(
             raise HTTPException(500, "图片特征提取失败")
 
     text_vector = None
+    title_vector = None
     full_text = f"{title} {description}".strip()
     if full_text:
         try:
             text_vector = await run_in_threadpool(clip_service.get_text_feature, full_text)
+            # v3.7.0：标题改了就同步重算标题向量，否则 v2 会拿旧标题向量打分。
+            if (title or "").strip():
+                title_vector = await run_in_threadpool(clip_service.get_text_feature, title.strip())
         except Exception as e:
             for p in saved_new:
                 delete_file_if_exists(p)
@@ -719,7 +768,7 @@ async def update_item(
                 title = ?, description = ?, category = ?,
                 contact = ?, location = ?, image_path = ?,
                 images = ?, cover_image = ?,
-                image_vector = ?, text_vector = ?,
+                image_vector = ?, text_vector = ?, title_vector = ?,
                 review_status = ?, status = ?,
                 reviewer_id = ?, review_time = ?, reject_reason = ?
             WHERE id = ?
@@ -727,7 +776,8 @@ async def update_item(
               os.path.join(settings.UPLOAD_FOLDER, new_cover) if new_cover else None,
               json.dumps(final_names) if final_names else None, new_cover,
               image_vector_json,
-              vector_to_json(text_vector), review_status, status,
+              vector_to_json(text_vector), vector_to_json(title_vector),
+              review_status, status,
               reviewer_id, review_time, reject_reason, item_id))
 
     # 删除已不再属于该物品的旧图文件（不在 final_names 中的 stored 文件）
@@ -834,7 +884,8 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, title, description, image_vector, text_vector, image_path, category, location, created_at
+            SELECT id, title, description, image_vector, text_vector, title_vector,
+                   image_path, category, location, created_at
             FROM items
             WHERE type = ? AND status = 'active' AND review_status = 'approved'
         ''', (req.target_type,))
@@ -867,19 +918,26 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
                 cat1=req.category or '', cat2=item['category'] or '',
                 loc1=req.location or '', loc2=item['location'] or '',
                 days_old=days_old,
+                # v3.7.0：标题独立向量 + 原始字符串（字面命中特征）。
+                # 旧库 title_vector 为 NULL 时 v2 自动回退到全文向量，不抛错。
+                title_vec2=json_to_vector(item['title_vector']),
+                query_text=req.text or '',
+                target_title=item['title'] or '',
+                target_desc=item['description'] or '',
             )
         except Exception as e:
             skipped += 1
             logger.error(f"匹配物品 {item['id']} 时打分出错（已跳过）: {e}")
             continue
-        # score          = 排序分（含时间衰减，实现「新物品优先」）
-        # content_score  = 内容分（不含类别/位置/时间，**与标定同尺度 → 用于阈值判定**）
-        # reference_score = 展示分（最强证据通道，供界面与邮件参考）
+        # score          = **唯一判定分**（v2 下与 content_score 同值）
+        # content_score  = 内容/判定分（与标定同尺度；v2 起二者合一）
+        # ranking_score  = 排序分（v2 = score × 时间衰减，实现「新物品优先」）
         similarity = detail["score"]
         content_score = detail["content_score"]
+        ranking_score = detail.get("ranking_score", similarity)
         logger.info(
-            f"  匹配计算: 物品{item['id']} 内容分={content_score:.4f} 排序分={similarity:.4f} "
-            f"展示分={detail['reference_score']:.4f} 等级={detail['level']}"
+            f"  匹配计算: 物品{item['id']} 判定分={content_score:.4f} 排序分={ranking_score:.4f} "
+            f"等级={detail['level']}"
         )
         if content_score >= threshold:
             results.append({
@@ -889,15 +947,16 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
                 'category': item['category'],
                 'location': item['location'],
                 'image_path': item['image_path'],
-                # 展示分（用户与邮件看到的「相似度」）
-                'similarity': round(detail["reference_score"], 6),
-                # 内容分（阈值判定用，与标定同尺度）
+                # 展示分 = **与判定分同源**（v2 起只有一个分数，杜绝「展示高分、判定低分」）
+                'similarity': round(similarity, 6),
+                # 判定分（阈值用它，与标定同尺度）
                 'content_score': round(content_score, 6),
-                # 排序分（含衰减，内部口径）
-                'match_score': round(similarity, 6),
+                # 排序分（v2 = 判定分 × 时间衰减，仅影响先后，不影响入选）
+                'match_score': round(ranking_score, 6),
                 # 证据链：等级 + 命中依据 + 各通道原始值
                 'level': detail["level"],
                 'basis': detail["basis"],
+                'literal_hit': detail.get("literal_hit", 0.0),
                 'channels': {
                     k: (round(v, 6) if isinstance(v, float) else v)
                     for k, v in detail["channels"].items()
@@ -919,14 +978,21 @@ async def match_items(req: MatchRequest, current_user: dict = Depends(get_curren
             )
         logger.info(
             f"手动匹配无结果: target_type={req.target_type} target_items_count={len(target_items)} "
-            f"threshold={threshold} has_image={query_img_vec is not None} has_text={query_text_vec is not None} "
+            f"threshold={threshold:.6f} mode={settings.MATCH_SCORING_MODE} "
+            f"has_image={query_img_vec is not None} has_text={query_text_vec is not None} "
             f"skipped={skipped}"
         )
 
     for p in temp_paths:
         delete_file_if_exists(p)
 
-    return {"matches": results[:20], "legend": resolve_legend()}
+    return {
+        "matches": results[:20],
+        "legend": resolve_legend(),
+        # 让调用方（含前端/答辩 curl）直接确认服务端跑的是哪套口径，
+        # 不必靠阈值反推 —— 见 main.py 启动横幅的同一条注释。
+        "scoring_mode": settings.MATCH_SCORING_MODE,
+    }
 
 
 @router.post("/temp-upload")

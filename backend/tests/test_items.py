@@ -147,6 +147,46 @@ def test_list_masks_contact_for_others(client, make_user, create_item, approve_i
     assert target["contact"] == "139****9000"
 
 
+def test_admin_sees_full_contact_by_design(client, make_user, make_admin,
+                                           create_item, approve_item):
+    """**管理员豁免**是策略的一部分，不是脱敏失效（2026-11-10 排查记录）。
+
+    实测反馈「脱敏好像失效了」，根因是测试账号 `dml` 是 admin：
+    管理员在详情与列表都看到完整号码。此用例把该意图锁死 ——
+    若哪天真的失效（非属主非管理员也看到完整），上面两个用例会红。
+    """
+    owner = make_user(username="mask_owner3")
+    item_id = create_item(owner["headers"], title="管理员可见号码", contact="13700137000")
+    approve_item(item_id)
+
+    admin = make_admin(username="mask_admin")
+    detail = client.get(f"/api/items/{item_id}", headers=admin["headers"])
+    assert detail.status_code == 200
+    assert detail.json()["item"]["contact"] == "13700137000"
+
+    items = client.get("/api/items/", headers=admin["headers"]).json()["items"]
+    target = next(it for it in items if it["id"] == item_id)
+    assert target["contact"] == "13700137000"
+
+
+def test_masked_flag_only_on_detail(client, make_user, create_item, approve_item):
+    """``contact_masked`` 只在详情下发（列表没有该字段）—— 前端据此提示「已脱敏」。
+
+    记录这处**不对称**：列表若也要提示，需要另行补字段；当前不应误以为列表泄露。
+    """
+    owner = make_user(username="mask_owner4")
+    item_id = create_item(owner["headers"], title="标记位检查", contact="13600136000")
+    approve_item(item_id)
+
+    detail = client.get(f"/api/items/{item_id}").json()["item"]
+    assert detail["contact_masked"] is True
+    assert detail["contact"] == "136****6000"
+
+    items = client.get("/api/items/").json()["items"]
+    target = next(it for it in items if it["id"] == item_id)
+    assert "contact_masked" not in target
+
+
 def test_owner_cannot_update_approved_item(client, make_user, create_item, approve_item):
     """v3.6.1：审核通过后发布者只能删除，不能修改。"""
     owner = make_user(username="lock_owner")
@@ -261,13 +301,17 @@ def test_route_order_temp_upload_not_swallowed(client, make_user):
 # --------------------------------------------------------------------------- #
 # POST /api/items/match 鉴权契约（v3.4.1）
 # --------------------------------------------------------------------------- #
-def test_match_without_token_403_not_authenticated(client):
-    """无 Authorization 头 → 403（HTTPBearer auto_error=True），detail='Not authenticated'。"""
+def test_match_without_token_401_not_authenticated(client):
+    """无 Authorization 头 → 401（v3.6.2 起 ``HTTPBearer(auto_error=False)``）。
+
+    v3.6.1 及以前由 HTTPBearer 默认返回 403，与「账号被禁用」的 403 撞语义，
+    v3.6.2 统一改为 401（详见 CHANGELOG V3.6.2 §3）。
+    """
     resp = client.post(
         "/api/items/match", json={"text": "黑色钱包", "target_type": "found"}
     )
-    assert resp.status_code == 403, f"期望 403，实得 {resp.status_code}"
-    assert resp.json().get("detail") == "Not authenticated"
+    assert resp.status_code == 401, f"期望 401，实得 {resp.status_code}"
+    assert resp.json().get("detail") == "未提供认证凭证"
 
 
 def test_match_with_invalid_token_401(client):
@@ -317,3 +361,50 @@ def test_mark_claimed_non_owner_403(client, make_user, create_item, approve_item
 
     resp = client.put(f"/api/items/{item_id}/mark-claimed", headers=other["headers"])
     assert resp.status_code == 403
+
+
+def test_admin_cannot_update_approved_item(client, make_user, make_admin,
+                                           create_item, approve_item):
+    """v3.7.1：审核通过后**管理员也不能改内容**。
+
+    WHY：管理员能改数据本身就是风险 —— 一次「顺手改标题」会让「已审核」
+    变成一次性动作，且改动不留审核痕迹（reviewer_id/review_time 仍是原审核人）。
+    管理员处置违规内容走下架/删除，不就地改内容。
+    """
+    owner = make_user(username="lock_owner2")
+    admin = make_admin(username="lock_admin")
+    item_id = create_item(owner["headers"], title="管理员也不许改")
+    approve_item(item_id)
+
+    payload = {
+        "title": "管理员改名",
+        "description": "被改过的描述",
+        "category": "其他",
+        "contact": "",
+        "location": "图书馆",
+    }
+    resp = client.put(f"/api/items/{item_id}", data=payload, headers=admin["headers"])
+    assert resp.status_code == 403
+    assert "无法修改" in resp.json()["detail"]
+
+    # 内容确实没变
+    title = client.get(f"/api/items/{item_id}").json()["item"]["title"]
+    assert title == "管理员也不许改"
+
+
+def test_admin_can_still_update_pending_item(client, make_user, make_admin,
+                                             create_item):
+    """待审核物品管理员仍可编辑（用于纠正明显错误，编辑后仍在待审队列）。"""
+    owner = make_user(username="lock_owner3")
+    admin = make_admin(username="lock_admin2")
+    item_id = create_item(owner["headers"], title="待审核原文")
+
+    payload = {
+        "title": "管理员修正标题",
+        "description": "",
+        "category": "其他",
+        "contact": "",
+        "location": "",
+    }
+    resp = client.put(f"/api/items/{item_id}", data=payload, headers=admin["headers"])
+    assert resp.status_code == 200

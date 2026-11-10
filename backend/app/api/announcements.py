@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFil
 from ..config import settings
 from ..database import get_db_connection, add_notification
 from ..dependencies.auth import get_current_admin, verify_token
-from ..utils.email_utils import send_email
+from ..utils.email_utils import send_email, render_email_html
 from ..utils.file import allowed_file
 from ..utils.time_utils import format_beijing_time
 from ..logger import logger
@@ -61,15 +61,9 @@ def _push_published_announcement(ann_id: int, title: str, content: str):
             logger.error(f"公告站内通知失败 (用户 {u['id']}): {e}")
         if u["email"]:
             try:
-                body = (
-                    f'<div style="font-size:14px;color:#333;">'
-                    f'<h2 style="color:#2c3e50;margin:0 0 12px;">{title}</h2>'
-                    f'<div>{content}</div>'
-                    f'<p style="margin-top:16px;">'
-                    f'<a href="{settings.BASE_URL}{link}" '
-                    f'style="display:inline-block;padding:10px 24px;background:#667eea;color:#fff;'
-                    f'text-decoration:none;border-radius:8px;">查看公告详情</a></p></div>'
-                )
+                # 统一版式（与认领/匹配邮件同源），公告正文是富文本 → escape=False
+                body = render_email_html(
+                    title, content, link=link, cta="查看公告详情", escape=False)
                 send_email(u["email"], f"【校园失物检索】校园公告：{title}", body, html=True)
             except Exception as e:
                 logger.error(f"公告邮件推送失败 (用户 {u['id']}): {e}")

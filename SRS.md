@@ -24,9 +24,9 @@
 
 本系统是一个面向高校校园的智能化失物招领平台，核心能力包括：
 
-- 用户注册与登录（JWT 鉴权，7 天有效期）
+- 用户注册与登录（JWT 鉴权，30 分钟滑动会话：离开超过 30 分钟需重新登录，后端重启后全部失效）
 - 失物/拾物信息发布与管理（**1-3 张图片**、拖拽排序、首图封面）
-- 基于 **Chinese-CLIP ViT-H-14**（默认，中文图文跨模态）多模态模型的图文特征提取与智能匹配（**三检索模式** + 主辅证据加权 + 跨模态尺度映射 + 证据链）；`open_clip ViT-B-32` 为可回滚后端
+- 基于 **Chinese-CLIP ViT-H-14**（默认，中文图文跨模态）多模态模型的图文特征提取与智能匹配（**两级加权融合**：通道级加权 + 证据级加权（含字面命中），**单一判定分** + 证据链）；`open_clip ViT-B-32` 为可回滚后端
 - 管理员审核机制（通过/驳回 + 双向邮件通知 + 设为首页推荐）
 - 站内消息与 QQ 邮箱 HTML 邮件通知（含匹配等级与命中依据）
 - **认领闭环**（申请含特征描述 + 证明图 → 发布者审批（互斥自动拒绝）→ 归还确认；联系方式分级可见（申请通过后向申请人展示完整号码）；v3.6.0 起取代旧"通知式认领"）
@@ -56,7 +56,7 @@
 |------|------|
 | CLIP | Contrastive Language-Image Pre-Training，图文跨模态预训练模型 |
 | 余弦相似度 | 两个 L2 归一化向量的内积，用于衡量图文/颜色匹配程度（`cn_clip` ViT-H-14 为 **1024 维**联合投影 / `open_clip` ViT-B-32 为 **512 维**；颜色为 27 维） |
-| JWT | JSON Web Token，HS256 签名，7 天过期 |
+| JWT | JSON Web Token，HS256 签名，30 分钟有效（滑动续期），并绑定服务实例 boot id |
 | 站内消息 | 系统内用户接收的通知，存储于 notifications 表 |
 | 软删除 | 将记录标记为已删除但保留数据；用户注销后关闭物品、改用户名并将 `status` 置为 `deleted` |
 | role / status | 账号「角色」（user/admin）与「账号状态」（active/disabled/deleted）两个正交维度 |
@@ -107,7 +107,7 @@ router.afterEach:
 | 编号 | 功能 | 实现细节 |
 |------|------|---------|
 | FR-AUTH-01 | 用户注册 | `POST /api/register` — username(2-20字符)、password(6-30字符)、phone(必填,11位)、email(选填)。bcrypt 哈希存储。返回 JWT token + user 对象（含 `status='active'`） |
-| FR-AUTH-02 | 用户登录 | `POST /api/login` — username + password。验证 bcrypt 哈希。`status='disabled'` 返回 403 "账号已被禁用，请联系管理员"；`status='deleted'` 返回 403 "账号已注销"。返回 JWT token(7天) + user(id/username/role/status) |
+| FR-AUTH-02 | 用户登录 | `POST /api/login` — username + password。验证 bcrypt 哈希。`status='disabled'` 返回 403 "账号已被禁用，请联系管理员"；`status='deleted'` 返回 403 "账号已注销"。返回 JWT token（30 分钟，滑动续期；后端重启后失效） + user(id/username/role/status) |
 | FR-AUTH-02b | 禁用/注销拦截 | 登录时 `status='disabled'`（或 `deleted`）返回 403；已登录禁用用户在路由守卫中被清除登录态并跳转 /login；受保护接口由 `get_current_user` 统一校验 `status` |
 | FR-AUTH-03 | 自动登录 | localStorage 持久化 token + user。`authStore.restore()` 在路由守卫中恢复。请求拦截器自动附加 `Authorization: Bearer` |
 | FR-AUTH-04 | 获取用户信息 | `GET /api/me` — 返回 id/username/role/status/phone/email/created_at（v3.3 移除 avatar_path） |
@@ -127,7 +127,7 @@ router.afterEach:
 | FR-ITEM-04 | 类别筛选 | 7 类别：电子产品/证件卡片/包袋箱包/书籍文具/服装配饰/钥匙门禁/其他 |
 | FR-ITEM-05 | 关键词搜索 | title 或 description LIKE 模糊匹配 |
 | FR-ITEM-06 | 物品详情 | `GET /api/items/{id}` — 公开访问，未审核物品仅限发布者/管理员可见。返回全部字段（不含向量） |
-| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）。非管理员编辑后 review_status 重置为 pending。**审核通过后发布者不可再编辑（返回 403），只能删除；管理员不受限** |
+| FR-ITEM-07 | 编辑物品 | `PUT /api/items/{id}` — 仅本人/管理员。支持更换图片（自动删旧图+重提取特征）。非管理员编辑后 review_status 重置为 pending。**审核通过后任何人（含管理员）不可再编辑（返回 403），只能删除**——审核结论须与线上内容一致 |
 | FR-ITEM-08 | 删除物品 | `DELETE /api/items/{id}` — 仅本人/管理员。同时删除图片文件 |
 | FR-ITEM-09 | 图片访问 | `GET /api/items/uploads/{filename}` — 公开，路径遍历防护 |
 | FR-ITEM-10 | 多图上传（v3.6.0） | 1-3 张，首图封面（`images` 有序 JSON）；**仅封面参与向量检索**；编辑用 `keep`（保留文件新顺序）+ 新图，封面变更才重算向量、移除的文件同步删除 |
@@ -139,13 +139,13 @@ router.afterEach:
 | FR-MATCH-01 | 以图搜图 | `POST /api/items/match` — 上传 temp 图片 → CLIP 图像特征 → 计算与目标物品余弦相似度 |
 | FR-MATCH-02 | 以文搜图（**真跨模态**） | 输入文字 → CLIP 文本特征 → 与目标**图片**特征计算跨模态相似度（`sim_cross_t2i = q_text · t_img`，而非仅比文本自相似） |
 | FR-MATCH-03 | 图文混合匹配 | 同时提供图片+文字；按查询形态的**三种检索模式**（文字 / 图片 / 图文混合）由缺通道动态归一化自动成形，混合模式权重 ≈ 0.43 / 0.43 / 0.14 |
-| FR-MATCH-04 | 加权相似度算法（主辅证据 + 五阶段） | 权重「**主证据 + 辅助证据**」：同模态（文-文 / 图-图）0.75、跨模态 0.25（缺通道动态归一化）；**跨模态尺度映射** 0.194→0 / 0.298→1（仅外层加权与展示）；跨模态内 `q_text·t_img` 与 `q_img·t_text` 各 0.5；叠加类别/位置调节（+0.05/-0.08、+0.03/-0.04）、时间衰减（240 天 / 下限 0.6）、分层阈值与**阶段5 跨模态一致性惩罚**（触发条件收窄为「文-文高且图-图不高」）；**颜色通道 2026-09-16 废弃** |
+| FR-MATCH-04 | 加权相似度算法（**两级加权融合**，v3.7.0） | **一级·通道加权**：`W_text 0.80 / W_img 0.80 / W_cross 0.20`，缺通道动态归一化（文字检索 ≈ 0.80/0.20、图片检索 ≈ 0.80/0.20、图文混合 ≈ 0.44/0.44/0.11）；文本通道取 `max(标题向量, 全文向量)`；跨模态用**仿射缩放但不截断** `(x−0.194)/(0.298−0.194)`。**二级·证据加权**：`score = base + 类别(±0.03/0.05) + 地点(±0.02/0.03) + 0.15×literal_hit`，封顶 1.0。**单一判定分**，`ranking_score = score × 时间衰减` 仅排序。`V2_TITLE_GATE=literal`：标题向量仅在字面命中时启用（抑制短标题各向异性）。legacy 口径（主辅证据 0.75/0.25 + 五阶段）置 `MATCH_SCORING_MODE=legacy` 可整口径回滚 |
 | FR-MATCH-05 | 结果排序 | 按 `match_score`（含时间衰减）降序返回 Top 20，仅匹配 active + approved 物品；判定用 `content_score` ≥ 阈值 |
-| FR-MATCH-06 | 分层阈值（**已标定**） | 手动 0.624956 / 自动 0.733952（P=91.7% / R=61.1%）/ 邮件 0.832069（P=100% / R=19.4%）；**内容分尺度**（2026-09-21） |
+| FR-MATCH-06 | 分层阈值（**已标定**，按口径分派） | v2：手动 **0.6763** / 自动 **0.7685**（P≥0.90 处 R=0.5833）/ 邮件 **0.8500**；legacy：0.624956 / 0.733952 / 0.832069。统一由 `match_threshold("manual"\|"auto"\|"email")` 按 `MATCH_SCORING_MODE` 分派 |
 | FR-MATCH-07 | 临时图片上传 | `POST /api/items/temp-upload` — 上传后返回文件名，匹配后自动删除 |
-| FR-MATCH-08 | 匹配来源标注 + 证据链 | 结果项含 `match_source`（∈ `text` / `image` / `mixed`）与 `level`（confirmed / high_suspect / related / reference）、`basis`（命中依据）、`channels`（各通道原始值）；响应顶层含 `legend: {high, mid}`（由阈值派生）；三分数：`content_score`（判定）/ `match_score`（排序）/ `similarity` = `reference_score`（展示） |
+| FR-MATCH-08 | 匹配来源标注 + 证据链 | 结果项含 `match_source`（∈ `text` / `image` / `mixed`）与 `level`（confirmed / high_suspect / related / reference）、`basis`（命中依据）、`channels`（各通道原始值）、`literal_hit`（字面命中强度，v3.7.0 新增）；响应顶层含 `legend: {high, mid}`（由阈值派生）。v2 下 `similarity` = `content_score` = `reference_score`（单一判定分），`match_score` 为排序分 |
 | FR-MATCH-09 | 多图检索（v3.6.0） | `image_paths` ≤3：各图向量 L2 归一化 → 均值 → 再归一化（**仅查询侧聚合**）；物品侧仅封面参与 |
-| FR-MATCH-10 | 相似推荐（v3.6.0） | `GET /api/items/{id}/similar` — 反类型 + 复用 `compute_match_detail`，内容分 ≥ 手动阈值，按展示分排序 |
+| FR-MATCH-10 | 相似推荐（v3.6.0，v3.7.0 收紧门槛） | `GET /api/items/{id}/similar` — 反类型 + 复用 `compute_match_detail`，判定分 ≥ **自动阈值**（0.7685，系统主动呈现故与自动推送同档），按判定分排序；等级与判定分同源 |
 
 ### 3.4 管理员审核模块 (FR-ADMIN)
 
@@ -273,7 +273,7 @@ router.afterEach:
 | 编号 | 需求 | 实现 |
 |------|------|------|
 | NFR-SEC-01 | 密码加密 | bcrypt 加盐哈希 |
-| NFR-SEC-02 | 认证机制 | JWT HS256，7 天过期，HTTP Bearer |
+| NFR-SEC-02 | 认证机制 | JWT HS256，30 分钟滑动会话（离开超过 30 分钟失效），绑定服务实例 boot id，HTTP Bearer |
 | NFR-SEC-03 | SQL 注入防护 | 全参数化查询（? 占位符） |
 | NFR-SEC-04 | 权限校验 | `get_current_user`（验证 token + 用户存在 + `status` 不为 disabled/deleted）；`get_current_admin`（验证 `role='admin'`）；公开接口经 `resolve_optional_viewer` 解析可选身份，禁用/注销降级匿名（v3.4.0 / C1）；业务端点（含 `POST /api/items/match`）统一受 `get_current_user` 保护（v3.4.1） |
 | NFR-SEC-05 | 文件安全 | 路径遍历防护（`..` 检测 + `os.path.basename`）；文件类型校验（魔数检测） |
@@ -592,7 +592,56 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
 
 延迟加载：首次调用 `get_image_feature()` 或 `get_text_feature()` 时按 `CLIP_BACKEND` 选择后端并初始化模型。`CLIPService` 为兼容壳，实际编码委托 `app/clip_backend.py`；每个 `encode_*` 在 L2 归一化后经 `_assert_embed_dim` 断言维度。
 
-### 8.2 加权相似度融合（三检索模式 + 主辅证据 + 五阶段）
+### 8.2 加权相似度融合（两级加权 + 单一分数，v3.7.0）
+
+```
+【一级 · 通道加权】在向量空间回答「哪个通道更可信」
+  s_text  = max(sim_text_title, sim_text_text)      标题 ∨ 全文取更优者（不是平均）
+            └ 仅当 literal_hit ≥ 0.8 时标题向量才参与（V2_TITLE_GATE="literal"）
+  s_img   = sim_img_img
+  s_cross = mean(affine(sim_cross_t2i), affine(sim_cross_i2t))
+            affine(x) = (x − 0.194) / (0.298 − 0.194)     仿射缩放，**不截断**
+  base    = Σ(wᵢ·sᵢ)/Σ(wᵢ)    W_text=0.80 / W_img=0.80 / W_cross=0.20
+             （仅累加存在的通道 → 文字/图片/图文三种检索模式零分支自动成形：
+               文字 0.80/0.20，图片 0.80/0.20，图文混合 0.44/0.44/0.11）
+
+【二级 · 证据加权】在证据空间回答「弱信号如何补偿向量」
+  score = clamp( base
+               + 0.03·[同类] − 0.05·[异类]
+               + 0.02·[同地点] − 0.03·[异地点]
+               + 0.15·literal_hit, 0, 1 )
+
+  literal_hit ∈ {1.0 标题完全相同 / 0.8 标题包含 / 0.8 同义命中 / 0.4 仅描述命中 / 0 无重合}
+              同义命中由 app/utils/synonyms.py 提供（13 组，如 校园卡≡一卡通≡饭卡、
+              课本≡教材≡教科书、充电宝≡移动电源）；V2_SYNONYM_ENABLED 可关闭
+
+【单一分数】
+  score = content_score = reference_score（判定 / 展示同源）
+  ranking_score = score × max(0.60, 1 − 已发布天数/240)   ← 只排序，不进判定
+
+【分层阈值】match_threshold(kind) 按 MATCH_SCORING_MODE 分派
+  手动 0.6763（R≥0.90 处 P=0.8049）/ 自动 0.7685（P≥0.90 处 R=0.5833）/ 邮件 0.8500
+
+【证据链】level（confirmed/high_suspect/related/reference）+ basis（命中依据）+ channels（各通道原始值）
+  basis 每条依据须通过各自阈值（图-图/文-文 0.606、跨模态映射后 0.513；2026-10-15 起，图-图通道「存在但低」不再进依据）
+```
+
+> **为什么改（2026-11-09 实测三个结构缺陷）**：
+> ① 跨模态余弦真实取值 0.107~0.191 全部低于映射下界 0.194，`clip` 后**恒为 0**，纯文字查询退化为 `0.75×tt`，等效门槛被抬到 `tt≥0.8333`，正解（0.7569）被挡、错解（0.8599）漏过；
+> ② 全文向量是 `encode(title+description)`，描述把标题稀释成嵌合体（房卡 标题 1.0000 / 全文 0.7569）；
+> ③ Chinese-CLIP 短文本各向异性（「学生证」对「笔记本」0.8436 > 真解 0.7877），向量无法区分两字词 → 引入字面命中，并用它门控标题通道。
+>
+> **门控实证**（`scripts/eval_literal_pairs.py`，42 对非字面配对）：越阈值率 61.9% → 19.0%。
+>
+> ✅ **legacy 口径可回滚**：置 `MATCH_SCORING_MODE=legacy`，恢复「主辅证据 0.75/0.25 + 跨模态 clip 映射 + 三分数分离」的五阶段口径（见 8.2.1）。
+
+**算法落点与参数敏感性**：式 4-1~4-4 的唯一实现是 `app/services/fusion.py`
+（`channels_from_sims` + `fuse` 两个纯函数），`clip_service.compute_score_v2` 只做参数装配。
+权重经 5×5×5 网格搜索（`scripts/fit_fusion_weights.py`）验证：设计取值与搜索最优同分
+（J=0.9565），125 个组合中 32 个（26%）落在最优值 0.5pp 内 → **权重不可辨识，
+只有比值 `w_cross/w_text` 有意义**，设计取值落在平台区内。详见 `docs/algorithm/weighted-fusion.md`。
+
+#### 8.2.1 legacy 口径（v3.6.x，`MATCH_SCORING_MODE=legacy`）
 
 ```
 按查询形态三种检索模式（缺通道动态归一化自动成形，零分支代码）：
@@ -614,8 +663,6 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
               cc = min(可用跨模态方向)；只降权、对 cc 单调，因子 ∈ [0.5, 1.0]；CROSS_PENALTY_ENABLED 可关闭
 
 三分数分离: content_score（阈值判定，与标定同尺度）/ match_score（排序，含衰减）/ reference_score（展示，最强证据通道）
-证据链: level（confirmed/high_suspect/related/reference）+ basis（命中依据）+ channels（各通道原始值）；
-  basis 每条依据须通过各自阈值（图-图/文-文 0.606、跨模态映射后 0.513；2026-10-15 起，图-图通道「存在但低」不再进依据）
 ```
 
 > ⚠️ **颜色通道已于 2026-10-16 整体移除**（2026-09-16 起已不参与打分）：无颜色向量列、无颜色计算代码。
@@ -630,11 +677,11 @@ categories 表（种子 7 类：电子产品 / 证件卡片 / 包袋箱包 / 书
   → BackgroundTasks.add_task(auto_match_and_notify)
   → 查询异类活跃物品 (type相反, status=active, review_status=approved)
   → 维度预检：库向量维度 ≠ 当前模型维度 → 记 ERROR 并跳过
-  → 逐对调用 compute_match_detail（三检索模式 + 五阶段）
-  → 判定用 content_score ≥ 0.733952（MATCH_THRESHOLD_AUTO，与标定同尺度）
+  → 逐对调用 compute_match_detail（两级加权融合，口径由 MATCH_SCORING_MODE 决定）
+  → 判定用 content_score ≥ 0.7685（match_threshold("auto")，与标定同尺度）
   → 按 match_score 降序，Top-3 落库
   → 双向站内通知（含匹配等级 + 命中依据）
-  → content_score ≥ 0.832069（MATCH_THRESHOLD_EMAIL）且有邮箱 → HTML 邮件（含等级与依据）
+  → content_score ≥ 0.8500（match_threshold("email")）且有邮箱 → HTML 邮件（含等级与依据）
 ```
 
 ### 8.4 认领/归还语义规则

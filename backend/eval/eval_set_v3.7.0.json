@@ -1,0 +1,5034 @@
+{
+ "version": "v3.7.0",
+ "model_backend": "cn_clip",
+ "model_name": "ViT-H-14",
+ "source": "桌面素材图（校园失物招领-素材图）经人工认物后复制到 eval/images/；本评测集不依赖 backend/uploads 与 lost_found.db，可在任意克隆上运行",
+ "label_rule": "人工判定：查询与目标是否指向同一件实物。相关=1 / 不相关=0。",
+ "pair_types": {
+  "rewrite": "改写查询 → 目标图（查询不含 title 原词）",
+  "literal": "字面查询（查询 == title）→ 目标图，literal_query=true，单独统计",
+  "cross_category": "跨类别负样本",
+  "same_category": "同类硬负样本（视觉相近的不同实物）",
+  "image_query": "图片查询负样本"
+ },
+ "items": [
+  {
+   "item_id": "M01",
+   "category": "书籍文具",
+   "title": "办公软件教材",
+   "desc": "绿色封面，书角有折痕，扉页写了姓名",
+   "image": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+   "source_file": "4603ab65bf8c1432cba97553cad087dc.jpg"
+  },
+  {
+   "item_id": "M02",
+   "category": "书籍文具",
+   "title": "体育管理教材",
+   "desc": "白色封面，印着红色运动人物",
+   "image": "eval/images/books/53b8ce844d2bbfe67fb28fada5046b6e.jpg",
+   "source_file": "53b8ce844d2bbfe67fb28fada5046b6e.jpg"
+  },
+  {
+   "item_id": "M03",
+   "category": "书籍文具",
+   "title": "黑色笔记本",
+   "desc": "硬壳封面印着白色圆形图案和英文",
+   "image": "eval/images/books/7fb1bcfdb9be86c522f2d51181963b98.jpg",
+   "source_file": "7fb1bcfdb9be86c522f2d51181963b98.jpg"
+  },
+  {
+   "item_id": "M04",
+   "category": "书籍文具",
+   "title": "建设工程审计教材",
+   "desc": "浅青色封面，右下角有建筑剪影",
+   "image": "eval/images/books/9915d5b8d61bc6da96081eb2c63c0ca1.jpg",
+   "source_file": "9915d5b8d61bc6da96081eb2c63c0ca1.jpg"
+  },
+  {
+   "item_id": "M05",
+   "category": "书籍文具",
+   "title": "白色文件夹",
+   "desc": "带按扣的白色资料册，内页透明",
+   "image": "eval/images/books/Image_1792124867669_669.jpg",
+   "source_file": "Image_1792124867669_669.jpg"
+  },
+  {
+   "item_id": "M06",
+   "category": "书籍文具",
+   "title": "深蓝色笔记本",
+   "desc": "封面印着校徽和烫金字",
+   "image": "eval/images/books/Image_1792124877065_457.jpg",
+   "source_file": "Image_1792124877065_457.jpg"
+  },
+  {
+   "item_id": "M07",
+   "category": "书籍文具",
+   "title": "方格活页本",
+   "desc": "活页装订，方格纸，写了半本笔记",
+   "image": "eval/images/books/Image_1792125189503_434.jpg",
+   "source_file": "Image_1792125189503_434.jpg"
+  },
+  {
+   "item_id": "M08",
+   "category": "书籍文具",
+   "title": "高等数学教材",
+   "desc": "白色封面印着蓝色几何图形，上册",
+   "image": "eval/images/books/eec0ecc22a052b1e3a4452c03aafdfff.jpg",
+   "source_file": "eec0ecc22a052b1e3a4452c03aafdfff.jpg"
+  },
+  {
+   "item_id": "M09",
+   "category": "其他",
+   "title": "蓝色雨伞",
+   "desc": "深蓝色折叠伞，收着放在地上",
+   "image": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+   "source_file": "166ef9af541838eb6a2bc085560a28eb.jpg"
+  },
+  {
+   "item_id": "M10",
+   "category": "其他",
+   "title": "格纹雨伞",
+   "desc": "灰蓝色格纹伞面，带弯钩手柄",
+   "image": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+   "source_file": "6664c0ab257bd236459323ddf5c5ef95.jpg"
+  },
+  {
+   "item_id": "M11",
+   "category": "其他",
+   "title": "粉色保温杯",
+   "desc": "粉色杯身，落在教室桌洞里",
+   "image": "eval/images/misc/82a410e2e7617468a385362a03054229.jpg",
+   "source_file": "82a410e2e7617468a385362a03054229.jpg"
+  },
+  {
+   "item_id": "M12",
+   "category": "其他",
+   "title": "摄影冲印袋",
+   "desc": "白色塑料袋，印着华林摄影字样",
+   "image": "eval/images/misc/Image_1792124845498_948.jpg",
+   "source_file": "Image_1792124845498_948.jpg"
+  },
+  {
+   "item_id": "M13",
+   "category": "其他",
+   "title": "格子布袋",
+   "desc": "黑白小格图案，可折叠",
+   "image": "eval/images/misc/Image_1792124934140_467.jpg",
+   "source_file": "Image_1792124934140_467.jpg"
+  },
+  {
+   "item_id": "M14",
+   "category": "其他",
+   "title": "黑色伞套",
+   "desc": "黑色长条布套，带挂绳",
+   "image": "eval/images/misc/Image_1792125225041_650.jpg",
+   "source_file": "Image_1792125225041_650.jpg"
+  },
+  {
+   "item_id": "M15",
+   "category": "其他",
+   "title": "条纹雨伞",
+   "desc": "蓝棕相间宽条纹伞面",
+   "image": "eval/images/misc/e15beec23342e140a402d67b7d709f15.jpg",
+   "source_file": "e15beec23342e140a402d67b7d709f15.jpg"
+  },
+  {
+   "item_id": "M16",
+   "category": "其他",
+   "title": "黑色折叠伞",
+   "desc": "纯黑色伞面，收拢放在课桌上",
+   "image": "eval/images/misc/fd98d7e58bf9c8e62cc46b49457724ab.jpg",
+   "source_file": "fd98d7e58bf9c8e62cc46b49457724ab.jpg"
+  },
+  {
+   "item_id": "M17",
+   "category": "包袋箱包",
+   "title": "波点帆布袋",
+   "desc": "白底黑色小波点，两条帆布提手",
+   "image": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+   "source_file": "7923744e1a9e5a01ebb891dbe416e4a2.jpg"
+  },
+  {
+   "item_id": "M18",
+   "category": "服装配饰",
+   "title": "毛绒玩偶挂件",
+   "desc": "白色小玩偶，戴红色帽子",
+   "image": "eval/images/apparel/00934ccf65e1279ea48448224735a085.jpg",
+   "source_file": "00934ccf65e1279ea48448224735a085.jpg"
+  },
+  {
+   "item_id": "M19",
+   "category": "服装配饰",
+   "title": "串珠手链",
+   "desc": "粉色珠串，坠着白色小玩偶",
+   "image": "eval/images/apparel/388c62b7c1b96e779283cd688fc47e61.jpg",
+   "source_file": "388c62b7c1b96e779283cd688fc47e61.jpg"
+  },
+  {
+   "item_id": "M20",
+   "category": "服装配饰",
+   "title": "白色发夹",
+   "desc": "一排白色塑料抓夹",
+   "image": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+   "source_file": "4cb9469b1a26d70c0b6e913249062661.jpg"
+  },
+  {
+   "item_id": "M21",
+   "category": "服装配饰",
+   "title": "粉色小熊",
+   "desc": "粉色毛绒小熊，挂着蓝色胸牌",
+   "image": "eval/images/apparel/5a237c1b1a1ec679e7752036eb695ad4.jpg",
+   "source_file": "5a237c1b1a1ec679e7752036eb695ad4.jpg"
+  },
+  {
+   "item_id": "M22",
+   "category": "服装配饰",
+   "title": "串珠手串",
+   "desc": "深绿色圆珠，十几颗",
+   "image": "eval/images/apparel/74402d090dce03e69cf29de711cf9067.jpg",
+   "source_file": "74402d090dce03e69cf29de711cf9067.jpg"
+  },
+  {
+   "item_id": "M23",
+   "category": "服装配饰",
+   "title": "像素布贴",
+   "desc": "像素风小人图案，蓝色帽子",
+   "image": "eval/images/apparel/87c6c4a8ca940e071ac7739d862e6c27.jpg",
+   "source_file": "87c6c4a8ca940e071ac7739d862e6c27.jpg"
+  },
+  {
+   "item_id": "M24",
+   "category": "服装配饰",
+   "title": "条纹长袖",
+   "desc": "黑白细条纹，V领，挂着衣架",
+   "image": "eval/images/apparel/Image_1792124937832_132.png",
+   "source_file": "Image_1792124937832_132.png"
+  },
+  {
+   "item_id": "M25",
+   "category": "服装配饰",
+   "title": "黄色拖鞋",
+   "desc": "一只黄色拖鞋，落在椅子下",
+   "image": "eval/images/apparel/Image_1792124970013_67.jpg",
+   "source_file": "Image_1792124970013_67.jpg"
+  },
+  {
+   "item_id": "M26",
+   "category": "服装配饰",
+   "title": "黑色外套",
+   "desc": "黑色连帽外套，袖口有白色标志",
+   "image": "eval/images/apparel/Image_1792124996092_547.jpg",
+   "source_file": "Image_1792124996092_547.jpg"
+  },
+  {
+   "item_id": "M27",
+   "category": "服装配饰",
+   "title": "像素钥匙扣",
+   "desc": "蓝色像素风小人，带钥匙圈",
+   "image": "eval/images/apparel/Image_1792125165915_579.jpg",
+   "source_file": "Image_1792125165915_579.jpg"
+  },
+  {
+   "item_id": "M28",
+   "category": "服装配饰",
+   "title": "刺绣贴片",
+   "desc": "粉紫色像素图案，长条形",
+   "image": "eval/images/apparel/Image_1792125220867_829.jpg",
+   "source_file": "Image_1792125220867_829.jpg"
+  },
+  {
+   "item_id": "M29",
+   "category": "服装配饰",
+   "title": "黄色挂件",
+   "desc": "黄色像素风公仔，落在地上",
+   "image": "eval/images/apparel/b011818fccc83ae3d1f634e002f12858.jpg",
+   "source_file": "b011818fccc83ae3d1f634e002f12858.jpg"
+  },
+  {
+   "item_id": "M30",
+   "category": "服装配饰",
+   "title": "橙色毛绒挂件",
+   "desc": "橙色小狐狸毛绒，系格子领巾",
+   "image": "eval/images/apparel/c3e7df181b9bc319b4aaaccc47430907.jpg",
+   "source_file": "c3e7df181b9bc319b4aaaccc47430907.jpg"
+  },
+  {
+   "item_id": "M31",
+   "category": "电子产品",
+   "title": "蓝牙耳机",
+   "desc": "白色充电盒，盖子打开露出一对耳机",
+   "image": "eval/images/electronics/03c5592df9f461723b0c2cb2763cbeb3.jpg",
+   "source_file": "03c5592df9f461723b0c2cb2763cbeb3.jpg"
+  },
+  {
+   "item_id": "M32",
+   "category": "电子产品",
+   "title": "耳机充电盒",
+   "desc": "白色椭圆盒子，旁边有张红色卡片",
+   "image": "eval/images/electronics/05281bd9d8382ea275bd977651067167.jpg",
+   "source_file": "05281bd9d8382ea275bd977651067167.jpg"
+  },
+  {
+   "item_id": "M33",
+   "category": "电子产品",
+   "title": "圆柱耳机盒",
+   "desc": "蓝绿色圆柱形盒子，盖子半开",
+   "image": "eval/images/electronics/1190ea943803889a10d512ca26f76d1b.jpg",
+   "source_file": "1190ea943803889a10d512ca26f76d1b.jpg"
+  },
+  {
+   "item_id": "M34",
+   "category": "电子产品",
+   "title": "白色耳机盒",
+   "desc": "白色磨砂盒子，捏在手里",
+   "image": "eval/images/electronics/1ae07a4c50bf30506c6bd6c847d776e0.jpg",
+   "source_file": "1ae07a4c50bf30506c6bd6c847d776e0.jpg"
+  },
+  {
+   "item_id": "M35",
+   "category": "电子产品",
+   "title": "机械键盘",
+   "desc": "黑色带背光键帽，旁边有鼠标",
+   "image": "eval/images/electronics/1fe4fc8ca72490fc0d379c8aaf267a53.jpg",
+   "source_file": "1fe4fc8ca72490fc0d379c8aaf267a53.jpg"
+  },
+  {
+   "item_id": "M36",
+   "category": "电子产品",
+   "title": "无线充电器",
+   "desc": "白色圆形底座，中间一圈凸起",
+   "image": "eval/images/electronics/3c413744599d6c8920cce56e94b192d6.jpg",
+   "source_file": "3c413744599d6c8920cce56e94b192d6.jpg"
+  },
+  {
+   "item_id": "M37",
+   "category": "电子产品",
+   "title": "猫耳耳机盒",
+   "desc": "灰色盒子带两只猫耳，系粉色挂绳",
+   "image": "eval/images/electronics/59389548edd73c2641623d724adf3dad.jpg",
+   "source_file": "59389548edd73c2641623d724adf3dad.jpg"
+  },
+  {
+   "item_id": "M38",
+   "category": "电子产品",
+   "title": "充电宝",
+   "desc": "白色长方形移动电源，容量标注很大",
+   "image": "eval/images/electronics/63c12a647aa842932e09fc3bc6118fcf.jpg",
+   "source_file": "63c12a647aa842932e09fc3bc6118fcf.jpg"
+  },
+  {
+   "item_id": "M39",
+   "category": "电子产品",
+   "title": "移动电源",
+   "desc": "白色扁平方形，放在课桌上",
+   "image": "eval/images/electronics/6a153b7da449da8be50df50fe7f9e592.jpg",
+   "source_file": "6a153b7da449da8be50df50fe7f9e592.jpg"
+  },
+  {
+   "item_id": "M40",
+   "category": "电子产品",
+   "title": "耳机收纳盒",
+   "desc": "银灰色方形铁盒，印着品牌英文",
+   "image": "eval/images/electronics/7185e5d5035a785bcfbd92d0b7b45948.jpg",
+   "source_file": "7185e5d5035a785bcfbd92d0b7b45948.jpg"
+  },
+  {
+   "item_id": "M41",
+   "category": "电子产品",
+   "title": "键盘鼠标",
+   "desc": "黑色键盘和鼠标，中间放着一部手机",
+   "image": "eval/images/electronics/84f3cc4c977a21410104725be15bc0c8.jpg",
+   "source_file": "84f3cc4c977a21410104725be15bc0c8.jpg"
+  },
+  {
+   "item_id": "M42",
+   "category": "电子产品",
+   "title": "透明收纳盒",
+   "desc": "透明塑料盒，盖子印着两只小熊",
+   "image": "eval/images/electronics/9f9ef59b4488ac3535ee7e8ff59993c8.jpg",
+   "source_file": "9f9ef59b4488ac3535ee7e8ff59993c8.jpg"
+  },
+  {
+   "item_id": "M43",
+   "category": "电子产品",
+   "title": "粉色耳机盒",
+   "desc": "半透明粉色圆盒，里面装着耳机",
+   "image": "eval/images/electronics/Image_1792124838625_222.jpg",
+   "source_file": "Image_1792124838625_222.jpg"
+  },
+  {
+   "item_id": "M44",
+   "category": "电子产品",
+   "title": "数据线",
+   "desc": "粉色编织线，缠着卡通挂件",
+   "image": "eval/images/electronics/Image_1792124906104_154.jpg",
+   "source_file": "Image_1792124906104_154.jpg"
+  },
+  {
+   "item_id": "M45",
+   "category": "电子产品",
+   "title": "无线耳机",
+   "desc": "白色充电盒掉在地上，旁边一只耳机",
+   "image": "eval/images/electronics/Image_1792124913165_162.jpg",
+   "source_file": "Image_1792124913165_162.jpg"
+  },
+  {
+   "item_id": "M46",
+   "category": "电子产品",
+   "title": "充电线",
+   "desc": "白色编织线，盘成一圈拿在手里",
+   "image": "eval/images/electronics/Image_1792124930332_999.jpg",
+   "source_file": "Image_1792124930332_999.jpg"
+  },
+  {
+   "item_id": "M47",
+   "category": "电子产品",
+   "title": "白色耳机",
+   "desc": "地上一只白色无线耳机",
+   "image": "eval/images/electronics/Image_1792124962941_424.jpg",
+   "source_file": "Image_1792124962941_424.jpg"
+  },
+  {
+   "item_id": "M48",
+   "category": "电子产品",
+   "title": "耳机盒",
+   "desc": "白盒子放在桌肚里，旁边一串钥匙",
+   "image": "eval/images/electronics/Image_1792124973584_243.jpg",
+   "source_file": "Image_1792124973584_243.jpg"
+  },
+  {
+   "item_id": "M49",
+   "category": "电子产品",
+   "title": "椭圆耳机盒",
+   "desc": "地上一只白色椭圆盒子",
+   "image": "eval/images/electronics/Image_1792125092121_935.jpg",
+   "source_file": "Image_1792125092121_935.jpg"
+  },
+  {
+   "item_id": "M50",
+   "category": "电子产品",
+   "title": "手机",
+   "desc": "黑色直板机，屏幕亮着放在桌边",
+   "image": "eval/images/electronics/Image_1792125172752_764.jpg",
+   "source_file": "Image_1792125172752_764.jpg"
+  },
+  {
+   "item_id": "M51",
+   "category": "电子产品",
+   "title": "绿盒耳机",
+   "desc": "绿色盒子装着一只白色耳机",
+   "image": "eval/images/electronics/Image_1792125203308_658.jpg",
+   "source_file": "Image_1792125203308_658.jpg"
+  },
+  {
+   "item_id": "M52",
+   "category": "电子产品",
+   "title": "鹅卵石耳机盒",
+   "desc": "白色鹅卵石造型，放在浅色桌面",
+   "image": "eval/images/electronics/ab6ca039c7e08e4e505d7ad26d176776.jpg",
+   "source_file": "ab6ca039c7e08e4e505d7ad26d176776.jpg"
+  },
+  {
+   "item_id": "M53",
+   "category": "电子产品",
+   "title": "卡通耳机盒",
+   "desc": "盒面印着戴黑帽的卡通女孩，带珠链",
+   "image": "eval/images/electronics/b2ec385215e61467b4e5938769f28a6d.jpg",
+   "source_file": "b2ec385215e61467b4e5938769f28a6d.jpg"
+  },
+  {
+   "item_id": "M54",
+   "category": "电子产品",
+   "title": "白色圆盒",
+   "desc": "白色圆形小盒，握在手心",
+   "image": "eval/images/electronics/c9574c43bbdd5afca7889340e5a9c88e.jpg",
+   "source_file": "c9574c43bbdd5afca7889340e5a9c88e.jpg"
+  },
+  {
+   "item_id": "M55",
+   "category": "电子产品",
+   "title": "米色耳机盒",
+   "desc": "米白色盒子，放在木纹桌面",
+   "image": "eval/images/electronics/cdba11985cfdbf07ac5fd27726fb15af.jpg",
+   "source_file": "cdba11985cfdbf07ac5fd27726fb15af.jpg"
+  },
+  {
+   "item_id": "M56",
+   "category": "电子产品",
+   "title": "键盘套装",
+   "desc": "黑色键盘鼠标，和一部手机摆在一起",
+   "image": "eval/images/electronics/ed451513ceca8b516d9623e3e71bd94b.jpg",
+   "source_file": "ed451513ceca8b516d9623e3e71bd94b.jpg"
+  },
+  {
+   "item_id": "M57",
+   "category": "证件卡片",
+   "title": "学生证",
+   "desc": "深红色小本，印着武昌工学院",
+   "image": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+   "source_file": "5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg"
+  },
+  {
+   "item_id": "M58",
+   "category": "证件卡片",
+   "title": "身份证",
+   "desc": "二代证件，正面信息清晰",
+   "image": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+   "source_file": "6da3ef3195007ae124fd4bebd38834f3.jpg"
+  },
+  {
+   "item_id": "M59",
+   "category": "钥匙门禁",
+   "title": "门禁卡",
+   "desc": "粉色卡套，挂着卡通挂件",
+   "image": "eval/images/keys/12e478f272ab79e4869c10e4889f0182.jpg",
+   "source_file": "12e478f272ab79e4869c10e4889f0182.jpg"
+  },
+  {
+   "item_id": "M60",
+   "category": "钥匙门禁",
+   "title": "校园卡",
+   "desc": "蓝色卡片配蓝色圆环挂绳",
+   "image": "eval/images/keys/1e5bcb84be464f4b7c02fb500be2fb8c.jpg",
+   "source_file": "1e5bcb84be464f4b7c02fb500be2fb8c.jpg"
+  },
+  {
+   "item_id": "M61",
+   "category": "钥匙门禁",
+   "title": "蓝色门禁卡",
+   "desc": "深蓝色长方形卡，平放在桌上",
+   "image": "eval/images/keys/484e336b57f3b18cb52fa9c0b694d123.jpg",
+   "source_file": "484e336b57f3b18cb52fa9c0b694d123.jpg"
+  },
+  {
+   "item_id": "M62",
+   "category": "钥匙门禁",
+   "title": "卡套",
+   "desc": "白色卡套印红色卡通图案，配银圈",
+   "image": "eval/images/keys/Image_1792124871881_324.jpg",
+   "source_file": "Image_1792124871881_324.jpg"
+  },
+  {
+   "item_id": "M63",
+   "category": "钥匙门禁",
+   "title": "毛绒猫挂件",
+   "desc": "白色毛绒小猫，连着蓝色卡片",
+   "image": "eval/images/keys/Image_1792124953927_855.jpg",
+   "source_file": "Image_1792124953927_855.jpg"
+  },
+  {
+   "item_id": "M64",
+   "category": "钥匙门禁",
+   "title": "红色卡套",
+   "desc": "黑色卡套印红色图案，捏在手里",
+   "image": "eval/images/keys/Image_1792125084224_126.jpg",
+   "source_file": "Image_1792125084224_126.jpg"
+  },
+  {
+   "item_id": "M65",
+   "category": "钥匙门禁",
+   "title": "蓝色卡片",
+   "desc": "手里捏着蓝色卡片和一只白色耳机",
+   "image": "eval/images/keys/Image_1792125237351_520.jpg",
+   "source_file": "Image_1792125237351_520.jpg"
+  },
+  {
+   "item_id": "M66",
+   "category": "钥匙门禁",
+   "title": "粉色卡套",
+   "desc": "粉色卡套带挂绳，放在桌边",
+   "image": "eval/images/keys/cd9d8e9d4d51bb23e8a90a517e30df01.jpg",
+   "source_file": "cd9d8e9d4d51bb23e8a90a517e30df01.jpg"
+  },
+  {
+   "item_id": "M67",
+   "category": "钥匙门禁",
+   "title": "校卡",
+   "desc": "蓝色校园卡，印着武昌工学院",
+   "image": "eval/images/keys/e089a23f3beaa10a7e423ea6855675fb.jpg",
+   "source_file": "e089a23f3beaa10a7e423ea6855675fb.jpg"
+  },
+  {
+   "item_id": "M68",
+   "category": "钥匙门禁",
+   "title": "银色钥匙",
+   "desc": "一把银色金属钥匙，躺在手心",
+   "image": "eval/images/keys/ff4ebe6c701ed6b6898b68ae0ebaa683.jpg",
+   "source_file": "ff4ebe6c701ed6b6898b68ae0ebaa683.jpg"
+  },
+  {
+   "item_id": "M69",
+   "category": "钥匙门禁",
+   "title": "钥匙串",
+   "desc": "一串钥匙挂在木桌上，带蓝色小牌",
+   "image": "eval/images/keys/Image_1792124957946_843.jpg",
+   "source_file": "Image_1792124957946_843.jpg"
+  }
+ ],
+ "pairs": [
+  {
+   "id": "P01",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "讲文档表格和幻灯片制作的那本上机课用书",
+    "image": null
+   },
+   "target": {
+    "item_id": "M01",
+    "item_ref": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+    "text": "办公软件教材 绿色封面，书角有折痕，扉页写了姓名"
+   }
+  },
+  {
+   "id": "P02",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白皮那本讲俱乐部怎么运营的专业读物",
+    "image": null
+   },
+   "target": {
+    "item_id": "M02",
+    "item_ref": "eval/images/books/53b8ce844d2bbfe67fb28fada5046b6e.jpg",
+    "text": "体育管理教材 白色封面，印着红色运动人物"
+   }
+  },
+  {
+   "id": "P03",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "硬皮的黑本子，封面上有一圈圈白色小图案",
+    "image": null
+   },
+   "target": {
+    "item_id": "M03",
+    "item_ref": "eval/images/books/7fb1bcfdb9be86c522f2d51181963b98.jpg",
+    "text": "黑色笔记本 硬壳封面印着白色圆形图案和英文"
+   }
+  },
+  {
+   "id": "P04",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "浅绿色封面的工程类专业课用书",
+    "image": null
+   },
+   "target": {
+    "item_id": "M04",
+    "item_ref": "eval/images/books/9915d5b8d61bc6da96081eb2c63c0ca1.jpg",
+    "text": "建设工程审计教材 浅青色封面，右下角有建筑剪影"
+   }
+  },
+  {
+   "id": "P05",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "装复印资料用的白色塑料夹，有个圆扣",
+    "image": null
+   },
+   "target": {
+    "item_id": "M05",
+    "item_ref": "eval/images/books/Image_1792124867669_669.jpg",
+    "text": "白色文件夹 带按扣的白色资料册，内页透明"
+   }
+  },
+  {
+   "id": "P06",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "深蓝色硬面本子，上面有学校标志",
+    "image": null
+   },
+   "target": {
+    "item_id": "M06",
+    "item_ref": "eval/images/books/Image_1792124877065_457.jpg",
+    "text": "深蓝色笔记本 封面印着校徽和烫金字"
+   }
+  },
+  {
+   "id": "P07",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "记了半本公式，纸是小方格的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M07",
+    "item_ref": "eval/images/books/Image_1792125189503_434.jpg",
+    "text": "方格活页本 活页装订，方格纸，写了半本笔记"
+   }
+  },
+  {
+   "id": "P08",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白封面上有蓝色几何图案的数学课本",
+    "image": null
+   },
+   "target": {
+    "item_id": "M08",
+    "item_ref": "eval/images/books/eec0ecc22a052b1e3a4452c03aafdfff.jpg",
+    "text": "高等数学教材 白色封面印着蓝色几何图形，上册"
+   }
+  },
+  {
+   "id": "P09",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一把深蓝色的折叠伞，收好放地上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M09",
+    "item_ref": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+    "text": "蓝色雨伞 深蓝色折叠伞，收着放在地上"
+   }
+  },
+  {
+   "id": "P10",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "伞面是灰蓝格子的，手柄是弯的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M10",
+    "item_ref": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+    "text": "格纹雨伞 灰蓝色格纹伞面，带弯钩手柄"
+   }
+  },
+  {
+   "id": "P11",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉色的喝水杯子，忘在桌肚里了",
+    "image": null
+   },
+   "target": {
+    "item_id": "M11",
+    "item_ref": "eval/images/misc/82a410e2e7617468a385362a03054229.jpg",
+    "text": "粉色保温杯 粉色杯身，落在教室桌洞里"
+   }
+  },
+  {
+   "id": "P12",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "洗照片给的那种白色塑料袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M12",
+    "item_ref": "eval/images/misc/Image_1792124845498_948.jpg",
+    "text": "摄影冲印袋 白色塑料袋，印着华林摄影字样"
+   }
+  },
+  {
+   "id": "P13",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑白小格子的布袋，能折起来那种",
+    "image": null
+   },
+   "target": {
+    "item_id": "M13",
+    "item_ref": "eval/images/misc/Image_1792124934140_467.jpg",
+    "text": "格子布袋 黑白小格图案，可折叠"
+   }
+  },
+  {
+   "id": "P14",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "装伞用的黑色长布袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M14",
+    "item_ref": "eval/images/misc/Image_1792125225041_650.jpg",
+    "text": "黑色伞套 黑色长条布套，带挂绳"
+   }
+  },
+  {
+   "id": "P15",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "蓝和棕色宽条纹的伞，撑开放在地上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M15",
+    "item_ref": "eval/images/misc/e15beec23342e140a402d67b7d709f15.jpg",
+    "text": "条纹雨伞 蓝棕相间宽条纹伞面"
+   }
+  },
+  {
+   "id": "P16",
+   "label": 1,
+   "category": "其他",
+   "subtype": "rewrite",
+   "query": {
+    "text": "全黑的一把伞，收好了放桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M16",
+    "item_ref": "eval/images/misc/fd98d7e58bf9c8e62cc46b49457724ab.jpg",
+    "text": "黑色折叠伞 纯黑色伞面，收拢放在课桌上"
+   }
+  },
+  {
+   "id": "P17",
+   "label": 1,
+   "category": "包袋箱包",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白底黑点的布袋子，有两条提手",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "P18",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一个白色的毛绒小挂饰，戴着红帽子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M18",
+    "item_ref": "eval/images/apparel/00934ccf65e1279ea48448224735a085.jpg",
+    "text": "毛绒玩偶挂件 白色小玩偶，戴红色帽子"
+   }
+  },
+  {
+   "id": "P19",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉色珠子的手串，下面挂个小玩偶",
+    "image": null
+   },
+   "target": {
+    "item_id": "M19",
+    "item_ref": "eval/images/apparel/388c62b7c1b96e779283cd688fc47e61.jpg",
+    "text": "串珠手链 粉色珠串，坠着白色小玩偶"
+   }
+  },
+  {
+   "id": "P20",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一排白色的塑料小夹子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M20",
+    "item_ref": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+    "text": "白色发夹 一排白色塑料抓夹"
+   }
+  },
+  {
+   "id": "P21",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉色的毛绒小熊玩偶，身上挂个蓝牌子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M21",
+    "item_ref": "eval/images/apparel/5a237c1b1a1ec679e7752036eb695ad4.jpg",
+    "text": "粉色小熊 粉色毛绒小熊，挂着蓝色胸牌"
+   }
+  },
+  {
+   "id": "P22",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "深绿色珠子的手串，拿在手里",
+    "image": null
+   },
+   "target": {
+    "item_id": "M22",
+    "item_ref": "eval/images/apparel/74402d090dce03e69cf29de711cf9067.jpg",
+    "text": "串珠手串 深绿色圆珠，十几颗"
+   }
+  },
+  {
+   "id": "P23",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "卡通像素图案的小贴片，戴蓝帽子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M23",
+    "item_ref": "eval/images/apparel/87c6c4a8ca940e071ac7739d862e6c27.jpg",
+    "text": "像素布贴 像素风小人图案，蓝色帽子"
+   }
+  },
+  {
+   "id": "P24",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑白细条纹的长袖上衣，V字领",
+    "image": null
+   },
+   "target": {
+    "item_id": "M24",
+    "item_ref": "eval/images/apparel/Image_1792124937832_132.png",
+    "text": "条纹长袖 黑白细条纹，V领，挂着衣架"
+   }
+  },
+  {
+   "id": "P25",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一只黄色的拖鞋，掉在椅子底下了",
+    "image": null
+   },
+   "target": {
+    "item_id": "M25",
+    "item_ref": "eval/images/apparel/Image_1792124970013_67.jpg",
+    "text": "黄色拖鞋 一只黄色拖鞋，落在椅子下"
+   }
+  },
+  {
+   "id": "P26",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑色的连帽外套，扔在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M26",
+    "item_ref": "eval/images/apparel/Image_1792124996092_547.jpg",
+    "text": "黑色外套 黑色连帽外套，袖口有白色标志"
+   }
+  },
+  {
+   "id": "P27",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "蓝颜色的像素小人钥匙挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M27",
+    "item_ref": "eval/images/apparel/Image_1792125165915_579.jpg",
+    "text": "像素钥匙扣 蓝色像素风小人，带钥匙圈"
+   }
+  },
+  {
+   "id": "P28",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉紫色像素风的长条贴布",
+    "image": null
+   },
+   "target": {
+    "item_id": "M28",
+    "item_ref": "eval/images/apparel/Image_1792125220867_829.jpg",
+    "text": "刺绣贴片 粉紫色像素图案，长条形"
+   }
+  },
+  {
+   "id": "P29",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "地上一个黄颜色的小挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M29",
+    "item_ref": "eval/images/apparel/b011818fccc83ae3d1f634e002f12858.jpg",
+    "text": "黄色挂件 黄色像素风公仔，落在地上"
+   }
+  },
+  {
+   "id": "P30",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "rewrite",
+   "query": {
+    "text": "橙色的毛绒小狐狸挂饰",
+    "image": null
+   },
+   "target": {
+    "item_id": "M30",
+    "item_ref": "eval/images/apparel/c3e7df181b9bc319b4aaaccc47430907.jpg",
+    "text": "橙色毛绒挂件 橙色小狐狸毛绒，系格子领巾"
+   }
+  },
+  {
+   "id": "P31",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白色的无线小耳机，盒子是开着的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M31",
+    "item_ref": "eval/images/electronics/03c5592df9f461723b0c2cb2763cbeb3.jpg",
+    "text": "蓝牙耳机 白色充电盒，盖子打开露出一对耳机"
+   }
+  },
+  {
+   "id": "P32",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白颜色的椭圆小盒，旁边压着张红卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M32",
+    "item_ref": "eval/images/electronics/05281bd9d8382ea275bd977651067167.jpg",
+    "text": "耳机充电盒 白色椭圆盒子，旁边有张红色卡片"
+   }
+  },
+  {
+   "id": "P33",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "蓝绿色的圆筒形小盒，盖子是掀开的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M33",
+    "item_ref": "eval/images/electronics/1190ea943803889a10d512ca26f76d1b.jpg",
+    "text": "圆柱耳机盒 蓝绿色圆柱形盒子，盖子半开"
+   }
+  },
+  {
+   "id": "P34",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "磨砂白的小方盒，拿在手上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M34",
+    "item_ref": "eval/images/electronics/1ae07a4c50bf30506c6bd6c847d776e0.jpg",
+    "text": "白色耳机盒 白色磨砂盒子，捏在手里"
+   }
+  },
+  {
+   "id": "P35",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑色会发光的键盘，边上放个鼠标",
+    "image": null
+   },
+   "target": {
+    "item_id": "M35",
+    "item_ref": "eval/images/electronics/1fe4fc8ca72490fc0d379c8aaf267a53.jpg",
+    "text": "机械键盘 黑色带背光键帽，旁边有鼠标"
+   }
+  },
+  {
+   "id": "P36",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白颜色的圆盘状充电底座",
+    "image": null
+   },
+   "target": {
+    "item_id": "M36",
+    "item_ref": "eval/images/electronics/3c413744599d6c8920cce56e94b192d6.jpg",
+    "text": "无线充电器 白色圆形底座，中间一圈凸起"
+   }
+  },
+  {
+   "id": "P37",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "灰颜色的盒子上面有两只猫耳朵",
+    "image": null
+   },
+   "target": {
+    "item_id": "M37",
+    "item_ref": "eval/images/electronics/59389548edd73c2641623d724adf3dad.jpg",
+    "text": "猫耳耳机盒 灰色盒子带两只猫耳，系粉色挂绳"
+   }
+  },
+  {
+   "id": "P38",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白色的长方形移动电源",
+    "image": null
+   },
+   "target": {
+    "item_id": "M38",
+    "item_ref": "eval/images/electronics/63c12a647aa842932e09fc3bc6118fcf.jpg",
+    "text": "充电宝 白色长方形移动电源，容量标注很大"
+   }
+  },
+  {
+   "id": "P39",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "扁扁的白方块电池，放在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M39",
+    "item_ref": "eval/images/electronics/6a153b7da449da8be50df50fe7f9e592.jpg",
+    "text": "移动电源 白色扁平方形，放在课桌上"
+   }
+  },
+  {
+   "id": "P40",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "银灰色的方铁盒，盒面有英文字母",
+    "image": null
+   },
+   "target": {
+    "item_id": "M40",
+    "item_ref": "eval/images/electronics/7185e5d5035a785bcfbd92d0b7b45948.jpg",
+    "text": "耳机收纳盒 银灰色方形铁盒，印着品牌英文"
+   }
+  },
+  {
+   "id": "P41",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑键盘黑鼠标，中间夹个手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M41",
+    "item_ref": "eval/images/electronics/84f3cc4c977a21410104725be15bc0c8.jpg",
+    "text": "键盘鼠标 黑色键盘和鼠标，中间放着一部手机"
+   }
+  },
+  {
+   "id": "P42",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "透明的小塑料盒，盖上有两只小熊图案",
+    "image": null
+   },
+   "target": {
+    "item_id": "M42",
+    "item_ref": "eval/images/electronics/9f9ef59b4488ac3535ee7e8ff59993c8.jpg",
+    "text": "透明收纳盒 透明塑料盒，盖子印着两只小熊"
+   }
+  },
+  {
+   "id": "P43",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "半透明的粉色小圆盒，里面塞着耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M43",
+    "item_ref": "eval/images/electronics/Image_1792124838625_222.jpg",
+    "text": "粉色耳机盒 半透明粉色圆盒，里面装着耳机"
+   }
+  },
+  {
+   "id": "P44",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉色的充电绳，上面挂个卡通小件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M44",
+    "item_ref": "eval/images/electronics/Image_1792124906104_154.jpg",
+    "text": "数据线 粉色编织线，缠着卡通挂件"
+   }
+  },
+  {
+   "id": "P45",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白盒子掉地上了，边上还有只耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M45",
+    "item_ref": "eval/images/electronics/Image_1792124913165_162.jpg",
+    "text": "无线耳机 白色充电盒掉在地上，旁边一只耳机"
+   }
+  },
+  {
+   "id": "P46",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白的编织绳状线，绕成一圈",
+    "image": null
+   },
+   "target": {
+    "item_id": "M46",
+    "item_ref": "eval/images/electronics/Image_1792124930332_999.jpg",
+    "text": "充电线 白色编织线，盘成一圈拿在手里"
+   }
+  },
+  {
+   "id": "P47",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "地上掉了一只白色的无线小耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M47",
+    "item_ref": "eval/images/electronics/Image_1792124962941_424.jpg",
+    "text": "白色耳机 地上一只白色无线耳机"
+   }
+  },
+  {
+   "id": "P48",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "桌肚里的白盒子，挨着一串钥匙",
+    "image": null
+   },
+   "target": {
+    "item_id": "M48",
+    "item_ref": "eval/images/electronics/Image_1792124973584_243.jpg",
+    "text": "耳机盒 白盒子放在桌肚里，旁边一串钥匙"
+   }
+  },
+  {
+   "id": "P49",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "地上有个白色的椭圆小盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M49",
+    "item_ref": "eval/images/electronics/Image_1792125092121_935.jpg",
+    "text": "椭圆耳机盒 地上一只白色椭圆盒子"
+   }
+  },
+  {
+   "id": "P50",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑颜色的那台，屏还亮着",
+    "image": null
+   },
+   "target": {
+    "item_id": "M50",
+    "item_ref": "eval/images/electronics/Image_1792125172752_764.jpg",
+    "text": "手机 黑色直板机，屏幕亮着放在桌边"
+   }
+  },
+  {
+   "id": "P51",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "绿颜色的盒子，里头一只白耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M51",
+    "item_ref": "eval/images/electronics/Image_1792125203308_658.jpg",
+    "text": "绿盒耳机 绿色盒子装着一只白色耳机"
+   }
+  },
+  {
+   "id": "P52",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白白的像鹅卵石一样的盒子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M52",
+    "item_ref": "eval/images/electronics/ab6ca039c7e08e4e505d7ad26d176776.jpg",
+    "text": "鹅卵石耳机盒 白色鹅卵石造型，放在浅色桌面"
+   }
+  },
+  {
+   "id": "P53",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "盒子上印着戴帽子的小女孩，还挂串珠子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M53",
+    "item_ref": "eval/images/electronics/b2ec385215e61467b4e5938769f28a6d.jpg",
+    "text": "卡通耳机盒 盒面印着戴黑帽的卡通女孩，带珠链"
+   }
+  },
+  {
+   "id": "P54",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白颜色的圆型小盒子，捏在手心",
+    "image": null
+   },
+   "target": {
+    "item_id": "M54",
+    "item_ref": "eval/images/electronics/c9574c43bbdd5afca7889340e5a9c88e.jpg",
+    "text": "白色圆盒 白色圆形小盒，握在手心"
+   }
+  },
+  {
+   "id": "P55",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "米白色的盒子，放在木桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M55",
+    "item_ref": "eval/images/electronics/cdba11985cfdbf07ac5fd27726fb15af.jpg",
+    "text": "米色耳机盒 米白色盒子，放在木纹桌面"
+   }
+  },
+  {
+   "id": "P56",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一整套黑色的键鼠，旁边放手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M56",
+    "item_ref": "eval/images/electronics/ed451513ceca8b516d9623e3e71bd94b.jpg",
+    "text": "键盘套装 黑色键盘鼠标，和一部手机摆在一起"
+   }
+  },
+  {
+   "id": "P57",
+   "label": 1,
+   "category": "证件卡片",
+   "subtype": "rewrite",
+   "query": {
+    "text": "深红色的小本子，上面有学校名字",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "P58",
+   "label": 1,
+   "category": "证件卡片",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一张二代证件，正反面信息清楚",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "P59",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉色的门卡套，上面挂个小玩偶",
+    "image": null
+   },
+   "target": {
+    "item_id": "M59",
+    "item_ref": "eval/images/keys/12e478f272ab79e4869c10e4889f0182.jpg",
+    "text": "门禁卡 粉色卡套，挂着卡通挂件"
+   }
+  },
+  {
+   "id": "P60",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "蓝颜色的卡片，连着个蓝色圆环",
+    "image": null
+   },
+   "target": {
+    "item_id": "M60",
+    "item_ref": "eval/images/keys/1e5bcb84be464f4b7c02fb500be2fb8c.jpg",
+    "text": "校园卡 蓝色卡片配蓝色圆环挂绳"
+   }
+  },
+  {
+   "id": "P61",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "深蓝色的长方形卡，摊在桌面",
+    "image": null
+   },
+   "target": {
+    "item_id": "M61",
+    "item_ref": "eval/images/keys/484e336b57f3b18cb52fa9c0b694d123.jpg",
+    "text": "蓝色门禁卡 深蓝色长方形卡，平放在桌上"
+   }
+  },
+  {
+   "id": "P62",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白底印红图案的塑料套，连着个银色圆环",
+    "image": null
+   },
+   "target": {
+    "item_id": "M62",
+    "item_ref": "eval/images/keys/Image_1792124871881_324.jpg",
+    "text": "卡套 白色卡套印红色卡通图案，配银圈"
+   }
+  },
+  {
+   "id": "P63",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "白色毛绒小猫，下面拴着张蓝卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M63",
+    "item_ref": "eval/images/keys/Image_1792124953927_855.jpg",
+    "text": "毛绒猫挂件 白色毛绒小猫，连着蓝色卡片"
+   }
+  },
+  {
+   "id": "P64",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "黑底上印红图案的，捏在手上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M64",
+    "item_ref": "eval/images/keys/Image_1792125084224_126.jpg",
+    "text": "红色卡套 黑色卡套印红色图案，捏在手里"
+   }
+  },
+  {
+   "id": "P65",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "手上捏着蓝卡和一只白耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M65",
+    "item_ref": "eval/images/keys/Image_1792125237351_520.jpg",
+    "text": "蓝色卡片 手里捏着蓝色卡片和一只白色耳机"
+   }
+  },
+  {
+   "id": "P66",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "粉色的塑料套，带一根挂绳",
+    "image": null
+   },
+   "target": {
+    "item_id": "M66",
+    "item_ref": "eval/images/keys/cd9d8e9d4d51bb23e8a90a517e30df01.jpg",
+    "text": "粉色卡套 粉色卡套带挂绳，放在桌边"
+   }
+  },
+  {
+   "id": "P67",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "蓝底校牌，上面有学校名字",
+    "image": null
+   },
+   "target": {
+    "item_id": "M67",
+    "item_ref": "eval/images/keys/e089a23f3beaa10a7e423ea6855675fb.jpg",
+    "text": "校卡 蓝色校园卡，印着武昌工学院"
+   }
+  },
+  {
+   "id": "P68",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "手心里一把银色的金属小件，带齿的那种",
+    "image": null
+   },
+   "target": {
+    "item_id": "M68",
+    "item_ref": "eval/images/keys/ff4ebe6c701ed6b6898b68ae0ebaa683.jpg",
+    "text": "银色钥匙 一把银色金属钥匙，躺在手心"
+   }
+  },
+  {
+   "id": "P69",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "rewrite",
+   "query": {
+    "text": "一串挂蓝牌子的金属件，摊在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M69",
+    "item_ref": "eval/images/keys/Image_1792124957946_843.jpg",
+    "text": "钥匙串 一串钥匙挂在木桌上，带蓝色小牌"
+   }
+  },
+  {
+   "id": "L01",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "办公软件教材",
+    "image": null
+   },
+   "target": {
+    "item_id": "M01",
+    "item_ref": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+    "text": "办公软件教材 绿色封面，书角有折痕，扉页写了姓名"
+   }
+  },
+  {
+   "id": "L02",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "体育管理教材",
+    "image": null
+   },
+   "target": {
+    "item_id": "M02",
+    "item_ref": "eval/images/books/53b8ce844d2bbfe67fb28fada5046b6e.jpg",
+    "text": "体育管理教材 白色封面，印着红色运动人物"
+   }
+  },
+  {
+   "id": "L03",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "黑色笔记本",
+    "image": null
+   },
+   "target": {
+    "item_id": "M03",
+    "item_ref": "eval/images/books/7fb1bcfdb9be86c522f2d51181963b98.jpg",
+    "text": "黑色笔记本 硬壳封面印着白色圆形图案和英文"
+   }
+  },
+  {
+   "id": "L04",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "建设工程审计教材",
+    "image": null
+   },
+   "target": {
+    "item_id": "M04",
+    "item_ref": "eval/images/books/9915d5b8d61bc6da96081eb2c63c0ca1.jpg",
+    "text": "建设工程审计教材 浅青色封面，右下角有建筑剪影"
+   }
+  },
+  {
+   "id": "L05",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "白色文件夹",
+    "image": null
+   },
+   "target": {
+    "item_id": "M05",
+    "item_ref": "eval/images/books/Image_1792124867669_669.jpg",
+    "text": "白色文件夹 带按扣的白色资料册，内页透明"
+   }
+  },
+  {
+   "id": "L06",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "深蓝色笔记本",
+    "image": null
+   },
+   "target": {
+    "item_id": "M06",
+    "item_ref": "eval/images/books/Image_1792124877065_457.jpg",
+    "text": "深蓝色笔记本 封面印着校徽和烫金字"
+   }
+  },
+  {
+   "id": "L07",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "方格活页本",
+    "image": null
+   },
+   "target": {
+    "item_id": "M07",
+    "item_ref": "eval/images/books/Image_1792125189503_434.jpg",
+    "text": "方格活页本 活页装订，方格纸，写了半本笔记"
+   }
+  },
+  {
+   "id": "L08",
+   "label": 1,
+   "category": "书籍文具",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "高等数学教材",
+    "image": null
+   },
+   "target": {
+    "item_id": "M08",
+    "item_ref": "eval/images/books/eec0ecc22a052b1e3a4452c03aafdfff.jpg",
+    "text": "高等数学教材 白色封面印着蓝色几何图形，上册"
+   }
+  },
+  {
+   "id": "L09",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "蓝色雨伞",
+    "image": null
+   },
+   "target": {
+    "item_id": "M09",
+    "item_ref": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+    "text": "蓝色雨伞 深蓝色折叠伞，收着放在地上"
+   }
+  },
+  {
+   "id": "L10",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "格纹雨伞",
+    "image": null
+   },
+   "target": {
+    "item_id": "M10",
+    "item_ref": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+    "text": "格纹雨伞 灰蓝色格纹伞面，带弯钩手柄"
+   }
+  },
+  {
+   "id": "L11",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "粉色保温杯",
+    "image": null
+   },
+   "target": {
+    "item_id": "M11",
+    "item_ref": "eval/images/misc/82a410e2e7617468a385362a03054229.jpg",
+    "text": "粉色保温杯 粉色杯身，落在教室桌洞里"
+   }
+  },
+  {
+   "id": "L12",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "摄影冲印袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M12",
+    "item_ref": "eval/images/misc/Image_1792124845498_948.jpg",
+    "text": "摄影冲印袋 白色塑料袋，印着华林摄影字样"
+   }
+  },
+  {
+   "id": "L13",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "格子布袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M13",
+    "item_ref": "eval/images/misc/Image_1792124934140_467.jpg",
+    "text": "格子布袋 黑白小格图案，可折叠"
+   }
+  },
+  {
+   "id": "L14",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "黑色伞套",
+    "image": null
+   },
+   "target": {
+    "item_id": "M14",
+    "item_ref": "eval/images/misc/Image_1792125225041_650.jpg",
+    "text": "黑色伞套 黑色长条布套，带挂绳"
+   }
+  },
+  {
+   "id": "L15",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "条纹雨伞",
+    "image": null
+   },
+   "target": {
+    "item_id": "M15",
+    "item_ref": "eval/images/misc/e15beec23342e140a402d67b7d709f15.jpg",
+    "text": "条纹雨伞 蓝棕相间宽条纹伞面"
+   }
+  },
+  {
+   "id": "L16",
+   "label": 1,
+   "category": "其他",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "黑色折叠伞",
+    "image": null
+   },
+   "target": {
+    "item_id": "M16",
+    "item_ref": "eval/images/misc/fd98d7e58bf9c8e62cc46b49457724ab.jpg",
+    "text": "黑色折叠伞 纯黑色伞面，收拢放在课桌上"
+   }
+  },
+  {
+   "id": "L17",
+   "label": 1,
+   "category": "包袋箱包",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "波点帆布袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "L18",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "毛绒玩偶挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M18",
+    "item_ref": "eval/images/apparel/00934ccf65e1279ea48448224735a085.jpg",
+    "text": "毛绒玩偶挂件 白色小玩偶，戴红色帽子"
+   }
+  },
+  {
+   "id": "L19",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "串珠手链",
+    "image": null
+   },
+   "target": {
+    "item_id": "M19",
+    "item_ref": "eval/images/apparel/388c62b7c1b96e779283cd688fc47e61.jpg",
+    "text": "串珠手链 粉色珠串，坠着白色小玩偶"
+   }
+  },
+  {
+   "id": "L20",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "白色发夹",
+    "image": null
+   },
+   "target": {
+    "item_id": "M20",
+    "item_ref": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+    "text": "白色发夹 一排白色塑料抓夹"
+   }
+  },
+  {
+   "id": "L21",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "粉色小熊",
+    "image": null
+   },
+   "target": {
+    "item_id": "M21",
+    "item_ref": "eval/images/apparel/5a237c1b1a1ec679e7752036eb695ad4.jpg",
+    "text": "粉色小熊 粉色毛绒小熊，挂着蓝色胸牌"
+   }
+  },
+  {
+   "id": "L22",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "串珠手串",
+    "image": null
+   },
+   "target": {
+    "item_id": "M22",
+    "item_ref": "eval/images/apparel/74402d090dce03e69cf29de711cf9067.jpg",
+    "text": "串珠手串 深绿色圆珠，十几颗"
+   }
+  },
+  {
+   "id": "L23",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "像素布贴",
+    "image": null
+   },
+   "target": {
+    "item_id": "M23",
+    "item_ref": "eval/images/apparel/87c6c4a8ca940e071ac7739d862e6c27.jpg",
+    "text": "像素布贴 像素风小人图案，蓝色帽子"
+   }
+  },
+  {
+   "id": "L24",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "条纹长袖",
+    "image": null
+   },
+   "target": {
+    "item_id": "M24",
+    "item_ref": "eval/images/apparel/Image_1792124937832_132.png",
+    "text": "条纹长袖 黑白细条纹，V领，挂着衣架"
+   }
+  },
+  {
+   "id": "L25",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "黄色拖鞋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M25",
+    "item_ref": "eval/images/apparel/Image_1792124970013_67.jpg",
+    "text": "黄色拖鞋 一只黄色拖鞋，落在椅子下"
+   }
+  },
+  {
+   "id": "L26",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "黑色外套",
+    "image": null
+   },
+   "target": {
+    "item_id": "M26",
+    "item_ref": "eval/images/apparel/Image_1792124996092_547.jpg",
+    "text": "黑色外套 黑色连帽外套，袖口有白色标志"
+   }
+  },
+  {
+   "id": "L27",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "像素钥匙扣",
+    "image": null
+   },
+   "target": {
+    "item_id": "M27",
+    "item_ref": "eval/images/apparel/Image_1792125165915_579.jpg",
+    "text": "像素钥匙扣 蓝色像素风小人，带钥匙圈"
+   }
+  },
+  {
+   "id": "L28",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "刺绣贴片",
+    "image": null
+   },
+   "target": {
+    "item_id": "M28",
+    "item_ref": "eval/images/apparel/Image_1792125220867_829.jpg",
+    "text": "刺绣贴片 粉紫色像素图案，长条形"
+   }
+  },
+  {
+   "id": "L29",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "黄色挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M29",
+    "item_ref": "eval/images/apparel/b011818fccc83ae3d1f634e002f12858.jpg",
+    "text": "黄色挂件 黄色像素风公仔，落在地上"
+   }
+  },
+  {
+   "id": "L30",
+   "label": 1,
+   "category": "服装配饰",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "橙色毛绒挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M30",
+    "item_ref": "eval/images/apparel/c3e7df181b9bc319b4aaaccc47430907.jpg",
+    "text": "橙色毛绒挂件 橙色小狐狸毛绒，系格子领巾"
+   }
+  },
+  {
+   "id": "L31",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "蓝牙耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M31",
+    "item_ref": "eval/images/electronics/03c5592df9f461723b0c2cb2763cbeb3.jpg",
+    "text": "蓝牙耳机 白色充电盒，盖子打开露出一对耳机"
+   }
+  },
+  {
+   "id": "L32",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "耳机充电盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M32",
+    "item_ref": "eval/images/electronics/05281bd9d8382ea275bd977651067167.jpg",
+    "text": "耳机充电盒 白色椭圆盒子，旁边有张红色卡片"
+   }
+  },
+  {
+   "id": "L33",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "圆柱耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M33",
+    "item_ref": "eval/images/electronics/1190ea943803889a10d512ca26f76d1b.jpg",
+    "text": "圆柱耳机盒 蓝绿色圆柱形盒子，盖子半开"
+   }
+  },
+  {
+   "id": "L34",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "白色耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M34",
+    "item_ref": "eval/images/electronics/1ae07a4c50bf30506c6bd6c847d776e0.jpg",
+    "text": "白色耳机盒 白色磨砂盒子，捏在手里"
+   }
+  },
+  {
+   "id": "L35",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "机械键盘",
+    "image": null
+   },
+   "target": {
+    "item_id": "M35",
+    "item_ref": "eval/images/electronics/1fe4fc8ca72490fc0d379c8aaf267a53.jpg",
+    "text": "机械键盘 黑色带背光键帽，旁边有鼠标"
+   }
+  },
+  {
+   "id": "L36",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "无线充电器",
+    "image": null
+   },
+   "target": {
+    "item_id": "M36",
+    "item_ref": "eval/images/electronics/3c413744599d6c8920cce56e94b192d6.jpg",
+    "text": "无线充电器 白色圆形底座，中间一圈凸起"
+   }
+  },
+  {
+   "id": "L37",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "猫耳耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M37",
+    "item_ref": "eval/images/electronics/59389548edd73c2641623d724adf3dad.jpg",
+    "text": "猫耳耳机盒 灰色盒子带两只猫耳，系粉色挂绳"
+   }
+  },
+  {
+   "id": "L38",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "充电宝",
+    "image": null
+   },
+   "target": {
+    "item_id": "M38",
+    "item_ref": "eval/images/electronics/63c12a647aa842932e09fc3bc6118fcf.jpg",
+    "text": "充电宝 白色长方形移动电源，容量标注很大"
+   }
+  },
+  {
+   "id": "L39",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "移动电源",
+    "image": null
+   },
+   "target": {
+    "item_id": "M39",
+    "item_ref": "eval/images/electronics/6a153b7da449da8be50df50fe7f9e592.jpg",
+    "text": "移动电源 白色扁平方形，放在课桌上"
+   }
+  },
+  {
+   "id": "L40",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "耳机收纳盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M40",
+    "item_ref": "eval/images/electronics/7185e5d5035a785bcfbd92d0b7b45948.jpg",
+    "text": "耳机收纳盒 银灰色方形铁盒，印着品牌英文"
+   }
+  },
+  {
+   "id": "L41",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "键盘鼠标",
+    "image": null
+   },
+   "target": {
+    "item_id": "M41",
+    "item_ref": "eval/images/electronics/84f3cc4c977a21410104725be15bc0c8.jpg",
+    "text": "键盘鼠标 黑色键盘和鼠标，中间放着一部手机"
+   }
+  },
+  {
+   "id": "L42",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "透明收纳盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M42",
+    "item_ref": "eval/images/electronics/9f9ef59b4488ac3535ee7e8ff59993c8.jpg",
+    "text": "透明收纳盒 透明塑料盒，盖子印着两只小熊"
+   }
+  },
+  {
+   "id": "L43",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "粉色耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M43",
+    "item_ref": "eval/images/electronics/Image_1792124838625_222.jpg",
+    "text": "粉色耳机盒 半透明粉色圆盒，里面装着耳机"
+   }
+  },
+  {
+   "id": "L44",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "数据线",
+    "image": null
+   },
+   "target": {
+    "item_id": "M44",
+    "item_ref": "eval/images/electronics/Image_1792124906104_154.jpg",
+    "text": "数据线 粉色编织线，缠着卡通挂件"
+   }
+  },
+  {
+   "id": "L45",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "无线耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M45",
+    "item_ref": "eval/images/electronics/Image_1792124913165_162.jpg",
+    "text": "无线耳机 白色充电盒掉在地上，旁边一只耳机"
+   }
+  },
+  {
+   "id": "L46",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "充电线",
+    "image": null
+   },
+   "target": {
+    "item_id": "M46",
+    "item_ref": "eval/images/electronics/Image_1792124930332_999.jpg",
+    "text": "充电线 白色编织线，盘成一圈拿在手里"
+   }
+  },
+  {
+   "id": "L47",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "白色耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M47",
+    "item_ref": "eval/images/electronics/Image_1792124962941_424.jpg",
+    "text": "白色耳机 地上一只白色无线耳机"
+   }
+  },
+  {
+   "id": "L48",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M48",
+    "item_ref": "eval/images/electronics/Image_1792124973584_243.jpg",
+    "text": "耳机盒 白盒子放在桌肚里，旁边一串钥匙"
+   }
+  },
+  {
+   "id": "L49",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "椭圆耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M49",
+    "item_ref": "eval/images/electronics/Image_1792125092121_935.jpg",
+    "text": "椭圆耳机盒 地上一只白色椭圆盒子"
+   }
+  },
+  {
+   "id": "L50",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M50",
+    "item_ref": "eval/images/electronics/Image_1792125172752_764.jpg",
+    "text": "手机 黑色直板机，屏幕亮着放在桌边"
+   }
+  },
+  {
+   "id": "L51",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "绿盒耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M51",
+    "item_ref": "eval/images/electronics/Image_1792125203308_658.jpg",
+    "text": "绿盒耳机 绿色盒子装着一只白色耳机"
+   }
+  },
+  {
+   "id": "L52",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "鹅卵石耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M52",
+    "item_ref": "eval/images/electronics/ab6ca039c7e08e4e505d7ad26d176776.jpg",
+    "text": "鹅卵石耳机盒 白色鹅卵石造型，放在浅色桌面"
+   }
+  },
+  {
+   "id": "L53",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "卡通耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M53",
+    "item_ref": "eval/images/electronics/b2ec385215e61467b4e5938769f28a6d.jpg",
+    "text": "卡通耳机盒 盒面印着戴黑帽的卡通女孩，带珠链"
+   }
+  },
+  {
+   "id": "L54",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "白色圆盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M54",
+    "item_ref": "eval/images/electronics/c9574c43bbdd5afca7889340e5a9c88e.jpg",
+    "text": "白色圆盒 白色圆形小盒，握在手心"
+   }
+  },
+  {
+   "id": "L55",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "米色耳机盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M55",
+    "item_ref": "eval/images/electronics/cdba11985cfdbf07ac5fd27726fb15af.jpg",
+    "text": "米色耳机盒 米白色盒子，放在木纹桌面"
+   }
+  },
+  {
+   "id": "L56",
+   "label": 1,
+   "category": "电子产品",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "键盘套装",
+    "image": null
+   },
+   "target": {
+    "item_id": "M56",
+    "item_ref": "eval/images/electronics/ed451513ceca8b516d9623e3e71bd94b.jpg",
+    "text": "键盘套装 黑色键盘鼠标，和一部手机摆在一起"
+   }
+  },
+  {
+   "id": "L57",
+   "label": 1,
+   "category": "证件卡片",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "学生证",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "L58",
+   "label": 1,
+   "category": "证件卡片",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "身份证",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "L59",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "门禁卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M59",
+    "item_ref": "eval/images/keys/12e478f272ab79e4869c10e4889f0182.jpg",
+    "text": "门禁卡 粉色卡套，挂着卡通挂件"
+   }
+  },
+  {
+   "id": "L60",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "校园卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M60",
+    "item_ref": "eval/images/keys/1e5bcb84be464f4b7c02fb500be2fb8c.jpg",
+    "text": "校园卡 蓝色卡片配蓝色圆环挂绳"
+   }
+  },
+  {
+   "id": "L61",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "蓝色门禁卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M61",
+    "item_ref": "eval/images/keys/484e336b57f3b18cb52fa9c0b694d123.jpg",
+    "text": "蓝色门禁卡 深蓝色长方形卡，平放在桌上"
+   }
+  },
+  {
+   "id": "L62",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "卡套",
+    "image": null
+   },
+   "target": {
+    "item_id": "M62",
+    "item_ref": "eval/images/keys/Image_1792124871881_324.jpg",
+    "text": "卡套 白色卡套印红色卡通图案，配银圈"
+   }
+  },
+  {
+   "id": "L63",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "毛绒猫挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M63",
+    "item_ref": "eval/images/keys/Image_1792124953927_855.jpg",
+    "text": "毛绒猫挂件 白色毛绒小猫，连着蓝色卡片"
+   }
+  },
+  {
+   "id": "L64",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "红色卡套",
+    "image": null
+   },
+   "target": {
+    "item_id": "M64",
+    "item_ref": "eval/images/keys/Image_1792125084224_126.jpg",
+    "text": "红色卡套 黑色卡套印红色图案，捏在手里"
+   }
+  },
+  {
+   "id": "L65",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "蓝色卡片",
+    "image": null
+   },
+   "target": {
+    "item_id": "M65",
+    "item_ref": "eval/images/keys/Image_1792125237351_520.jpg",
+    "text": "蓝色卡片 手里捏着蓝色卡片和一只白色耳机"
+   }
+  },
+  {
+   "id": "L66",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "粉色卡套",
+    "image": null
+   },
+   "target": {
+    "item_id": "M66",
+    "item_ref": "eval/images/keys/cd9d8e9d4d51bb23e8a90a517e30df01.jpg",
+    "text": "粉色卡套 粉色卡套带挂绳，放在桌边"
+   }
+  },
+  {
+   "id": "L67",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "校卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M67",
+    "item_ref": "eval/images/keys/e089a23f3beaa10a7e423ea6855675fb.jpg",
+    "text": "校卡 蓝色校园卡，印着武昌工学院"
+   }
+  },
+  {
+   "id": "L68",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "银色钥匙",
+    "image": null
+   },
+   "target": {
+    "item_id": "M68",
+    "item_ref": "eval/images/keys/ff4ebe6c701ed6b6898b68ae0ebaa683.jpg",
+    "text": "银色钥匙 一把银色金属钥匙，躺在手心"
+   }
+  },
+  {
+   "id": "L69",
+   "label": 1,
+   "category": "钥匙门禁",
+   "subtype": "literal",
+   "literal_query": true,
+   "query": {
+    "text": "钥匙串",
+    "image": null
+   },
+   "target": {
+    "item_id": "M69",
+    "item_ref": "eval/images/keys/Image_1792124957946_843.jpg",
+    "text": "钥匙串 一串钥匙挂在木桌上，带蓝色小牌"
+   }
+  },
+  {
+   "id": "NX01",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "讲文档表格和幻灯片制作的那本上机课用书",
+    "image": null
+   },
+   "target": {
+    "item_id": "M09",
+    "item_ref": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+    "text": "蓝色雨伞 深蓝色折叠伞，收着放在地上"
+   }
+  },
+  {
+   "id": "NX02",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白皮那本讲俱乐部怎么运营的专业读物",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX03",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "硬皮的黑本子，封面上有一圈圈白色小图案",
+    "image": null
+   },
+   "target": {
+    "item_id": "M20",
+    "item_ref": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+    "text": "白色发夹 一排白色塑料抓夹"
+   }
+  },
+  {
+   "id": "NX04",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "浅绿色封面的工程类专业课用书",
+    "image": null
+   },
+   "target": {
+    "item_id": "M34",
+    "item_ref": "eval/images/electronics/1ae07a4c50bf30506c6bd6c847d776e0.jpg",
+    "text": "白色耳机盒 白色磨砂盒子，捏在手里"
+   }
+  },
+  {
+   "id": "NX05",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "装复印资料用的白色塑料夹，有个圆扣",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX06",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "深蓝色硬面本子，上面有学校标志",
+    "image": null
+   },
+   "target": {
+    "item_id": "M64",
+    "item_ref": "eval/images/keys/Image_1792125084224_126.jpg",
+    "text": "红色卡套 黑色卡套印红色图案，捏在手里"
+   }
+  },
+  {
+   "id": "NX07",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "记了半本公式，纸是小方格的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M15",
+    "item_ref": "eval/images/misc/e15beec23342e140a402d67b7d709f15.jpg",
+    "text": "条纹雨伞 蓝棕相间宽条纹伞面"
+   }
+  },
+  {
+   "id": "NX08",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白封面上有蓝色几何图案的数学课本",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX09",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一把深蓝色的折叠伞，收好放地上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M18",
+    "item_ref": "eval/images/apparel/00934ccf65e1279ea48448224735a085.jpg",
+    "text": "毛绒玩偶挂件 白色小玩偶，戴红色帽子"
+   }
+  },
+  {
+   "id": "NX10",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "伞面是灰蓝格子的，手柄是弯的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M32",
+    "item_ref": "eval/images/electronics/05281bd9d8382ea275bd977651067167.jpg",
+    "text": "耳机充电盒 白色椭圆盒子，旁边有张红色卡片"
+   }
+  },
+  {
+   "id": "NX11",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉色的喝水杯子，忘在桌肚里了",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX12",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "洗照片给的那种白色塑料袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M62",
+    "item_ref": "eval/images/keys/Image_1792124871881_324.jpg",
+    "text": "卡套 白色卡套印红色卡通图案，配银圈"
+   }
+  },
+  {
+   "id": "NX13",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑白小格子的布袋，能折起来那种",
+    "image": null
+   },
+   "target": {
+    "item_id": "M05",
+    "item_ref": "eval/images/books/Image_1792124867669_669.jpg",
+    "text": "白色文件夹 带按扣的白色资料册，内页透明"
+   }
+  },
+  {
+   "id": "NX14",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "装伞用的黑色长布袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX15",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "蓝和棕色宽条纹的伞，撑开放在地上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M24",
+    "item_ref": "eval/images/apparel/Image_1792124937832_132.png",
+    "text": "条纹长袖 黑白细条纹，V领，挂着衣架"
+   }
+  },
+  {
+   "id": "NX16",
+   "label": 0,
+   "category": "其他",
+   "subtype": "cross_category",
+   "query": {
+    "text": "全黑的一把伞，收好了放桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M38",
+    "item_ref": "eval/images/electronics/63c12a647aa842932e09fc3bc6118fcf.jpg",
+    "text": "充电宝 白色长方形移动电源，容量标注很大"
+   }
+  },
+  {
+   "id": "NX17",
+   "label": 0,
+   "category": "包袋箱包",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白底黑点的布袋子，有两条提手",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX18",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一个白色的毛绒小挂饰，戴着红帽子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M59",
+    "item_ref": "eval/images/keys/12e478f272ab79e4869c10e4889f0182.jpg",
+    "text": "门禁卡 粉色卡套，挂着卡通挂件"
+   }
+  },
+  {
+   "id": "NX19",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉色珠子的手串，下面挂个小玩偶",
+    "image": null
+   },
+   "target": {
+    "item_id": "M02",
+    "item_ref": "eval/images/books/53b8ce844d2bbfe67fb28fada5046b6e.jpg",
+    "text": "体育管理教材 白色封面，印着红色运动人物"
+   }
+  },
+  {
+   "id": "NX20",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一排白色的塑料小夹子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M11",
+    "item_ref": "eval/images/misc/82a410e2e7617468a385362a03054229.jpg",
+    "text": "粉色保温杯 粉色杯身，落在教室桌洞里"
+   }
+  },
+  {
+   "id": "NX21",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉色的毛绒小熊玩偶，身上挂个蓝牌子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX22",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "深绿色珠子的手串，拿在手里",
+    "image": null
+   },
+   "target": {
+    "item_id": "M35",
+    "item_ref": "eval/images/electronics/1fe4fc8ca72490fc0d379c8aaf267a53.jpg",
+    "text": "机械键盘 黑色带背光键帽，旁边有鼠标"
+   }
+  },
+  {
+   "id": "NX23",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "卡通像素图案的小贴片，戴蓝帽子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NX24",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑白细条纹的长袖上衣，V字领",
+    "image": null
+   },
+   "target": {
+    "item_id": "M65",
+    "item_ref": "eval/images/keys/Image_1792125237351_520.jpg",
+    "text": "蓝色卡片 手里捏着蓝色卡片和一只白色耳机"
+   }
+  },
+  {
+   "id": "NX25",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一只黄色的拖鞋，掉在椅子底下了",
+    "image": null
+   },
+   "target": {
+    "item_id": "M08",
+    "item_ref": "eval/images/books/eec0ecc22a052b1e3a4452c03aafdfff.jpg",
+    "text": "高等数学教材 白色封面印着蓝色几何图形，上册"
+   }
+  },
+  {
+   "id": "NX26",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑色的连帽外套，扔在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M09",
+    "item_ref": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+    "text": "蓝色雨伞 深蓝色折叠伞，收着放在地上"
+   }
+  },
+  {
+   "id": "NX27",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "蓝颜色的像素小人钥匙挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX28",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉紫色像素风的长条贴布",
+    "image": null
+   },
+   "target": {
+    "item_id": "M41",
+    "item_ref": "eval/images/electronics/84f3cc4c977a21410104725be15bc0c8.jpg",
+    "text": "键盘鼠标 黑色键盘和鼠标，中间放着一部手机"
+   }
+  },
+  {
+   "id": "NX29",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "地上一个黄颜色的小挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NX30",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "cross_category",
+   "query": {
+    "text": "橙色的毛绒小狐狸挂饰",
+    "image": null
+   },
+   "target": {
+    "item_id": "M60",
+    "item_ref": "eval/images/keys/1e5bcb84be464f4b7c02fb500be2fb8c.jpg",
+    "text": "校园卡 蓝色卡片配蓝色圆环挂绳"
+   }
+  },
+  {
+   "id": "NX31",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白色的无线小耳机，盒子是开着的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M01",
+    "item_ref": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+    "text": "办公软件教材 绿色封面，书角有折痕，扉页写了姓名"
+   }
+  },
+  {
+   "id": "NX32",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白颜色的椭圆小盒，旁边压着张红卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M10",
+    "item_ref": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+    "text": "格纹雨伞 灰蓝色格纹伞面，带弯钩手柄"
+   }
+  },
+  {
+   "id": "NX33",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "蓝绿色的圆筒形小盒，盖子是掀开的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX34",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "磨砂白的小方盒，拿在手上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M21",
+    "item_ref": "eval/images/apparel/5a237c1b1a1ec679e7752036eb695ad4.jpg",
+    "text": "粉色小熊 粉色毛绒小熊，挂着蓝色胸牌"
+   }
+  },
+  {
+   "id": "NX35",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑色会发光的键盘，边上放个鼠标",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX36",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白颜色的圆盘状充电底座",
+    "image": null
+   },
+   "target": {
+    "item_id": "M64",
+    "item_ref": "eval/images/keys/Image_1792125084224_126.jpg",
+    "text": "红色卡套 黑色卡套印红色图案，捏在手里"
+   }
+  },
+  {
+   "id": "NX37",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "灰颜色的盒子上面有两只猫耳朵",
+    "image": null
+   },
+   "target": {
+    "item_id": "M07",
+    "item_ref": "eval/images/books/Image_1792125189503_434.jpg",
+    "text": "方格活页本 活页装订，方格纸，写了半本笔记"
+   }
+  },
+  {
+   "id": "NX38",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白色的长方形移动电源",
+    "image": null
+   },
+   "target": {
+    "item_id": "M16",
+    "item_ref": "eval/images/misc/fd98d7e58bf9c8e62cc46b49457724ab.jpg",
+    "text": "黑色折叠伞 纯黑色伞面，收拢放在课桌上"
+   }
+  },
+  {
+   "id": "NX39",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "扁扁的白方块电池，放在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX40",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "银灰色的方铁盒，盒面有英文字母",
+    "image": null
+   },
+   "target": {
+    "item_id": "M27",
+    "item_ref": "eval/images/apparel/Image_1792125165915_579.jpg",
+    "text": "像素钥匙扣 蓝色像素风小人，带钥匙圈"
+   }
+  },
+  {
+   "id": "NX41",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑键盘黑鼠标，中间夹个手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX42",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "透明的小塑料盒，盖上有两只小熊图案",
+    "image": null
+   },
+   "target": {
+    "item_id": "M59",
+    "item_ref": "eval/images/keys/12e478f272ab79e4869c10e4889f0182.jpg",
+    "text": "门禁卡 粉色卡套，挂着卡通挂件"
+   }
+  },
+  {
+   "id": "NX43",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "半透明的粉色小圆盒，里面塞着耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M05",
+    "item_ref": "eval/images/books/Image_1792124867669_669.jpg",
+    "text": "白色文件夹 带按扣的白色资料册，内页透明"
+   }
+  },
+  {
+   "id": "NX44",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉色的充电绳，上面挂个卡通小件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M14",
+    "item_ref": "eval/images/misc/Image_1792125225041_650.jpg",
+    "text": "黑色伞套 黑色长条布套，带挂绳"
+   }
+  },
+  {
+   "id": "NX45",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白盒子掉地上了，边上还有只耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX46",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白的编织绳状线，绕成一圈",
+    "image": null
+   },
+   "target": {
+    "item_id": "M20",
+    "item_ref": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+    "text": "白色发夹 一排白色塑料抓夹"
+   }
+  },
+  {
+   "id": "NX47",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "地上掉了一只白色的无线小耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX48",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "桌肚里的白盒子，挨着一串钥匙",
+    "image": null
+   },
+   "target": {
+    "item_id": "M65",
+    "item_ref": "eval/images/keys/Image_1792125237351_520.jpg",
+    "text": "蓝色卡片 手里捏着蓝色卡片和一只白色耳机"
+   }
+  },
+  {
+   "id": "NX49",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "地上有个白色的椭圆小盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M03",
+    "item_ref": "eval/images/books/7fb1bcfdb9be86c522f2d51181963b98.jpg",
+    "text": "黑色笔记本 硬壳封面印着白色圆形图案和英文"
+   }
+  },
+  {
+   "id": "NX50",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑颜色的那台，屏还亮着",
+    "image": null
+   },
+   "target": {
+    "item_id": "M12",
+    "item_ref": "eval/images/misc/Image_1792124845498_948.jpg",
+    "text": "摄影冲印袋 白色塑料袋，印着华林摄影字样"
+   }
+  },
+  {
+   "id": "NX51",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "绿颜色的盒子，里头一只白耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX52",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白白的像鹅卵石一样的盒子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M26",
+    "item_ref": "eval/images/apparel/Image_1792124996092_547.jpg",
+    "text": "黑色外套 黑色连帽外套，袖口有白色标志"
+   }
+  },
+  {
+   "id": "NX53",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "盒子上印着戴帽子的小女孩，还挂串珠子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NX54",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白颜色的圆型小盒子，捏在手心",
+    "image": null
+   },
+   "target": {
+    "item_id": "M60",
+    "item_ref": "eval/images/keys/1e5bcb84be464f4b7c02fb500be2fb8c.jpg",
+    "text": "校园卡 蓝色卡片配蓝色圆环挂绳"
+   }
+  },
+  {
+   "id": "NX55",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "米白色的盒子，放在木桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M01",
+    "item_ref": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+    "text": "办公软件教材 绿色封面，书角有折痕，扉页写了姓名"
+   }
+  },
+  {
+   "id": "NX56",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一整套黑色的键鼠，旁边放手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M10",
+    "item_ref": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+    "text": "格纹雨伞 灰蓝色格纹伞面，带弯钩手柄"
+   }
+  },
+  {
+   "id": "NX57",
+   "label": 0,
+   "category": "证件卡片",
+   "subtype": "cross_category",
+   "query": {
+    "text": "深红色的小本子，上面有学校名字",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX58",
+   "label": 0,
+   "category": "证件卡片",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一张二代证件，正反面信息清楚",
+    "image": null
+   },
+   "target": {
+    "item_id": "M19",
+    "item_ref": "eval/images/apparel/388c62b7c1b96e779283cd688fc47e61.jpg",
+    "text": "串珠手链 粉色珠串，坠着白色小玩偶"
+   }
+  },
+  {
+   "id": "NX59",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉色的门卡套，上面挂个小玩偶",
+    "image": null
+   },
+   "target": {
+    "item_id": "M31",
+    "item_ref": "eval/images/electronics/03c5592df9f461723b0c2cb2763cbeb3.jpg",
+    "text": "蓝牙耳机 白色充电盒，盖子打开露出一对耳机"
+   }
+  },
+  {
+   "id": "NX60",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "蓝颜色的卡片，连着个蓝色圆环",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NX61",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "深蓝色的长方形卡，摊在桌面",
+    "image": null
+   },
+   "target": {
+    "item_id": "M03",
+    "item_ref": "eval/images/books/7fb1bcfdb9be86c522f2d51181963b98.jpg",
+    "text": "黑色笔记本 硬壳封面印着白色圆形图案和英文"
+   }
+  },
+  {
+   "id": "NX62",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白底印红图案的塑料套，连着个银色圆环",
+    "image": null
+   },
+   "target": {
+    "item_id": "M12",
+    "item_ref": "eval/images/misc/Image_1792124845498_948.jpg",
+    "text": "摄影冲印袋 白色塑料袋，印着华林摄影字样"
+   }
+  },
+  {
+   "id": "NX63",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "白色毛绒小猫，下面拴着张蓝卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NX64",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "黑底上印红图案的，捏在手上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M23",
+    "item_ref": "eval/images/apparel/87c6c4a8ca940e071ac7739d862e6c27.jpg",
+    "text": "像素布贴 像素风小人图案，蓝色帽子"
+   }
+  },
+  {
+   "id": "NX65",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "手上捏着蓝卡和一只白耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M37",
+    "item_ref": "eval/images/electronics/59389548edd73c2641623d724adf3dad.jpg",
+    "text": "猫耳耳机盒 灰色盒子带两只猫耳，系粉色挂绳"
+   }
+  },
+  {
+   "id": "NX66",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "粉色的塑料套，带一根挂绳",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NX67",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "蓝底校牌，上面有学校名字",
+    "image": null
+   },
+   "target": {
+    "item_id": "M01",
+    "item_ref": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+    "text": "办公软件教材 绿色封面，书角有折痕，扉页写了姓名"
+   }
+  },
+  {
+   "id": "NX68",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "手心里一把银色的金属小件，带齿的那种",
+    "image": null
+   },
+   "target": {
+    "item_id": "M10",
+    "item_ref": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+    "text": "格纹雨伞 灰蓝色格纹伞面，带弯钩手柄"
+   }
+  },
+  {
+   "id": "NX69",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "cross_category",
+   "query": {
+    "text": "一串挂蓝牌子的金属件，摊在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NH01",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "讲文档表格和幻灯片制作的那本上机课用书",
+    "image": null
+   },
+   "target": {
+    "item_id": "M02",
+    "item_ref": "eval/images/books/53b8ce844d2bbfe67fb28fada5046b6e.jpg",
+    "text": "体育管理教材 白色封面，印着红色运动人物"
+   }
+  },
+  {
+   "id": "NH02",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "白皮那本讲俱乐部怎么运营的专业读物",
+    "image": null
+   },
+   "target": {
+    "item_id": "M03",
+    "item_ref": "eval/images/books/7fb1bcfdb9be86c522f2d51181963b98.jpg",
+    "text": "黑色笔记本 硬壳封面印着白色圆形图案和英文"
+   }
+  },
+  {
+   "id": "NH03",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "硬皮的黑本子，封面上有一圈圈白色小图案",
+    "image": null
+   },
+   "target": {
+    "item_id": "M04",
+    "item_ref": "eval/images/books/9915d5b8d61bc6da96081eb2c63c0ca1.jpg",
+    "text": "建设工程审计教材 浅青色封面，右下角有建筑剪影"
+   }
+  },
+  {
+   "id": "NH04",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "浅绿色封面的工程类专业课用书",
+    "image": null
+   },
+   "target": {
+    "item_id": "M05",
+    "item_ref": "eval/images/books/Image_1792124867669_669.jpg",
+    "text": "白色文件夹 带按扣的白色资料册，内页透明"
+   }
+  },
+  {
+   "id": "NH05",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "装复印资料用的白色塑料夹，有个圆扣",
+    "image": null
+   },
+   "target": {
+    "item_id": "M06",
+    "item_ref": "eval/images/books/Image_1792124877065_457.jpg",
+    "text": "深蓝色笔记本 封面印着校徽和烫金字"
+   }
+  },
+  {
+   "id": "NH06",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "深蓝色硬面本子，上面有学校标志",
+    "image": null
+   },
+   "target": {
+    "item_id": "M07",
+    "item_ref": "eval/images/books/Image_1792125189503_434.jpg",
+    "text": "方格活页本 活页装订，方格纸，写了半本笔记"
+   }
+  },
+  {
+   "id": "NH07",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "记了半本公式，纸是小方格的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M08",
+    "item_ref": "eval/images/books/eec0ecc22a052b1e3a4452c03aafdfff.jpg",
+    "text": "高等数学教材 白色封面印着蓝色几何图形，上册"
+   }
+  },
+  {
+   "id": "NH08",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "same_category",
+   "query": {
+    "text": "白封面上有蓝色几何图案的数学课本",
+    "image": null
+   },
+   "target": {
+    "item_id": "M01",
+    "item_ref": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg",
+    "text": "办公软件教材 绿色封面，书角有折痕，扉页写了姓名"
+   }
+  },
+  {
+   "id": "NH09",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "一把深蓝色的折叠伞，收好放地上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M10",
+    "item_ref": "eval/images/misc/6664c0ab257bd236459323ddf5c5ef95.jpg",
+    "text": "格纹雨伞 灰蓝色格纹伞面，带弯钩手柄"
+   }
+  },
+  {
+   "id": "NH10",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "伞面是灰蓝格子的，手柄是弯的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M11",
+    "item_ref": "eval/images/misc/82a410e2e7617468a385362a03054229.jpg",
+    "text": "粉色保温杯 粉色杯身，落在教室桌洞里"
+   }
+  },
+  {
+   "id": "NH11",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉色的喝水杯子，忘在桌肚里了",
+    "image": null
+   },
+   "target": {
+    "item_id": "M12",
+    "item_ref": "eval/images/misc/Image_1792124845498_948.jpg",
+    "text": "摄影冲印袋 白色塑料袋，印着华林摄影字样"
+   }
+  },
+  {
+   "id": "NH12",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "洗照片给的那种白色塑料袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M13",
+    "item_ref": "eval/images/misc/Image_1792124934140_467.jpg",
+    "text": "格子布袋 黑白小格图案，可折叠"
+   }
+  },
+  {
+   "id": "NH13",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑白小格子的布袋，能折起来那种",
+    "image": null
+   },
+   "target": {
+    "item_id": "M14",
+    "item_ref": "eval/images/misc/Image_1792125225041_650.jpg",
+    "text": "黑色伞套 黑色长条布套，带挂绳"
+   }
+  },
+  {
+   "id": "NH14",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "装伞用的黑色长布袋",
+    "image": null
+   },
+   "target": {
+    "item_id": "M15",
+    "item_ref": "eval/images/misc/e15beec23342e140a402d67b7d709f15.jpg",
+    "text": "条纹雨伞 蓝棕相间宽条纹伞面"
+   }
+  },
+  {
+   "id": "NH15",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "蓝和棕色宽条纹的伞，撑开放在地上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M16",
+    "item_ref": "eval/images/misc/fd98d7e58bf9c8e62cc46b49457724ab.jpg",
+    "text": "黑色折叠伞 纯黑色伞面，收拢放在课桌上"
+   }
+  },
+  {
+   "id": "NH16",
+   "label": 0,
+   "category": "其他",
+   "subtype": "same_category",
+   "query": {
+    "text": "全黑的一把伞，收好了放桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M09",
+    "item_ref": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+    "text": "蓝色雨伞 深蓝色折叠伞，收着放在地上"
+   }
+  },
+  {
+   "id": "NH18",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "一个白色的毛绒小挂饰，戴着红帽子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M19",
+    "item_ref": "eval/images/apparel/388c62b7c1b96e779283cd688fc47e61.jpg",
+    "text": "串珠手链 粉色珠串，坠着白色小玩偶"
+   }
+  },
+  {
+   "id": "NH19",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉色珠子的手串，下面挂个小玩偶",
+    "image": null
+   },
+   "target": {
+    "item_id": "M20",
+    "item_ref": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+    "text": "白色发夹 一排白色塑料抓夹"
+   }
+  },
+  {
+   "id": "NH20",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "一排白色的塑料小夹子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M21",
+    "item_ref": "eval/images/apparel/5a237c1b1a1ec679e7752036eb695ad4.jpg",
+    "text": "粉色小熊 粉色毛绒小熊，挂着蓝色胸牌"
+   }
+  },
+  {
+   "id": "NH21",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉色的毛绒小熊玩偶，身上挂个蓝牌子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M22",
+    "item_ref": "eval/images/apparel/74402d090dce03e69cf29de711cf9067.jpg",
+    "text": "串珠手串 深绿色圆珠，十几颗"
+   }
+  },
+  {
+   "id": "NH22",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "深绿色珠子的手串，拿在手里",
+    "image": null
+   },
+   "target": {
+    "item_id": "M23",
+    "item_ref": "eval/images/apparel/87c6c4a8ca940e071ac7739d862e6c27.jpg",
+    "text": "像素布贴 像素风小人图案，蓝色帽子"
+   }
+  },
+  {
+   "id": "NH23",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "卡通像素图案的小贴片，戴蓝帽子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M24",
+    "item_ref": "eval/images/apparel/Image_1792124937832_132.png",
+    "text": "条纹长袖 黑白细条纹，V领，挂着衣架"
+   }
+  },
+  {
+   "id": "NH24",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑白细条纹的长袖上衣，V字领",
+    "image": null
+   },
+   "target": {
+    "item_id": "M25",
+    "item_ref": "eval/images/apparel/Image_1792124970013_67.jpg",
+    "text": "黄色拖鞋 一只黄色拖鞋，落在椅子下"
+   }
+  },
+  {
+   "id": "NH25",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "一只黄色的拖鞋，掉在椅子底下了",
+    "image": null
+   },
+   "target": {
+    "item_id": "M26",
+    "item_ref": "eval/images/apparel/Image_1792124996092_547.jpg",
+    "text": "黑色外套 黑色连帽外套，袖口有白色标志"
+   }
+  },
+  {
+   "id": "NH26",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑色的连帽外套，扔在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M27",
+    "item_ref": "eval/images/apparel/Image_1792125165915_579.jpg",
+    "text": "像素钥匙扣 蓝色像素风小人，带钥匙圈"
+   }
+  },
+  {
+   "id": "NH27",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "蓝颜色的像素小人钥匙挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M28",
+    "item_ref": "eval/images/apparel/Image_1792125220867_829.jpg",
+    "text": "刺绣贴片 粉紫色像素图案，长条形"
+   }
+  },
+  {
+   "id": "NH28",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉紫色像素风的长条贴布",
+    "image": null
+   },
+   "target": {
+    "item_id": "M29",
+    "item_ref": "eval/images/apparel/b011818fccc83ae3d1f634e002f12858.jpg",
+    "text": "黄色挂件 黄色像素风公仔，落在地上"
+   }
+  },
+  {
+   "id": "NH29",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "地上一个黄颜色的小挂件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M30",
+    "item_ref": "eval/images/apparel/c3e7df181b9bc319b4aaaccc47430907.jpg",
+    "text": "橙色毛绒挂件 橙色小狐狸毛绒，系格子领巾"
+   }
+  },
+  {
+   "id": "NH30",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "same_category",
+   "query": {
+    "text": "橙色的毛绒小狐狸挂饰",
+    "image": null
+   },
+   "target": {
+    "item_id": "M18",
+    "item_ref": "eval/images/apparel/00934ccf65e1279ea48448224735a085.jpg",
+    "text": "毛绒玩偶挂件 白色小玩偶，戴红色帽子"
+   }
+  },
+  {
+   "id": "NH31",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白色的无线小耳机，盒子是开着的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M32",
+    "item_ref": "eval/images/electronics/05281bd9d8382ea275bd977651067167.jpg",
+    "text": "耳机充电盒 白色椭圆盒子，旁边有张红色卡片"
+   }
+  },
+  {
+   "id": "NH32",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白颜色的椭圆小盒，旁边压着张红卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M33",
+    "item_ref": "eval/images/electronics/1190ea943803889a10d512ca26f76d1b.jpg",
+    "text": "圆柱耳机盒 蓝绿色圆柱形盒子，盖子半开"
+   }
+  },
+  {
+   "id": "NH33",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "蓝绿色的圆筒形小盒，盖子是掀开的",
+    "image": null
+   },
+   "target": {
+    "item_id": "M34",
+    "item_ref": "eval/images/electronics/1ae07a4c50bf30506c6bd6c847d776e0.jpg",
+    "text": "白色耳机盒 白色磨砂盒子，捏在手里"
+   }
+  },
+  {
+   "id": "NH34",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "磨砂白的小方盒，拿在手上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M35",
+    "item_ref": "eval/images/electronics/1fe4fc8ca72490fc0d379c8aaf267a53.jpg",
+    "text": "机械键盘 黑色带背光键帽，旁边有鼠标"
+   }
+  },
+  {
+   "id": "NH35",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑色会发光的键盘，边上放个鼠标",
+    "image": null
+   },
+   "target": {
+    "item_id": "M36",
+    "item_ref": "eval/images/electronics/3c413744599d6c8920cce56e94b192d6.jpg",
+    "text": "无线充电器 白色圆形底座，中间一圈凸起"
+   }
+  },
+  {
+   "id": "NH36",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白颜色的圆盘状充电底座",
+    "image": null
+   },
+   "target": {
+    "item_id": "M37",
+    "item_ref": "eval/images/electronics/59389548edd73c2641623d724adf3dad.jpg",
+    "text": "猫耳耳机盒 灰色盒子带两只猫耳，系粉色挂绳"
+   }
+  },
+  {
+   "id": "NH37",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "灰颜色的盒子上面有两只猫耳朵",
+    "image": null
+   },
+   "target": {
+    "item_id": "M38",
+    "item_ref": "eval/images/electronics/63c12a647aa842932e09fc3bc6118fcf.jpg",
+    "text": "充电宝 白色长方形移动电源，容量标注很大"
+   }
+  },
+  {
+   "id": "NH38",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白色的长方形移动电源",
+    "image": null
+   },
+   "target": {
+    "item_id": "M39",
+    "item_ref": "eval/images/electronics/6a153b7da449da8be50df50fe7f9e592.jpg",
+    "text": "移动电源 白色扁平方形，放在课桌上"
+   }
+  },
+  {
+   "id": "NH39",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "扁扁的白方块电池，放在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M40",
+    "item_ref": "eval/images/electronics/7185e5d5035a785bcfbd92d0b7b45948.jpg",
+    "text": "耳机收纳盒 银灰色方形铁盒，印着品牌英文"
+   }
+  },
+  {
+   "id": "NH40",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "银灰色的方铁盒，盒面有英文字母",
+    "image": null
+   },
+   "target": {
+    "item_id": "M41",
+    "item_ref": "eval/images/electronics/84f3cc4c977a21410104725be15bc0c8.jpg",
+    "text": "键盘鼠标 黑色键盘和鼠标，中间放着一部手机"
+   }
+  },
+  {
+   "id": "NH41",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑键盘黑鼠标，中间夹个手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M42",
+    "item_ref": "eval/images/electronics/9f9ef59b4488ac3535ee7e8ff59993c8.jpg",
+    "text": "透明收纳盒 透明塑料盒，盖子印着两只小熊"
+   }
+  },
+  {
+   "id": "NH42",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "透明的小塑料盒，盖上有两只小熊图案",
+    "image": null
+   },
+   "target": {
+    "item_id": "M43",
+    "item_ref": "eval/images/electronics/Image_1792124838625_222.jpg",
+    "text": "粉色耳机盒 半透明粉色圆盒，里面装着耳机"
+   }
+  },
+  {
+   "id": "NH43",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "半透明的粉色小圆盒，里面塞着耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M44",
+    "item_ref": "eval/images/electronics/Image_1792124906104_154.jpg",
+    "text": "数据线 粉色编织线，缠着卡通挂件"
+   }
+  },
+  {
+   "id": "NH44",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉色的充电绳，上面挂个卡通小件",
+    "image": null
+   },
+   "target": {
+    "item_id": "M45",
+    "item_ref": "eval/images/electronics/Image_1792124913165_162.jpg",
+    "text": "无线耳机 白色充电盒掉在地上，旁边一只耳机"
+   }
+  },
+  {
+   "id": "NH45",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白盒子掉地上了，边上还有只耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M46",
+    "item_ref": "eval/images/electronics/Image_1792124930332_999.jpg",
+    "text": "充电线 白色编织线，盘成一圈拿在手里"
+   }
+  },
+  {
+   "id": "NH46",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白的编织绳状线，绕成一圈",
+    "image": null
+   },
+   "target": {
+    "item_id": "M47",
+    "item_ref": "eval/images/electronics/Image_1792124962941_424.jpg",
+    "text": "白色耳机 地上一只白色无线耳机"
+   }
+  },
+  {
+   "id": "NH47",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "地上掉了一只白色的无线小耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M48",
+    "item_ref": "eval/images/electronics/Image_1792124973584_243.jpg",
+    "text": "耳机盒 白盒子放在桌肚里，旁边一串钥匙"
+   }
+  },
+  {
+   "id": "NH48",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "桌肚里的白盒子，挨着一串钥匙",
+    "image": null
+   },
+   "target": {
+    "item_id": "M49",
+    "item_ref": "eval/images/electronics/Image_1792125092121_935.jpg",
+    "text": "椭圆耳机盒 地上一只白色椭圆盒子"
+   }
+  },
+  {
+   "id": "NH49",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "地上有个白色的椭圆小盒",
+    "image": null
+   },
+   "target": {
+    "item_id": "M50",
+    "item_ref": "eval/images/electronics/Image_1792125172752_764.jpg",
+    "text": "手机 黑色直板机，屏幕亮着放在桌边"
+   }
+  },
+  {
+   "id": "NH50",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑颜色的那台，屏还亮着",
+    "image": null
+   },
+   "target": {
+    "item_id": "M51",
+    "item_ref": "eval/images/electronics/Image_1792125203308_658.jpg",
+    "text": "绿盒耳机 绿色盒子装着一只白色耳机"
+   }
+  },
+  {
+   "id": "NH51",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "绿颜色的盒子，里头一只白耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M52",
+    "item_ref": "eval/images/electronics/ab6ca039c7e08e4e505d7ad26d176776.jpg",
+    "text": "鹅卵石耳机盒 白色鹅卵石造型，放在浅色桌面"
+   }
+  },
+  {
+   "id": "NH52",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白白的像鹅卵石一样的盒子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M53",
+    "item_ref": "eval/images/electronics/b2ec385215e61467b4e5938769f28a6d.jpg",
+    "text": "卡通耳机盒 盒面印着戴黑帽的卡通女孩，带珠链"
+   }
+  },
+  {
+   "id": "NH53",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "盒子上印着戴帽子的小女孩，还挂串珠子",
+    "image": null
+   },
+   "target": {
+    "item_id": "M54",
+    "item_ref": "eval/images/electronics/c9574c43bbdd5afca7889340e5a9c88e.jpg",
+    "text": "白色圆盒 白色圆形小盒，握在手心"
+   }
+  },
+  {
+   "id": "NH54",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "白颜色的圆型小盒子，捏在手心",
+    "image": null
+   },
+   "target": {
+    "item_id": "M55",
+    "item_ref": "eval/images/electronics/cdba11985cfdbf07ac5fd27726fb15af.jpg",
+    "text": "米色耳机盒 米白色盒子，放在木纹桌面"
+   }
+  },
+  {
+   "id": "NH55",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "米白色的盒子，放在木桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M56",
+    "item_ref": "eval/images/electronics/ed451513ceca8b516d9623e3e71bd94b.jpg",
+    "text": "键盘套装 黑色键盘鼠标，和一部手机摆在一起"
+   }
+  },
+  {
+   "id": "NH56",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "same_category",
+   "query": {
+    "text": "一整套黑色的键鼠，旁边放手机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M31",
+    "item_ref": "eval/images/electronics/03c5592df9f461723b0c2cb2763cbeb3.jpg",
+    "text": "蓝牙耳机 白色充电盒，盖子打开露出一对耳机"
+   }
+  },
+  {
+   "id": "NH57",
+   "label": 0,
+   "category": "证件卡片",
+   "subtype": "same_category",
+   "query": {
+    "text": "深红色的小本子，上面有学校名字",
+    "image": null
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NH58",
+   "label": 0,
+   "category": "证件卡片",
+   "subtype": "same_category",
+   "query": {
+    "text": "一张二代证件，正反面信息清楚",
+    "image": null
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NH59",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉色的门卡套，上面挂个小玩偶",
+    "image": null
+   },
+   "target": {
+    "item_id": "M60",
+    "item_ref": "eval/images/keys/1e5bcb84be464f4b7c02fb500be2fb8c.jpg",
+    "text": "校园卡 蓝色卡片配蓝色圆环挂绳"
+   }
+  },
+  {
+   "id": "NH60",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "蓝颜色的卡片，连着个蓝色圆环",
+    "image": null
+   },
+   "target": {
+    "item_id": "M61",
+    "item_ref": "eval/images/keys/484e336b57f3b18cb52fa9c0b694d123.jpg",
+    "text": "蓝色门禁卡 深蓝色长方形卡，平放在桌上"
+   }
+  },
+  {
+   "id": "NH61",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "深蓝色的长方形卡，摊在桌面",
+    "image": null
+   },
+   "target": {
+    "item_id": "M62",
+    "item_ref": "eval/images/keys/Image_1792124871881_324.jpg",
+    "text": "卡套 白色卡套印红色卡通图案，配银圈"
+   }
+  },
+  {
+   "id": "NH62",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "白底印红图案的塑料套，连着个银色圆环",
+    "image": null
+   },
+   "target": {
+    "item_id": "M63",
+    "item_ref": "eval/images/keys/Image_1792124953927_855.jpg",
+    "text": "毛绒猫挂件 白色毛绒小猫，连着蓝色卡片"
+   }
+  },
+  {
+   "id": "NH63",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "白色毛绒小猫，下面拴着张蓝卡",
+    "image": null
+   },
+   "target": {
+    "item_id": "M64",
+    "item_ref": "eval/images/keys/Image_1792125084224_126.jpg",
+    "text": "红色卡套 黑色卡套印红色图案，捏在手里"
+   }
+  },
+  {
+   "id": "NH64",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "黑底上印红图案的，捏在手上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M65",
+    "item_ref": "eval/images/keys/Image_1792125237351_520.jpg",
+    "text": "蓝色卡片 手里捏着蓝色卡片和一只白色耳机"
+   }
+  },
+  {
+   "id": "NH65",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "手上捏着蓝卡和一只白耳机",
+    "image": null
+   },
+   "target": {
+    "item_id": "M66",
+    "item_ref": "eval/images/keys/cd9d8e9d4d51bb23e8a90a517e30df01.jpg",
+    "text": "粉色卡套 粉色卡套带挂绳，放在桌边"
+   }
+  },
+  {
+   "id": "NH66",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "粉色的塑料套，带一根挂绳",
+    "image": null
+   },
+   "target": {
+    "item_id": "M67",
+    "item_ref": "eval/images/keys/e089a23f3beaa10a7e423ea6855675fb.jpg",
+    "text": "校卡 蓝色校园卡，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NH67",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "蓝底校牌，上面有学校名字",
+    "image": null
+   },
+   "target": {
+    "item_id": "M68",
+    "item_ref": "eval/images/keys/ff4ebe6c701ed6b6898b68ae0ebaa683.jpg",
+    "text": "银色钥匙 一把银色金属钥匙，躺在手心"
+   }
+  },
+  {
+   "id": "NH68",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "手心里一把银色的金属小件，带齿的那种",
+    "image": null
+   },
+   "target": {
+    "item_id": "M69",
+    "item_ref": "eval/images/keys/Image_1792124957946_843.jpg",
+    "text": "钥匙串 一串钥匙挂在木桌上，带蓝色小牌"
+   }
+  },
+  {
+   "id": "NH69",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "same_category",
+   "query": {
+    "text": "一串挂蓝牌子的金属件，摊在桌上",
+    "image": null
+   },
+   "target": {
+    "item_id": "M59",
+    "item_ref": "eval/images/keys/12e478f272ab79e4869c10e4889f0182.jpg",
+    "text": "门禁卡 粉色卡套，挂着卡通挂件"
+   }
+  },
+  {
+   "id": "NI01",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/books/4603ab65bf8c1432cba97553cad087dc.jpg"
+   },
+   "target": {
+    "item_id": "M09",
+    "item_ref": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg",
+    "text": "蓝色雨伞 深蓝色折叠伞，收着放在地上"
+   }
+  },
+  {
+   "id": "NI02",
+   "label": 0,
+   "category": "书籍文具",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/books/Image_1792124867669_669.jpg"
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NI03",
+   "label": 0,
+   "category": "其他",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/misc/166ef9af541838eb6a2bc085560a28eb.jpg"
+   },
+   "target": {
+    "item_id": "M20",
+    "item_ref": "eval/images/apparel/4cb9469b1a26d70c0b6e913249062661.jpg",
+    "text": "白色发夹 一排白色塑料抓夹"
+   }
+  },
+  {
+   "id": "NI04",
+   "label": 0,
+   "category": "其他",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/misc/Image_1792124934140_467.jpg"
+   },
+   "target": {
+    "item_id": "M04",
+    "item_ref": "eval/images/books/9915d5b8d61bc6da96081eb2c63c0ca1.jpg",
+    "text": "建设工程审计教材 浅青色封面，右下角有建筑剪影"
+   }
+  },
+  {
+   "id": "NI05",
+   "label": 0,
+   "category": "包袋箱包",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg"
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NI06",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/apparel/5a237c1b1a1ec679e7752036eb695ad4.jpg"
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NI07",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/apparel/Image_1792124970013_67.jpg"
+   },
+   "target": {
+    "item_id": "M07",
+    "item_ref": "eval/images/books/Image_1792125189503_434.jpg",
+    "text": "方格活页本 活页装订，方格纸，写了半本笔记"
+   }
+  },
+  {
+   "id": "NI08",
+   "label": 0,
+   "category": "服装配饰",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/apparel/b011818fccc83ae3d1f634e002f12858.jpg"
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NI09",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/electronics/1190ea943803889a10d512ca26f76d1b.jpg"
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NI10",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/electronics/59389548edd73c2641623d724adf3dad.jpg"
+   },
+   "target": {
+    "item_id": "M02",
+    "item_ref": "eval/images/books/53b8ce844d2bbfe67fb28fada5046b6e.jpg",
+    "text": "体育管理教材 白色封面，印着红色运动人物"
+   }
+  },
+  {
+   "id": "NI11",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/electronics/84f3cc4c977a21410104725be15bc0c8.jpg"
+   },
+   "target": {
+    "item_id": "M57",
+    "item_ref": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg",
+    "text": "学生证 深红色小本，印着武昌工学院"
+   }
+  },
+  {
+   "id": "NI12",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/electronics/Image_1792124913165_162.jpg"
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NI13",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/electronics/Image_1792125092121_935.jpg"
+   },
+   "target": {
+    "item_id": "M05",
+    "item_ref": "eval/images/books/Image_1792124867669_669.jpg",
+    "text": "白色文件夹 带按扣的白色资料册，内页透明"
+   }
+  },
+  {
+   "id": "NI14",
+   "label": 0,
+   "category": "电子产品",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/electronics/b2ec385215e61467b4e5938769f28a6d.jpg"
+   },
+   "target": {
+    "item_id": "M58",
+    "item_ref": "eval/images/cards/6da3ef3195007ae124fd4bebd38834f3.jpg",
+    "text": "身份证 二代证件，正面信息清晰"
+   }
+  },
+  {
+   "id": "NI15",
+   "label": 0,
+   "category": "证件卡片",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/cards/5ae340ed6d1d0d8ef38ce283ecc4dcc1.jpg"
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  },
+  {
+   "id": "NI16",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/keys/484e336b57f3b18cb52fa9c0b694d123.jpg"
+   },
+   "target": {
+    "item_id": "M08",
+    "item_ref": "eval/images/books/eec0ecc22a052b1e3a4452c03aafdfff.jpg",
+    "text": "高等数学教材 白色封面印着蓝色几何图形，上册"
+   }
+  },
+  {
+   "id": "NI17",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/keys/Image_1792125237351_520.jpg"
+   },
+   "target": {
+    "item_id": "M47",
+    "item_ref": "eval/images/electronics/Image_1792124962941_424.jpg",
+    "text": "白色耳机 地上一只白色无线耳机"
+   }
+  },
+  {
+   "id": "NI18",
+   "label": 0,
+   "category": "钥匙门禁",
+   "subtype": "image_query",
+   "query": {
+    "text": null,
+    "image": "eval/images/keys/Image_1792124957946_843.jpg"
+   },
+   "target": {
+    "item_id": "M17",
+    "item_ref": "eval/images/bags/7923744e1a9e5a01ebb891dbe416e4a2.jpg",
+    "text": "波点帆布袋 白底黑色小波点，两条帆布提手"
+   }
+  }
+ ]
+}

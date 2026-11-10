@@ -188,11 +188,11 @@
           <div class="card-footer">
             <span class="card-time">{{ item.created_at }}</span>
             <span
-              v-if="item.review_status"
+              v-if="itemBadge(item)"
               class="status-tag"
-              :style="{ background: REVIEW_STATUS_MAP[item.review_status]?.bg, color: REVIEW_STATUS_MAP[item.review_status]?.color }"
+              :style="{ background: itemBadge(item).bg, color: itemBadge(item).color }"
             >
-              {{ REVIEW_STATUS_MAP[item.review_status]?.label }}
+              {{ itemBadge(item).label }}
             </span>
           </div>
         </div>
@@ -219,7 +219,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getItems, getCategories, getRecommend } from '@/api/items'
 import { publicBanners } from '@/api/banners'
-import { getImageUrl, ITEM_TYPE_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
+import { getImageUrl, ITEM_TYPE_MAP, ITEM_STATUS_MAP, REVIEW_STATUS_MAP, truncate } from '@/utils/helpers'
 import { Search, PictureFilled, Folder, LocationFilled, Plus, MagicStick, StarFilled } from '@element-plus/icons-vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
 import request from '@/utils/request'
@@ -229,6 +229,24 @@ import * as echarts from 'echarts'
 const route = useRoute()
 // 大厅模式：/hall/lost、/hall/found 复用本组件，类型由路由 meta 锁定
 const hallType = computed(() => route.meta.hallType || '')
+
+/**
+ * 物品卡片右下角的状态徽章。
+ *
+ * WHY 不再直接用 REVIEW_STATUS_MAP：
+ * 大厅里展示的是「物品状态」而不是「审核结果」——已通过的物品再标“已通过”，
+ * 对浏览者没有信息量。改为：
+ *   - 未通过审核：以审核状态为准（待审核 / 已驳回），因为此时 status 仍为 pending；
+ *   - 已通过审核：以物品状态为准（active → 展示中、claiming → 认领中、claimed → 已认领）。
+ */
+const itemBadge = (item) => {
+  const byStatus = ITEM_STATUS_MAP[item.status]
+  const byReview = REVIEW_STATUS_MAP[item.review_status]
+  if (item.review_status && item.review_status !== 'approved') {
+    return byReview || byStatus || null
+  }
+  return byStatus || byReview || null
+}
 
 const items = ref([])
 const total = ref(0)
