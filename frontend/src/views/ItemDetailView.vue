@@ -393,7 +393,7 @@ const canEdit = computed(() => {
   return authStore.isAdmin || item.value.user_id === authStore.user?.id
 })
 
-// v3.7.1：审核通过后**任何人都不可再编辑内容（含管理员）**——审核结论必须与
+// v3.7.0：审核通过后**任何人都不可再编辑内容（含管理员）**——审核结论必须与
 // 线上内容一致；管理员处置违规内容走下架/删除，不就地改内容。
 const canModify = computed(() => {
   if (!canEdit.value) return false

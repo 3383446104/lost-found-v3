@@ -385,8 +385,10 @@ async def update_item_status(
 ):
     """管理员直接修改物品状态（pending→active 会强制走审核）"""
     new_status = payload.status
-    if new_status not in ("active", "closed", "claimed"):
-        raise HTTPException(400, "status 必须为 active/closed/claimed")
+    # v3.7.0：移除管理员手动「关闭」。closed 退化为**系统内部状态**，
+    # 只由「账号注销 / 删除用户」写入（保留数据、停止展示），不对外开放操作。
+    if new_status not in ("active", "claimed"):
+        raise HTTPException(400, "status 必须为 active/claimed")
 
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -441,7 +443,8 @@ async def batch_items(
     """批量操作物品"""
     ids = payload.ids
     action = payload.action
-    if not ids or action not in ("approve", "close", "delete"):
+    # v3.7.0：批量「关闭」随手动关闭一并移除，只保留 approve / delete
+    if not ids or action not in ("approve", "delete"):
         raise HTTPException(400, "参数错误")
 
     count = 0
@@ -463,14 +466,6 @@ async def batch_items(
                 r = cur.fetchone()
                 if r:
                     background_tasks.add_task(auto_match_and_notify, iid, r["type"])
-
-        elif action == "close":
-            cur.execute(
-                f"UPDATE items SET status='closed' WHERE id IN ({placeholders}) AND status IN ('active','pending')",
-                ids
-            )
-            # count 取本分支 UPDATE 的真实受影响行数
-            count = cur.rowcount
 
         elif action == "delete":
             # 先取图片路径（事务提交后再删磁盘文件；v3.6.0 多图全量清理）

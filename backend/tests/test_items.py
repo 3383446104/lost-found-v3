@@ -365,7 +365,7 @@ def test_mark_claimed_non_owner_403(client, make_user, create_item, approve_item
 
 def test_admin_cannot_update_approved_item(client, make_user, make_admin,
                                            create_item, approve_item):
-    """v3.7.1：审核通过后**管理员也不能改内容**。
+    """v3.7.0：审核通过后**管理员也不能改内容**。
 
     WHY：管理员能改数据本身就是风险 —— 一次「顺手改标题」会让「已审核」
     变成一次性动作，且改动不留审核痕迹（reviewer_id/review_time 仍是原审核人）。

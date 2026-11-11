@@ -52,11 +52,6 @@
 
         <!-- 右侧区域 -->
         <div class="header-right">
-          <!-- 主题切换 -->
-          <button class="theme-btn" @click="toggleTheme" :aria-label="isDark ? '切换到亮色模式' : '切换到暗色模式'">
-            <el-icon :size="18"><component :is="isDark ? 'Sunny' : 'Moon'" /></el-icon>
-          </button>
-
           <!-- 用户菜单 -->
           <el-dropdown @command="handleCommand" trigger="click">
             <div class="user-trigger">
@@ -141,13 +136,9 @@ import { useNotificationStore } from '@/stores/notification'
 import { ElMessage } from 'element-plus'
 import {
   Compass, Plus, Connection, Bell, Setting,
-  ArrowDown, User, SwitchButton, Moon, Sunny,
+  ArrowDown, User, SwitchButton,
   HomeFilled, Box, ShoppingBag
 } from '@element-plus/icons-vue'
-import { useTheme } from '@/composables/useTheme'
-
-const { isDark, toggle: toggleTheme } = useTheme()
-
 const authStore = useAuthStore()
 const notifStore = useNotificationStore()
 const router = useRouter()
@@ -318,27 +309,6 @@ const handleCommand = (command) => {
   font-weight: 700;
   line-height: 1;
   box-shadow: 0 0 0 2px var(--bg-header);
-}
-
-/* ---- Theme Toggle ---- */
-.theme-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-full);
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.theme-btn:hover {
-  background: var(--neutral-100);
-  color: var(--text-primary);
 }
 
 /* ---- Header Right ---- */

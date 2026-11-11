@@ -155,7 +155,7 @@ router.afterEach:
 | FR-ADMIN-02 | 审核通过 | `PUT /api/admin/reviews/{id}` action=approved → status=active, review_status=approved。BackgroundTasks 异步触发自动匹配 |
 | FR-ADMIN-03 | 审核驳回 | action=rejected → status=rejected, review_status=rejected。发送站内通知（含驳回理由）+ HTML 邮件（含重新编辑链接） |
 | FR-ADMIN-04 | 自动匹配推送 | 审核通过后异步匹配异类物品（失物↔拾物），**维度预检**通过后逐对打分；**判定用内容分 ≥ 0.733952**（`MATCH_THRESHOLD_AUTO`，与标定同尺度；2026-09-21 尺度修正），双向推送通知 + 邮件（含匹配等级与命中依据） |
-| FR-ADMIN-05 | 批量审核通过 | `POST /api/admin/items/batch` action=approve — 多选物品 → 一键批量通过（同端点支持 close/delete）。驳回不支持批量（需逐一填写理由+站内通知） |
+| FR-ADMIN-05 | 批量审核通过 | `POST /api/admin/items/batch` action=approve — 多选物品 → 一键批量通过（同端点支持 delete；v3.7.0 起**移除 close**）。驳回不支持批量（需逐一填写理由+站内通知） |
 | FR-ADMIN-06 | 防止重复审核 | SQL `WHERE review_status='pending'` 条件更新 + rowcount 检查（单条+批量均适用） |
 | FR-ADMIN-07 | 用户管理 | `GET /api/admin/users` — 用户列表（分页）；支持逻辑删除用户（`status` → `deleted`） |
 | FR-ADMIN-08 | 用户角色/状态变更 | `PUT /api/admin/users/{id}` — 设角色（user/admin）/ 切换账号状态（active↔disabled）。**v3.4.0：禁用/启用只改 `status` 并保留 `role`** |
@@ -474,7 +474,7 @@ HTTP 状态码：`400` 参数错误 / `401` 未认证 / `403` 权限不足 / `40
 | text_vector | TEXT | | CLIP 文本特征 (JSON)；维度随后端（`cn_clip` 1024 / `open_clip` 512） |
 | contact | TEXT | | 联系方式 |
 | location | TEXT | | 地点 |
-| status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming 为 v3.6.0 新增「认领中」，经表重建迁移） |
+| status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed。`claiming` 为 v3.6.0 新增「认领中」；`closed` 为**系统内部状态**（注销/删用户时自动下架，v3.7.0 移除管理员手动关闭）；`done` 无代码写入 |
 | user_id | INTEGER | FK→users.id | 发布者 |
 | review_status | TEXT | CHECK(3 states) | pending/approved/rejected |
 | reviewer_id | INTEGER | FK→users.id | 审核人 |

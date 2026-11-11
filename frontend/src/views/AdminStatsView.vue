@@ -109,8 +109,8 @@ let pieChart = null
 const totalCategoryCount = computed(() => categories.value.reduce((s, c) => s + c.count, 0))
 const percentOf = (count) => (totalCategoryCount.value ? ((count / totalCategoryCount.value) * 100).toFixed(1) + '%' : '—')
 
-const primaryInk = () =>
-  (typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark') ? '#f0efec' : '#0b0b0b'
+// v3.7.0：移除暗色模式后，图表主文字固定用深墨色
+const primaryInk = () => '#0b0b0b'
 
 const renderRecovery = () => {
   if (!recoveryRef.value) return

@@ -214,7 +214,7 @@ lost-found-v3/
 | FR-ADMIN-02 | 审核通过（→active，触发匹配） | ✅ PUT /api/admin/reviews/{id} | ✅ AdminView | ✅ |
 | FR-ADMIN-03 | 审核驳回（→rejected + 理由+通知+邮件） | ✅ 驳回理由必填验证 | ✅ 驳回 Dialog | ✅ |
 | FR-ADMIN-04 | 自动匹配推送（内容分 ≥0.733952；通知/邮件含匹配等级与命中依据） | ✅ BackgroundTasks 异步 | — | ✅ |
-| FR-ADMIN-05 | 批量审核通过（同端点支持批量关闭/删除） | ✅ POST /api/admin/items/batch | ✅ 多选+工具栏 | ✅ |
+| FR-ADMIN-05 | 批量审核通过（同端点支持批量删除；v3.7.0 起**移除批量关闭**） | ✅ POST /api/admin/items/batch | ✅ 多选+工具栏 | ✅ |
 | FR-ADMIN-06 | 审核设推荐（`is_recommend`，首页推荐位数据源） | ✅ review_item / admin items | ✅ AdminView 审核对话框开关 | ✅ |
 
 ### 3.5 消息通知模块 (FR-NOTIFY)
@@ -337,7 +337,7 @@ lost-found-v3/
 | text_vector | TEXT | | CLIP 文本特征 (JSON) |
 | contact | TEXT | | 联系方式 |
 | location | TEXT | | 地点 |
-| status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed（claiming=认领中，**v3.6.0 新增**，经表重建迁移） |
+| status | TEXT | CHECK(7 states) | pending/active/**claiming**/claimed/done/rejected/closed。`claiming`=认领中（v3.6.0 新增）；`closed`=**系统内部状态**（账号注销/删除用户时自动写入，不对外开放操作，v3.7.0 移除管理员手动关闭）；`done`=遗留值，无代码写入 |
 | user_id | INTEGER | FK → users.id | 发布者 |
 | review_status | TEXT | CHECK(3 states) | pending/approved/rejected |
 | reviewer_id | INTEGER | FK → users.id | 审核人 |
@@ -540,7 +540,7 @@ idx_comments_item            → (item_id, status, created_at) 留言（v3.6.0�
 | DELETE | `/api/admin/users/{id}` | Admin | 逻辑删除用户 |
 | GET | `/api/admin/items` | Admin | 全部物品（多维筛选+分页） |
 | PUT | `/api/admin/items/{id}/status` | Admin | 直接修改物品状态（pending→active 走审核） |
-| POST | `/api/admin/items/batch` | Admin | 批量操作（approve / close / delete） |
+| POST | `/api/admin/items/batch` | Admin | 批量操作（approve / delete；v3.7.0 移除 close） |
 
 > **v3.4.0**：`PUT /api/admin/users/{id}` 的 `toggle_status` 仅翻转 `status`（active ↔ disabled）并**保留 `role`**（修复「禁用管理员再启用会降级为 user」）；`set_role` 仅改 `role`。O2：不允许禁用/删除自己（`app/api/admin.py:333-334`、`:399-400`）。
 

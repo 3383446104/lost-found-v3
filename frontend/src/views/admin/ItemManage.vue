@@ -22,7 +22,6 @@
         <el-option label="认领中" value="claiming" />
         <el-option label="待审核" value="pending" />
         <el-option label="已找回/已归还" value="claimed" />
-        <el-option label="已关闭" value="closed" />
         <el-option label="已驳回" value="rejected" />
       </el-select>
       <el-select v-model="itemFilter.type" placeholder="类型" size="small" style="width:90px" @change="onItemFilterChange" clearable>
@@ -36,9 +35,6 @@
     <div v-if="items.length && !loading" class="batch-toolbar">
       <el-button type="success" size="small" :disabled="selectedIds.length===0" @click="handleBatch('approve')" :loading="batchLoading">
         通过 ({{ selectedIds.length }})
-      </el-button>
-      <el-button type="warning" size="small" :disabled="selectedIds.length===0" @click="handleBatch('close')" :loading="batchLoading">
-        关闭
       </el-button>
       <el-button type="danger" size="small" :disabled="selectedIds.length===0" @click="handleBatch('delete')" :loading="batchLoading" plain>
         删除
@@ -94,6 +90,9 @@
             <el-tag v-else-if="row.status==='claiming'" type="warning" size="small">认领中</el-tag>
             <el-tag v-else-if="row.status==='pending'" type="warning" size="small" effect="plain">待审核</el-tag>
             <el-tag v-else-if="row.status==='claimed'" type="info" size="small">{{ row.type === 'lost' ? '已找回' : '已归还' }}</el-tag>
+            <!-- closed = 下架（账号注销 / 删除用户 / 批量关闭时写入），不是"已找回" -->
+            <el-tag v-else-if="row.status==='closed'" type="info" size="small" effect="plain">已关闭</el-tag>
+            <el-tag v-else-if="row.status==='rejected'" type="danger" size="small" effect="plain">已驳回</el-tag>
             <el-tag v-else size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
@@ -110,7 +109,6 @@
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item command="active" v-if="row.status!=='active'">设为展示中</el-dropdown-item>
-                    <el-dropdown-item command="closed" v-if="row.status!=='closed'">关闭</el-dropdown-item>
                     <el-dropdown-item command="claimed" v-if="row.status!=='claimed'">{{ row.type === 'lost' ? '标记已找回' : '标记已归还' }}</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -196,7 +194,7 @@ const handleStatusChange = async (row, status) => {
 }
 
 const handleBatch = async (action) => {
-  const label = { approve: '批量通过', close: '批量关闭', delete: '批量删除' }[action]
+  const label = { approve: '批量通过', delete: '批量删除' }[action]
   try {
     if (action === 'delete') {
       await ElMessageBox.confirm(`确认删除已选的 ${selectedIds.value.length} 件物品？此操作不可恢复。`, label, { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'error' })

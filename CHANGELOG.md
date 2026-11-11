@@ -247,6 +247,54 @@
   `lost_found.db.bak-*` ×3（真实数据备份）与 `logs/`（排查依据）建议保留。
 - **验证**：全量 **403 passed / 2 skipped**；`app/`、`scripts/`、`tests/` 全文件 AST 语法检查通过。
 
+### 21. 移除深色模式，改为明色单主题 ✅
+- **现象**：切到暗色后 UI 紊乱，管理后台尤其明显（表格、下拉、弹窗、表单黑白混排）。
+- **根因**：这是一套**半成品暗色**——`theme.css` 的 `[data-theme="dark"]` 只额外覆盖了
+  `el-table / el-dropdown-menu / el-popper / el-message-box / el-dialog` 五六个组件，
+  其余 Element Plus 组件仍走亮色变量；而业务侧只反转了 44 个设计令牌。
+  组件库与自绘样式各亮一半，必然花。**半套暗色比不做更糟**。
+- **处理**（全链路移除，避免"删了按钮但系统暗色仍触发"）：
+  - 删除 `src/composables/useTheme.js`（含 `localStorage` 持久化与 `prefers-color-scheme` 监听）；
+  - `DefaultLayout.vue`：删主题按钮（Moon/Sunny）、`useTheme` 导入与 `.theme-btn` 样式；
+  - `theme.css`：删除末尾 `[data-theme="dark"]` 整段（97 行，文件 718 → 619 行）；
+  - `AdminStatsView.vue`：图表主文字色不再按主题分支，固定深墨色。
+- **安全性校验**：脚本比对了暗色块定义的 **44 个 CSS 变量**，全部在亮色 `:root` 中仍有定义
+  → 删除不会产生 `undefined` 变量；全仓 `data-theme / useTheme / toggleTheme / app-theme`
+  残留为 **0**；`vite build` 通过。
+- **代价**：放弃"跟随系统暗色"这一卖点；已有用户 localStorage 里的 `app-theme` 变成死数据，
+  不影响渲染（没有代码再读取）。
+
+### 22. 核实 `closed` 状态并补全管理后台状态列 ✅
+- **疑问**：管理后台「状态」筛选里的「已关闭」是否属于弃用的旧设计？
+- **核实结论：不是弃用**，`status='closed'` 有三条活跃写入路径：
+  1. 账号注销 / 管理员删除用户 → 其 `active/pending` 物品置 `closed`（`auth.py`、`admin.py`）；
+  2. 管理员批量操作「关闭」（`admin.py` 批量分支）；
+  3. 管理员单个物品「关闭」（`PUT /api/admin/items/{id}/status` 允许 `active|closed|claimed`）。
+  语义上 `closed` = **下架**（不再公开展示），与 `claimed`（已找回/已归还）不同，不可合并。
+  只因库里暂无该状态记录（现为 claimed 7 / active 6），所以日常看不到。
+- **顺手修的真实缺陷**：管理后台物品表格的状态列只处理了 `active/claiming/pending/claimed`，
+  其余落到 `v-else` 直接渲染英文原值——`closed` 会显示成 `closed`，`rejected` 会显示成 `rejected`。
+  已补 `closed → 已关闭（灰色描边）`、`rejected → 已驳回（红色描边）`。
+- **文档化**：`database.py` 的 `items.status` 旁补了枚举说明，并标注 **`done` 是遗留值、
+  当前无任何代码写入**（SQLite 无法原地改 CHECK 约束，保留以兼容老库）。
+- **验证**：`vite build` 通过；`database.py` 语法检查通过。
+
+### 23. 移除管理员手动「关闭」，`closed` 降级为系统内部状态 ✅
+- **决策依据**：用户确认「关闭」不在需求设计内；它与「删除」功能重叠（删除是硬删除，关闭是保留数据停止展示），
+  且管理后台暴露一个没有需求支撑的操作按钮，答辩时无法解释来源。
+- **移除**（手动路径）：
+  - `PUT /api/admin/items/{id}/status`：允许值从 `active|closed|claimed` 收紧为 **`active|claimed`**；
+  - `POST /api/admin/items/batch`：action 白名单从 `approve|close|delete` 收紧为 **`approve|delete`**，
+    并删除 `close` 分支；
+  - 前端 `ItemManage.vue`：删除行操作「关闭」、批量工具栏「关闭」按钮、状态筛选「已关闭」选项。
+- **保留**（系统兜底，**不可删**）：`closed` 仍由「删除用户 / 账号注销」写入
+  （`admin.py`、`auth.py`），保证物品保留数据但停止展示，避免挂在已注销账号下的僵尸帖。
+  表格状态列保留 `closed → 已关闭` 的展示分支。
+- **测试**：新增 `tests/test_admin_item_actions.py` 4 例 —— 单个关闭 400 且数据未变、
+  批量关闭 400、**删用户后物品仍自动 closed**（锁住兜底）、`claimed` 仍可设置（防止误删过头）。
+  全量 **407 passed / 2 skipped**；`vite build` 通过。
+- **文档**：SRS/PROJECT 的批量接口与 `status` 枚举说明更新为「`closed` = 系统内部状态」。
+
 ---
 
 ## V3.6.3 — 消除「启动后首个请求 10 秒超时」(2026-11-08)

@@ -67,6 +67,15 @@ def init_db():
                 title_vector TEXT,                 -- v3.7.0：标题独立向量（打分 v2 用）
                 contact TEXT,
                 location TEXT,
+                -- status 枚举说明（2026-11-11 核实）：
+                --   pending   待审核（默认）
+                --   active    展示中
+                --   claiming  认领中（同意认领后）
+                --   claimed   已找回 / 已归还（交接完成）
+                --   rejected  已驳回（审核驳回时由 admin.py 的 CASE 写入）
+                --   closed    已关闭 / 下架（账号注销、删除用户、管理员批量关闭）
+                --   done      **遗留值，当前无任何代码写入**；因 SQLite 无法原地修改
+                --             CHECK 约束，保留以兼容老库，新代码请勿使用
                 status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'claiming', 'claimed', 'done', 'rejected', 'closed')),
                 user_id INTEGER NOT NULL,
                 review_status TEXT DEFAULT 'pending' CHECK (review_status IN ('pending', 'approved', 'rejected')),
